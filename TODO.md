@@ -162,6 +162,24 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
   Element-Baum mit center_norm; `oc click-name`/`oc invoke` Safety-Gate greift korrekt.
   Dokumenttext via TextPattern, Ribbon-Tab Name→Klick-Mitte, InvokePattern-Fallback-Kette.
 
+## Roadmap — Agent-Brain backends & Subagent-driver mode (CONCEPT, awaiting sign-off)
+
+> **Design only — not implemented.** Full design: `ARCHITECTURE.md` → "Agent-Brain-Backends &
+> Subagent-Treiber-Modus". Docks onto existing seams (`ComputerBackend`, `FeedManager`,
+> `LearningManager`). Build **only after concept approval** (do not start coding yet).
+
+- [ ] **`SubagentBackend` (`backends/subagent.py`)** — keyless / local reasoning backend that
+  implements the existing `ComputerBackend` Protocol. Hands goal + observation + feeds to a
+  **host-LLM subagent** (Claude Code `Task`, agy, codex, kimi) or a **local Ollama** model and
+  parses canonical `Action`s back. New `SubagentDriver` seam: `ClaudeCodeTaskDriver` /
+  `CliSubprocessDriver` / `OllamaHttpDriver`. Loop, Safety-Gate, Executor unchanged.
+  - Strict action parser (known `ActionType`s only, coords in [0,1]); per-turn timeout.
+- [ ] **Persistent 24h experience-agent** — long-lived subagent + job queue; experience
+  accumulated via `learning.py` (`log_outcome`/`BetaPrior`/profiles/lessons in `_state/`) and
+  dosed-push-injected into later runs via `FeedManager`/`InjectorSink`. Rotation on
+  domain-switch / context size; reset keeps `_state/` warmstart. Safety: isolated VM, allow/deny
+  list, `max_steps` + timeout, escalate on repeated failure.
+
 ## Backlog
 
 - [ ] Live smoke test against a real Claude key in an isolated VM.

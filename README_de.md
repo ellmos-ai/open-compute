@@ -8,25 +8,32 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
 
-**Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop für Claude, OpenAI CUA und ein Mock-Backend.**
+**Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop, jedes Reasoning-Modell hinter einer einzigen Schnittstelle.**
 
 open-compute ist ein kleiner, abhängigkeitsarmer Python-Kern zum Bau von
 Computer-Use-Agenten (LLM-gesteuerte GUI-/Desktop-/Browser-Automatisierung). Er
 realisiert den Loop **Wahrnehmung → Modell-Tool-Call → Aktion → Rückkopplung**
 und hält das Modell hinter einer einzigen `ComputerBackend`-Schnittstelle
-austauschbar. Der Kern hat **keine Laufzeit-Abhängigkeiten**; die SDKs
-`anthropic` und `openai` sind **optionale, lazy importierte** Extras —
-`import open_compute` funktioniert ohne beide, und die Standard-Mock-Verdrahtung
-läuft vollständig offline.
+austauschbar. **Kein Anbieter ist bevorzugt**: Anthropic Claude und OpenAI CUA
+sind zwei gleichrangige API-Backends, das Offline-`mock`-Backend ist der
+Standard, und ein **lokales / selbst gehostetes LLM-Backend** (z. B. ein
+Ollama-Modell oder ein Host-LLM-Subagent, der keinen eigenen API-Key braucht)
+ist ein erstklassiger **geplanter** Pfad — siehe
+[Subagent-Treiber-Modus](#konzept--subagent-treiber-modus-geplant). Der Kern hat
+**keine Laufzeit-Abhängigkeiten**; die Anbieter-SDKs (`anthropic`, `openai`)
+sind **optionale, lazy importierte** Extras — `import open_compute` funktioniert
+ohne jedes davon, und die Standard-Mock-Verdrahtung läuft vollständig offline.
 
 ---
 
 ## Warum
 
-Anthropics Claude-`computer`-Tool und OpenAIs Computer-Use-Tool teilen dieselbe
-*Form* des Agenten-Loops, unterscheiden sich aber in Transport,
+Jedes Computer-Use-Modell — Anthropics Claude-`computer`-Tool, OpenAIs
+Computer-Use-Tool und (geplant) lokale / selbst gehostete LLMs — teilt dieselbe
+*Form* des Agenten-Loops, unterscheidet sich aber in Transport,
 Koordinatenrahmen und Aktionsnamen. open-compute zieht die gemeinsamen Teile
-heraus, sodass der Loop nur einmal geschrieben wird:
+heraus, sodass der Loop nur einmal geschrieben wird und das Reasoning-Modell
+frei hinter einer `ComputerBackend`-Schnittstelle austauschbar bleibt:
 
 - Ein **einheitliches Aktions-Schema** mit je einem Mapper pro Backend.
 - **Normierte (0..1)-Koordinaten** intern, pro Backend / Auflösung / DPI in
@@ -147,15 +154,22 @@ oc watch-dir ~/Downloads --once        # einmaliger Snapshot-Diff
 Vollständiges Loop-Protokoll, Aktions-Schema, Koordinaten-Leitfaden und
 Umgebungsvariablen: `SKILL.md`.
 
-### Modus B — Autonomer Loop mit API-Backend
+### Modus B — Autonomer Loop mit einem API-Backend
 
-Benötigt `ANTHROPIC_API_KEY` und `pip install open-compute[local,claude]`:
+Das Backend wird über den Namen gewählt; `claude` und `openai` sind
+gleichrangig unterstützt (jedes braucht eigenen Key + Extra). Ein
+schlüsselloses **lokales / Subagent-Backend** ist
+[geplant](#konzept--subagent-treiber-modus-geplant).
 
 ```bash
+# Claude (benötigt ANTHROPIC_API_KEY + open-compute[local,claude]):
 oc run "Finde die neueste Rechnung im Downloads-Ordner" --backend claude --max-steps 15
+
+# OpenAI (benötigt OPENAI_API_KEY + open-compute[local,openai]):
+oc run "Finde die neueste Rechnung im Downloads-Ordner" --backend openai --max-steps 15
 ```
 
-Oder in Python:
+Oder in Python — `get_backend(name, ...)` baut das benannte Backend:
 
 ```python
 from open_compute import AgentLoop, Config, get_backend
@@ -193,11 +207,15 @@ print(result.done, result.steps)
 
 | Backend | SDK | Tool / Modell | Koordinaten | Status |
 |---|---|---|---|---|
-| `mock` | keins | skriptbasiert, offline | synthetisch | Voll implementiert |
+| `mock` | keins | skriptbasiert, offline | synthetisch | Voll implementiert (**Standard-Backend**) |
 | `claude` | `anthropic` (lazy) | `computer`-Tool `computer_20251124`, Beta-Header `computer-use-2025-11-24`, Standardmodell `claude-opus-4-8` | globale Pixel; Host führt aus | Implementiert; mit injiziertem Client getestet |
 | `openai` | `openai` (lazy) | computer-use, Modell `computer-use-preview` *(konfigurierbar, `[UNSICHER]`)* | Pixel; Host führt aus | Implementiert; Modellname / Request-Form nicht voll verifiziert |
+| `local` / `subagent` | keins (Host-LLM) | lokales / selbst gehostetes LLM (Ollama o. ä.) **oder** ein Host-LLM-Subagent (Claude Code / agy / codex / kimi) als Reasoner — kein eigener API-Key | Host führt aus | **Geplant (Konzept).** Noch nicht implementiert — siehe [Subagent-Treiber-Modus](#konzept--subagent-treiber-modus-geplant) |
 
-Das Paar Claude-Tool-Typ / Beta-Header ist am Backend konfigurierbar
+Alle drei implementierten Backends teilen ein `ComputerBackend`-Protokoll und
+werden namentlich aus `get_backend()` (`open_compute/backends/factory.py`)
+dispatcht — kein Anbieter ist fest in den Loop verdrahtet. Das Paar
+Claude-Tool-Typ / Beta-Header ist am Backend konfigurierbar
 (`tool_type=`, `beta_header=`), um auf älteren Modellen das Paar
 `computer_20250124` / `computer-use-2025-01-24` anzusprechen.
 
@@ -274,8 +292,36 @@ Das Paar Claude-Tool-Typ / Beta-Header ist am Backend konfigurierbar
 - Modellname und exakte Responses-API-Request-Form des OpenAI-Backends sind
   **nicht voll verifiziert** — vor Produktiveinsatz gegen die aktuelle
   OpenAI-Doku prüfen.
+- **Lokales-LLM- / Subagent-Reasoning-Backend ist nicht implementiert** — es ist
+  ein entworfenes Konzept (siehe unten).
 
 Details siehe `TODO.md`.
+
+---
+
+## Konzept — Subagent-Treiber-Modus (geplant)
+
+> **Status: KONZEPT, nicht implementiert.** Nur Design; die implementierten
+> Reasoning-Backends bleiben `mock` / `claude` / `openai`. Vollständiges Design
+> in `ARCHITECTURE.md` („Agent-Brain-Backends & Subagent-Treiber-Modus").
+
+Das `ComputerBackend`-Protokoll erlaubt bereits jedem Reasoner, den Loop zu
+treiben. Zwei geplante Implementierungen machen Computer-Use **ohne eigenen
+API-Key** und mit **lokalen / selbst gehosteten Modellen** möglich:
+
+- **`SubagentBackend`** — statt eine Anbieter-API aufzurufen, übergibt es Ziel +
+  aktuelle Beobachtung + aktive Feeds an einen **Host-LLM-Subagenten** (einen
+  Claude-Code-`Task`-Subagenten, oder `agy` / `codex` / `kimi`, oder ein lokales
+  Ollama-Modell) und parst die zurückgegebenen kanonischen `Action`s. Der Loop
+  bleibt unverändert; es „wirkt wie API", nutzt aber vorhandene Reasoning-Kapazität.
+- **Persistenter 24h-Erfahrungs-Agent** — ein langlebiger Subagent, der
+  wiederholte Aufträge annimmt und Erfahrung via `learning.py`
+  (LESSONS-LEARNED / `BetaPrior` / Use-Case-Profile) akkumuliert und per
+  dosiertem Push über den vorhandenen `FeedManager` / `InjectorSink` in spätere
+  Läufe injiziert.
+
+Das ist der Mechanismus, der den lokalen / schlüssellosen Pfad real macht — hier
+als gleichrangiges Ziel benannt, nicht als ausgeliefertes Feature.
 
 ---
 

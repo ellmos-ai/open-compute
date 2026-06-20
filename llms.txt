@@ -1,7 +1,9 @@
 # open-compute
 
-> Model-agnostic computer-use core: one agent loop drives Claude, OpenAI CUA, or
-> a mock backend behind a single interface, with normalized coordinates, a
+> Model-agnostic computer-use core: one agent loop drives any reasoning model
+> behind a single interface -- Anthropic Claude and OpenAI CUA are equally-ranked
+> API backends, mock is the offline default, and a local/self-hosted LLM (or
+> keyless host-LLM subagent) backend is planned. With normalized coordinates, a
 > canonical action schema, a hybrid perception layer, and a central safety gate.
 
 ## Last-checked: 2026-06-20
@@ -19,7 +21,8 @@ uses.
 ## Audience
 
 - Developers building computer-use / GUI / browser agents who want to swap the
-  reasoning model (Claude vs OpenAI) without rewriting the loop.
+  reasoning model (Claude, OpenAI, mock, or a planned local/subagent backend)
+  without rewriting the loop.
 - Researchers comparing pixel-vision vs accessibility/Set-of-Marks perception.
 - Anyone who needs a backend-neutral action schema with one place for DPI /
   resolution normalization and one place for a confirm-before-risky safety gate.
@@ -64,6 +67,9 @@ uses.
             host executes. Needs `pip install open-compute[claude]`.
 - openai -- OpenAI computer-use; model `computer-use-preview` (configurable,
             [UNSICHER]). Needs `pip install open-compute[openai]`.
+- local/subagent -- PLANNED (concept, not implemented): local/self-hosted LLM
+            (Ollama etc.) or a keyless host-LLM subagent (Claude Code / agy /
+            codex / kimi) as the reasoner. See ARCHITECTURE.md.
 
 ## Install
 

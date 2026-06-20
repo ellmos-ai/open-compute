@@ -160,3 +160,138 @@ fällt der Element-Baum dünn aus und Pixel/OCR/Vision tragen.
   Adapter (Capability-Detection statt Annahme).
 - Erster konkreter Baustein: bestehender Windows-`LocalExecutor` (Pixel+Input) + validierter
   **UIA-Element-Feed** → daraus den ersten echten Multi-Feed-Pfad bauen (Phase 2).
+
+---
+
+# Agent-Brain-Backends & Subagent-Treiber-Modus
+
+> **Status dieses Abschnitts: KONZEPT (Design, nicht implementiert).** Stand 2026-06-20.
+> Bereits **vorhanden** (echt, getestet): die `ComputerBackend`-Abstraktion mit den Backends
+> `mock` / `claude` / `openai` (`open_compute/backends/`), der Push-Layer `FeedManager` +
+> `InjectorSink` (`feed_manager.py`) und die Lernschicht `LearningManager` (`learning.py`).
+> **Noch NICHT vorhanden:** ein lokales-LLM- bzw. Subagent-Reasoning-Backend und ein
+> langlebiger 24h-Erfahrungs-Agent. Dieser Abschnitt entwirft beides und dockt es an die
+> bestehenden Nähte an.
+
+## Begriffsklärung (wichtig)
+
+In diesem Code ist **„Treiber" zweideutig** — daher präzise:
+- `open_compute/drivers/` = **Executors** („Hände": Screenshot + Input ausführen,
+  z. B. `LocalExecutor`, `MockExecutor`).
+- `open_compute/backends/` = **Reasoning-„Gehirne"** (entscheiden die nächste Aktion;
+  implementieren das `ComputerBackend`-Protokoll, `backends/base.py`).
+
+Der „Subagent-Treiber-Modus" ist ein neues **Backend** (ein `ComputerBackend`), **kein**
+Executor/Driver im `drivers/`-Sinn. Der Agenten-Loop (`loop.py`) bleibt unverändert: er
+fragt `backend.start()/step()`, gated über die Safety-Policy, führt über den Executor aus.
+
+## Was bereits trägt (vorhanden)
+
+Das Reasoning ist schon modell-agnostisch verkabelt:
+- `ComputerBackend`-Protokoll (`backends/base.py`): `start(goal, observation) -> BackendResult`
+  und `step(observation) -> BackendResult`; `BackendResult` = `actions: list[Action]`,
+  `done: bool`, `message`, `raw`.
+- `get_backend(name, w, h, **kwargs)` (`backends/factory.py`) dispatcht namentlich;
+  Anbieter-SDKs werden **lazy** importiert — kein Anbieter ist fest verdrahtet.
+- Der Loop besitzt Koordinaten-Denormalisierung + Safety-Gate; Backends liefern nur
+  **kanonische** `Action`s. Ein neues Backend muss also nur Beobachtung→Aktionen leisten.
+
+## (a) Backend „API-Key" — bestehend
+
+`ClaudeComputerBackend` / `OpenAIComputerBackend`: rufen die jeweilige Anbieter-API mit dem
+Computer-Tool auf, der Host führt die zurückgegebenen Tool-Calls aus. Brauchen Key + SDK-Extra.
+
+## (b) Backend „Host-LLM-Subagent" / lokales LLM — KONZEPT
+
+**Idee:** Statt einer Anbieter-API bekommt ein **Subagent** (oder lokales Modell) die Aufgabe
+und entscheidet die Aktionen — wirkt „wie API", ohne eigenen API-Key. Reasoner-Kandidaten:
+Claude-Code-`Task`-Subagent, `agy` (Gemini), `codex` (GPT), `kimi`, oder ein **lokales Ollama**-Modell.
+
+**Neues Modul (geplant):** `open_compute/backends/subagent.py` mit `SubagentBackend(ComputerBackend)`.
+
+**Schnittstelle — wie der Subagent angesteuert wird (Driver-Abstraktion im Backend):**
+
+```text
+SubagentDriver (Protokoll)              # NICHT drivers/ — gehört logisch zum Backend
+  ask(prompt: str, image_path: str|None) -> str   # ein Reasoning-Turn, Text rein/raus
+
+  Implementierungen (geplant):
+   - ClaudeCodeTaskDriver   → Claude-Code-Subagent via Task/SendMessage
+   - CliSubprocessDriver     → agy / codex / kimi headless (Datei-Order rein, Datei-Antwort raus;
+                               vgl. ~/CLAUDE.md: agy/codex „Antwort als Datei", nicht stdout)
+   - OllamaHttpDriver        → POST http://<host>:11434/api/chat (lokal, kein Key)
+```
+
+**Feeds rein → Aktionen raus (der Kontrakt):**
+1. `SubagentBackend.start(goal, observation)` baut einen **Text-Prompt**: Ziel + kanonisches
+   Aktions-Schema (erlaubte `ActionType`s + JSON-Form) + die **Feeds** als Text/Refs:
+   Screenshot als Datei-Pfad (Bild-fähige Reasoner) ODER Element-Liste (UIA-`observe()`) /
+   OCR-Karte / Action-Chain-Zeile — exakt die Feeds, die der `FeedManager` ohnehin erhebt.
+2. Der `SubagentDriver` übergibt den Prompt (+ optional Bildpfad) an den Subagenten und
+   liefert dessen Text zurück.
+3. Ein **Parser** extrahiert aus der Antwort JSON-Aktionen (ein Objekt oder Array, gleiches
+   Format wie `oc do`) und übersetzt sie in kanonische `Action`s → `BackendResult.actions`.
+   `done` = der Subagent meldet Abschluss (z. B. `{"type":"done"}` oder leere Aktionsliste +
+   Abschluss-Marker).
+4. `step(observation)` wiederholt mit der neuen Beobachtung (re-perceive); der Loop bleibt gleich.
+
+**Warum das sauber andockt:** identisch zum bestehenden Backend-Vertrag (Beobachtung→`Action`s);
+Safety-Gate + Executor + Koordinaten bleiben unverändert; nur die Reasoning-Quelle wechselt.
+Wiederverwendung der Feed-Serialisierung aus `feed_manager.py` (Dosierung: was/wie viel in den
+Prompt) statt einer zweiten Sicht.
+
+## Persistenter 24h-Erfahrungs-Agent — KONZEPT
+
+**Idee:** Ein **langlebiger** Subagent läuft dauerhaft, nimmt wiederholt Aufträge entgegen und
+**akkumuliert Erfahrung**, die in spätere Läufe zurückfließt → wird mit der Zeit besser.
+
+**Lifecycle:**
+- **Start/Attach:** ein langlebiger Subagent-Handle (Claude-Code-Subagent via `SendMessage`,
+  oder ein dauerhafter Ollama-Server / CLI-Session). Wiederverwenden statt pro Auftrag neu starten.
+- **Auftrags-Queue:** Jobs (Ziel + Ziel-App/Fenster) werden nacheinander an denselben Subagenten
+  übergeben. Pro Job ein voller `AgentLoop.run()` mit `SubagentBackend` als Brain.
+- **Idle:** wartet auf den nächsten Auftrag; keine Anbieter-Kosten, da keine API.
+
+**Erfahrungs-Persistenz (über `learning.py`, vorhanden):**
+- Nach jeder Aktion `LearningManager.log_outcome(feed, app, action_type, success)` →
+  `BetaPrior`-Gewicht je (App × Feed × Aktionstyp), persistiert in `_state/`.
+- Übergreifende Lektionen via `add_lesson(text, tags)` → `_state/lessons.jsonl`
+  (z. B. „App Z: UIA-Invoke unzuverlässig → Pixel-Klick").
+- Erfolgreiche Feed-/Dosierungs-Kombis je (Programm, Usecase) via `save_profile()`;
+  Warmstart beim nächsten Lauf via `apply_profile_to_manager()`.
+
+**Dosierter Push der Erfahrung in den nächsten Lauf (vorhanden: FeedManager/InjectorSink):**
+- Beim `start()` injiziert `SubagentBackend` die **relevanten** Lessons/Profile in den Prompt —
+  gefiltert (`get_lessons(tag=app)`), **dosiert** (nur Top-N / passende Tags), damit der Kontext
+  klein bleibt (gleiches Dosierungs-Prinzip wie die Feeds: `full`/`delta`/`notify`).
+- So nutzt jeder neue Auftrag die kumulierte Erfahrung, ohne den Prompt zu überladen.
+
+**Rotation / Reset:**
+- **Rotation bei Domänenwechsel oder Kontext-Größe** (vgl. TICKET-MASTER-Companion-Muster):
+  neuen Subagenten starten, wenn die Ziel-App wechselt oder der Kontext zu groß wird.
+- **Reset** = Subagent verwerfen; die Erfahrung bleibt in `_state/` (persistenter Speicher,
+  vom flüchtigen Subagent-Kontext getrennt) → ein frischer Subagent startet sofort warm.
+
+**Sicherheit / Grenzen:**
+- **Safety-Gate gilt unverändert** — jede vom Subagenten vorgeschlagene Aktion läuft durch
+  `SafetyPolicy` (Default `confirm`); ein autonomer 24h-Agent erhöht das Risiko, daher
+  Empfehlung: isolierte VM/Container, restriktive Allow/Deny-Liste, Bildschirminhalt als
+  nicht vertrauenswürdig behandeln (Prompt-Injection).
+- **Drift/Halluzination:** Subagent-Antworten sind frei — der Aktions-Parser muss strikt
+  validieren (nur bekannte `ActionType`s, Koordinaten in [0,1]) und Unbekanntes verwerfen.
+- **Loop-Schutz:** `max_steps` (vorhanden) + Timeout pro Subagent-Turn; bei wiederholtem
+  Fehlschlag eskalieren statt blind weiterzufahren.
+- **Faktentreue der Erfahrung:** Lessons sind empirisch (aus `log_outcome`), keine erfundenen
+  Zeit-/Erfolgsangaben.
+
+## Abgrenzung KONZEPT vs. vorhanden (Zusammenfassung)
+
+| Baustein | Status |
+|---|---|
+| `ComputerBackend`-Protokoll + `mock`/`claude`/`openai` | **vorhanden** (`backends/`) |
+| `FeedManager` / `InjectorSink` / dosierter Push | **vorhanden** (`feed_manager.py`) |
+| `LearningManager` (BetaPrior, Profile, Lessons) | **vorhanden** (`learning.py`) |
+| `SubagentBackend` + `SubagentDriver` (Claude-Code/agy/codex/kimi/Ollama) | **KONZEPT** |
+| Persistenter 24h-Erfahrungs-Agent (Queue, Rotation, Warmstart) | **KONZEPT** |
+
+> Implementierung erst nach Konzept-Abnahme (siehe `TODO.md` → Roadmap).

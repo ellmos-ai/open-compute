@@ -11,7 +11,7 @@
 
 Wenn ein Computer-Use-Agent die lokale Windows-Oberfläche steuern soll, **ohne** dass ein API-Key für einen autonomen Backend-Loop vorhanden ist. Das Session-Modell (dieser Agent) übernimmt das Reasoning: es sieht den Bildschirm via Read-Tool (PNG) und entscheidet die nächste Aktion.
 
-Für den autonomen Modus mit API-Key: `oc run "<ziel>" --backend claude` (Modus B — kein Skill nötig).
+Für den autonomen Modus mit API-Key: `oc run "<ziel>" --backend claude|openai` (Modus B — kein Skill nötig). Ein schlüsselloses lokales / Subagent-Backend ist geplant (Konzept, siehe ARCHITECTURE.md).
 
 ---
 
