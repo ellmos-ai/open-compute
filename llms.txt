@@ -2,9 +2,10 @@
 
 > Model-agnostic computer-use core: one agent loop drives any reasoning model
 > behind a single interface -- Anthropic Claude and OpenAI CUA are equally-ranked
-> API backends, mock is the offline default, and a local/self-hosted LLM (or
-> keyless host-LLM subagent) backend is planned. With normalized coordinates, a
-> canonical action schema, a hybrid perception layer, and a central safety gate.
+> API backends, mock is the offline default. A keyless path also exists today via
+> Mode A (the host model reasons itself, inline or in a self-spawned subagent for
+> context economy). With normalized coordinates, a canonical action schema, a
+> hybrid perception layer, and a central safety gate.
 
 ## Last-checked: 2026-06-20
 
@@ -21,8 +22,8 @@ uses.
 ## Audience
 
 - Developers building computer-use / GUI / browser agents who want to swap the
-  reasoning model (Claude, OpenAI, mock, or a planned local/subagent backend)
-  without rewriting the loop.
+  reasoning model (Claude, OpenAI, mock) without rewriting the loop, or run
+  keyless via Mode A (host model reasons itself; inline or self-spawned subagent).
 - Researchers comparing pixel-vision vs accessibility/Set-of-Marks perception.
 - Anyone who needs a backend-neutral action schema with one place for DPI /
   resolution normalization and one place for a confirm-before-risky safety gate.
@@ -67,9 +68,13 @@ uses.
             host executes. Needs `pip install open-compute[claude]`.
 - openai -- OpenAI computer-use; model `computer-use-preview` (configurable,
             [UNSICHER]). Needs `pip install open-compute[openai]`.
-- local/subagent -- PLANNED (concept, not implemented): local/self-hosted LLM
-            (Ollama etc.) or a keyless host-LLM subagent (Claude Code / agy /
-            codex / kimi) as the reasoner. See ARCHITECTURE.md.
+- (keyless) -- NOT a backend row. Mode A: the host model reasons itself, inline
+            or in a self-spawned subagent (context economy, same model). Usage
+            pattern, see ARCHITECTURE.md "Host-Modell-Kontext: Inline (a) vs.
+            Selbst-Subagent (b)".
+- local (foreign reasoner) -- SEPARATE, LOW-PRIORITY, OPTIONAL idea (not (b),
+            not scheduled): a different model as reasoner (Ollama, or agy /
+            codex / kimi). Would be a real new backend. See ARCHITECTURE.md.
 
 ## Install
 

@@ -11,7 +11,18 @@
 
 Wenn ein Computer-Use-Agent die lokale Windows-Oberfläche steuern soll, **ohne** dass ein API-Key für einen autonomen Backend-Loop vorhanden ist. Das Session-Modell (dieser Agent) übernimmt das Reasoning: es sieht den Bildschirm via Read-Tool (PNG) und entscheidet die nächste Aktion.
 
-Für den autonomen Modus mit API-Key: `oc run "<ziel>" --backend claude|openai` (Modus B — kein Skill nötig). Ein schlüsselloses lokales / Subagent-Backend ist geplant (Konzept, siehe ARCHITECTURE.md).
+Für den autonomen Modus mit API-Key: `oc run "<ziel>" --backend claude|openai` (Modus B — kein Skill nötig).
+
+---
+
+## Kontext-Ökonomie: inline (a) vs. eigenen Subagenten spawnen (b)
+
+Die Schleife unten läuft **schlüssellos** im Kontext **dieses** Host-Modells. Du hast zwei Wege — **gleiches Modell, gleiche Vision, gleiches Reasoning**, nur unterschiedlicher Kontext-Verbrauch:
+
+- **(a) Inline:** Du fährst `oc capture` / `oc do` direkt in deinem eigenen Kontext. Jeder Screenshot landet in deinem Hauptkontext. **Für kurze / einfache Aufgaben** (wenige Schritte).
+- **(b) Eigenen Subagenten spawnen:** Du spawnst einen Subagenten **von dir selbst** (z. B. via `Task`), der die komplette Schleife in **dessen** Kontext abarbeitet und dir nur das **destillierte Ergebnis** zurückgibt. Dein Hauptkontext bleibt sauber; es „wirkt wie API", ist aber dasselbe Modell — **kein Reasoning-/Vision-Verlust, nur Kontext-Ökonomie**. **Für lange / wiederholte / kontextlastige Aufgaben** (viele Screenshots/Schritte).
+
+**Faustregel (du entscheidest selbst, wie bei jeder Subagent-Delegation):** kurz/einfach → inline (a); lang/wiederholt/kontextlastig → Subagent spawnen (b). Eine optionale Erweiterung von (b) ist ein langlebiger Erfahrungs-Subagent (siehe ARCHITECTURE.md → „Host-Modell-Kontext"). Hinweis: Ein *anderes*/lokales Modell als Reasoner ist eine separate, nachrangige Idee, NICHT (b).
 
 ---
 

@@ -163,135 +163,108 @@ fällt der Element-Baum dünn aus und Pixel/OCR/Vision tragen.
 
 ---
 
-# Agent-Brain-Backends & Subagent-Treiber-Modus
+# Host-Modell-Kontext: Inline (a) vs. Selbst-Subagent (b)
 
-> **Status dieses Abschnitts: KONZEPT (Design, nicht implementiert).** Stand 2026-06-20.
-> Bereits **vorhanden** (echt, getestet): die `ComputerBackend`-Abstraktion mit den Backends
-> `mock` / `claude` / `openai` (`open_compute/backends/`), der Push-Layer `FeedManager` +
-> `InjectorSink` (`feed_manager.py`) und die Lernschicht `LearningManager` (`learning.py`).
-> **Noch NICHT vorhanden:** ein lokales-LLM- bzw. Subagent-Reasoning-Backend und ein
-> langlebiger 24h-Erfahrungs-Agent. Dieser Abschnitt entwirft beides und dockt es an die
-> bestehenden Nähte an.
+> **Status dieses Abschnitts: KONZEPT / Nutzungsmuster (kein neuer Reasoning-Code).** Stand 2026-06-20.
+> Es geht NICHT um ein fremdes/lokales Modell als Reasoner. Es geht um **dasselbe Host-Modell**
+> (z. B. Claude Code im Abo) — **gleiche Vision, gleiches Reasoning, kein API-Key** —, das die
+> Computer-Use-Schleife entweder **inline** oder in einem **selbst gespawnten Subagenten** abarbeitet.
+> Der einzige Unterschied ist **Kontext-Ökonomie**, NICHT die Modellfähigkeit.
 
-## Begriffsklärung (wichtig)
+## Die zwei Modi (Entscheidung: (a) mit Option auf (b), das Modell entscheidet selbst)
 
-In diesem Code ist **„Treiber" zweideutig** — daher präzise:
-- `open_compute/drivers/` = **Executors** („Hände": Screenshot + Input ausführen,
-  z. B. `LocalExecutor`, `MockExecutor`).
-- `open_compute/backends/` = **Reasoning-„Gehirne"** (entscheiden die nächste Aktion;
-  implementieren das `ComputerBackend`-Protokoll, `backends/base.py`).
+**(a) INLINE — heutige Lösung, vorhanden.** Das Host-Modell führt die Schleife
+`capture → entscheiden → do → recapture` **in seinem eigenen Kontext** aus (Modus A im
+README/SKILL.md: `oc capture` / `oc do` manuell). Jeder Screenshot, jede Zwischenüberlegung
+landet im Hauptkontext. Ideal für **kurze/einfache** Aufgaben (1–3 Schritte).
 
-Der „Subagent-Treiber-Modus" ist ein neues **Backend** (ein `ComputerBackend`), **kein**
-Executor/Driver im `drivers/`-Sinn. Der Agenten-Loop (`loop.py`) bleibt unverändert: er
-fragt `backend.start()/step()`, gated über die Safety-Policy, führt über den Executor aus.
+**(b) SELBST-SUBAGENT — KONZEPT, Kontext-Ökonomie.** Das Host-Modell **spawnt einen Subagenten
+von sich selbst** (z. B. via `Task`), der die komplette Computer-Use-Schleife in **dessen**
+Kontext abarbeitet (Vorverarbeitung: viele Screenshots, viele `oc do`-Schritte) und am Ende nur
+das **destillierte Ergebnis** zurückgibt („Rechnung gefunden: …, gespeichert nach …"). Der
+**Hauptkontext bleibt sauber** — die Screenshot-/Schritt-Flut bleibt im Subagenten. Es „wirkt wie
+API" (Auftrag rein, Ergebnis raus), ist aber **dasselbe Modell**: **kein Reasoning-/Vision-Verlust**,
+nur ausgelagerter Kontext-Verbrauch.
 
-## Was bereits trägt (vorhanden)
+**Kernpunkt:** (a) und (b) unterscheiden sich nur darin, **wessen Kontext** die Schritt-für-Schritt-
+Flut trägt. Kein neues Backend, kein neuer Reasoner, kein eigener Key. Es ist normale
+Subagent-Delegation, angewandt auf die Computer-Use-Schleife.
 
-Das Reasoning ist schon modell-agnostisch verkabelt:
-- `ComputerBackend`-Protokoll (`backends/base.py`): `start(goal, observation) -> BackendResult`
-  und `step(observation) -> BackendResult`; `BackendResult` = `actions: list[Action]`,
-  `done: bool`, `message`, `raw`.
-- `get_backend(name, w, h, **kwargs)` (`backends/factory.py`) dispatcht namentlich;
-  Anbieter-SDKs werden **lazy** importiert — kein Anbieter ist fest verdrahtet.
-- Der Loop besitzt Koordinaten-Denormalisierung + Safety-Gate; Backends liefern nur
-  **kanonische** `Action`s. Ein neues Backend muss also nur Beobachtung→Aktionen leisten.
+## Heuristik — wann (a), wann (b)
 
-## (a) Backend „API-Key" — bestehend
+Leichte Faustregel (das Modell entscheidet selbst, wie bei jeder Subagent-Delegation):
+- **kurz / einfach / einmalig** (wenige Schritte) → **inline (a)**.
+- **lang / wiederholt / kontextlastig** (viele Screenshots, viele Schritte, Schleife läuft
+  länger) → **eigenen Subagenten spawnen (b)** und nur das Ergebnis zurückholen.
 
-`ClaudeComputerBackend` / `OpenAIComputerBackend`: rufen die jeweilige Anbieter-API mit dem
-Computer-Tool auf, der Host führt die zurückgegebenen Tool-Calls aus. Brauchen Key + SDK-Extra.
+Diese Heuristik ist als **Nutzungsmuster** dokumentiert (SKILL.md + README), nicht als
+automatischer Schalter im Code.
 
-## (b) Backend „Host-LLM-Subagent" / lokales LLM — KONZEPT
+## Was bereits trägt (vorhanden — wird in beiden Modi genutzt)
 
-**Idee:** Statt einer Anbieter-API bekommt ein **Subagent** (oder lokales Modell) die Aufgabe
-und entscheidet die Aktionen — wirkt „wie API", ohne eigenen API-Key. Reasoner-Kandidaten:
-Claude-Code-`Task`-Subagent, `agy` (Gemini), `codex` (GPT), `kimi`, oder ein **lokales Ollama**-Modell.
+- Modus A (`oc capture` / `oc do` / Composite / `--ensure-foreground` / Batch) ist die
+  Schleife, die in (a) inline und in (b) im Subagenten-Kontext läuft — **identische CLI**.
+- `FeedManager` (`feed_manager.py`): erhebt/dosiert die Feeds (Screenshot/UIA/OCR/Dirwatch) —
+  in (b) konsumiert der Subagent dieselben Feeds, ohne den Hauptkontext zu belasten.
+- `LearningManager` (`learning.py`): Lessons/BetaPrior/Profile in `_state/` (siehe unten).
+- Der Agenten-Loop + Safety-Gate + Executor bleiben unverändert; (b) ändert nur, **wer** den
+  Loop ausführt (ein abgespaltener Kontext desselben Modells).
 
-**Neues Modul (geplant):** `open_compute/backends/subagent.py` mit `SubagentBackend(ComputerBackend)`.
+## Persistenter 24h-Erfahrungs-Subagent — OPTION (KONZEPT)
 
-**Schnittstelle — wie der Subagent angesteuert wird (Driver-Abstraktion im Backend):**
+**Idee:** Variante von (b) mit **Langlebigkeit** — ein Subagent (desselben Host-Modells) läuft
+dauerhaft, nimmt **wiederholt** Aufträge entgegen und nutzt **akkumulierte Erfahrung**.
 
-```text
-SubagentDriver (Protokoll)              # NICHT drivers/ — gehört logisch zum Backend
-  ask(prompt: str, image_path: str|None) -> str   # ein Reasoning-Turn, Text rein/raus
-
-  Implementierungen (geplant):
-   - ClaudeCodeTaskDriver   → Claude-Code-Subagent via Task/SendMessage
-   - CliSubprocessDriver     → agy / codex / kimi headless (Datei-Order rein, Datei-Antwort raus;
-                               vgl. ~/CLAUDE.md: agy/codex „Antwort als Datei", nicht stdout)
-   - OllamaHttpDriver        → POST http://<host>:11434/api/chat (lokal, kein Key)
-```
-
-**Feeds rein → Aktionen raus (der Kontrakt):**
-1. `SubagentBackend.start(goal, observation)` baut einen **Text-Prompt**: Ziel + kanonisches
-   Aktions-Schema (erlaubte `ActionType`s + JSON-Form) + die **Feeds** als Text/Refs:
-   Screenshot als Datei-Pfad (Bild-fähige Reasoner) ODER Element-Liste (UIA-`observe()`) /
-   OCR-Karte / Action-Chain-Zeile — exakt die Feeds, die der `FeedManager` ohnehin erhebt.
-2. Der `SubagentDriver` übergibt den Prompt (+ optional Bildpfad) an den Subagenten und
-   liefert dessen Text zurück.
-3. Ein **Parser** extrahiert aus der Antwort JSON-Aktionen (ein Objekt oder Array, gleiches
-   Format wie `oc do`) und übersetzt sie in kanonische `Action`s → `BackendResult.actions`.
-   `done` = der Subagent meldet Abschluss (z. B. `{"type":"done"}` oder leere Aktionsliste +
-   Abschluss-Marker).
-4. `step(observation)` wiederholt mit der neuen Beobachtung (re-perceive); der Loop bleibt gleich.
-
-**Warum das sauber andockt:** identisch zum bestehenden Backend-Vertrag (Beobachtung→`Action`s);
-Safety-Gate + Executor + Koordinaten bleiben unverändert; nur die Reasoning-Quelle wechselt.
-Wiederverwendung der Feed-Serialisierung aus `feed_manager.py` (Dosierung: was/wie viel in den
-Prompt) statt einer zweiten Sicht.
-
-## Persistenter 24h-Erfahrungs-Agent — KONZEPT
-
-**Idee:** Ein **langlebiger** Subagent läuft dauerhaft, nimmt wiederholt Aufträge entgegen und
-**akkumuliert Erfahrung**, die in spätere Läufe zurückfließt → wird mit der Zeit besser.
-
-**Lifecycle:**
-- **Start/Attach:** ein langlebiger Subagent-Handle (Claude-Code-Subagent via `SendMessage`,
-  oder ein dauerhafter Ollama-Server / CLI-Session). Wiederverwenden statt pro Auftrag neu starten.
-- **Auftrags-Queue:** Jobs (Ziel + Ziel-App/Fenster) werden nacheinander an denselben Subagenten
-  übergeben. Pro Job ein voller `AgentLoop.run()` mit `SubagentBackend` als Brain.
-- **Idle:** wartet auf den nächsten Auftrag; keine Anbieter-Kosten, da keine API.
-
-**Erfahrungs-Persistenz (über `learning.py`, vorhanden):**
+**Andockung an die vorhandene `learning.py` (real, getestet):**
 - Nach jeder Aktion `LearningManager.log_outcome(feed, app, action_type, success)` →
   `BetaPrior`-Gewicht je (App × Feed × Aktionstyp), persistiert in `_state/`.
 - Übergreifende Lektionen via `add_lesson(text, tags)` → `_state/lessons.jsonl`
   (z. B. „App Z: UIA-Invoke unzuverlässig → Pixel-Klick").
 - Erfolgreiche Feed-/Dosierungs-Kombis je (Programm, Usecase) via `save_profile()`;
-  Warmstart beim nächsten Lauf via `apply_profile_to_manager()`.
+  Warmstart via `apply_profile_to_manager()`.
+- Beim nächsten Auftrag werden die **relevanten** Lessons/Profile **dosiert** in den
+  Subagenten-Auftrag gegeben (gefiltert `get_lessons(tag=app)`, Top-N) — Kontext klein halten.
 
-**Dosierter Push der Erfahrung in den nächsten Lauf (vorhanden: FeedManager/InjectorSink):**
-- Beim `start()` injiziert `SubagentBackend` die **relevanten** Lessons/Profile in den Prompt —
-  gefiltert (`get_lessons(tag=app)`), **dosiert** (nur Top-N / passende Tags), damit der Kontext
-  klein bleibt (gleiches Dosierungs-Prinzip wie die Feeds: `full`/`delta`/`notify`).
-- So nutzt jeder neue Auftrag die kumulierte Erfahrung, ohne den Prompt zu überladen.
+**Erfahrungs-Persistenz vs. flüchtiger Kontext:** Die Erfahrung lebt in `_state/` (persistent),
+NICHT im Subagenten-Kontext. Subagent verwerfen/rotieren ändert die gelernten Gewichte nicht →
+ein frischer Subagent startet sofort warm.
 
-**Rotation / Reset:**
-- **Rotation bei Domänenwechsel oder Kontext-Größe** (vgl. TICKET-MASTER-Companion-Muster):
-  neuen Subagenten starten, wenn die Ziel-App wechselt oder der Kontext zu groß wird.
-- **Reset** = Subagent verwerfen; die Erfahrung bleibt in `_state/` (persistenter Speicher,
-  vom flüchtigen Subagent-Kontext getrennt) → ein frischer Subagent startet sofort warm.
+**Falsche Lehren vermeiden (Hinweis fürs Design):** Lessons sollten **Verfall/Confidence**
+tragen — z. B. Zeitstempel-basiertes Decay und ein Confidence-Wert (aus `BetaPrior`-Sample-Zahl),
+damit eine einmal beobachtete Fehl-Lehre nicht dauerhaft dominiert. (`Lesson` hat bereits `ts`;
+ein Confidence-/Decay-Feld wäre eine kleine, additive Erweiterung — derzeit NICHT implementiert.)
 
-**Sicherheit / Grenzen:**
-- **Safety-Gate gilt unverändert** — jede vom Subagenten vorgeschlagene Aktion läuft durch
-  `SafetyPolicy` (Default `confirm`); ein autonomer 24h-Agent erhöht das Risiko, daher
-  Empfehlung: isolierte VM/Container, restriktive Allow/Deny-Liste, Bildschirminhalt als
-  nicht vertrauenswürdig behandeln (Prompt-Injection).
-- **Drift/Halluzination:** Subagent-Antworten sind frei — der Aktions-Parser muss strikt
-  validieren (nur bekannte `ActionType`s, Koordinaten in [0,1]) und Unbekanntes verwerfen.
-- **Loop-Schutz:** `max_steps` (vorhanden) + Timeout pro Subagent-Turn; bei wiederholtem
-  Fehlschlag eskalieren statt blind weiterzufahren.
-- **Faktentreue der Erfahrung:** Lessons sind empirisch (aus `log_outcome`), keine erfundenen
-  Zeit-/Erfolgsangaben.
+**Sicherheit / Grenzen:** Safety-Gate gilt unverändert (Default `confirm`); ein autonomer
+24h-Subagent erhöht das Risiko → isolierte VM/Container, restriktive Allow/Deny-Liste,
+Bildschirminhalt als nicht vertrauenswürdig behandeln (Prompt-Injection), `max_steps` + Timeout,
+bei wiederholtem Fehlschlag eskalieren.
+
+## Separates, NACHRANGIGES Thema — fremder/lokaler Reasoner (NICHT (b))
+
+> **Eigenständige, niedrig-priorisierte Idee — ausdrücklich NICHT der oben beschriebene
+> Selbst-Subagent-Modus (b).** Festgehalten, nicht eingeplant.
+
+Theoretisch ließe sich ein **anderes** Modell als Reasoner einsetzen — ein lokales/selbst
+gehostetes LLM (Ollama o. ä.) oder eine fremde Agent-CLI (`agy`/Gemini, `codex`/GPT, `kimi`).
+Das wäre ein **echtes neues `ComputerBackend`** (Reasoning-Quelle wechselt, ggf.
+Vision-/Fähigkeits-Unterschiede) und über das vorhandene `ComputerBackend`-Protokoll
+(`backends/base.py`) + `get_backend()`-Factory anschließbar.
+
+**Abgrenzung — warum das NICHT (b) ist:** (b) ist dasselbe Host-Modell in einem abgespaltenen
+Kontext (kein Fähigkeitsverlust, reine Kontext-Ökonomie). Dieser Punkt hier wechselt das Modell
+und ist damit qualitativ anders (möglicher Reasoning-/Vision-Unterschied). **Priorität: niedrig,
+optional, nicht im aktuellen Scope.**
 
 ## Abgrenzung KONZEPT vs. vorhanden (Zusammenfassung)
 
 | Baustein | Status |
 |---|---|
-| `ComputerBackend`-Protokoll + `mock`/`claude`/`openai` | **vorhanden** (`backends/`) |
+| Modus A (`oc capture`/`oc do`/Composite/Batch) = Inline-Schleife (a) | **vorhanden** (`cli.py`, `SKILL.md`) |
 | `FeedManager` / `InjectorSink` / dosierter Push | **vorhanden** (`feed_manager.py`) |
 | `LearningManager` (BetaPrior, Profile, Lessons) | **vorhanden** (`learning.py`) |
-| `SubagentBackend` + `SubagentDriver` (Claude-Code/agy/codex/kimi/Ollama) | **KONZEPT** |
-| Persistenter 24h-Erfahrungs-Agent (Queue, Rotation, Warmstart) | **KONZEPT** |
+| Selbst-Subagent-Modus (b) — Kontext-Ökonomie, gleiches Modell | **KONZEPT / Nutzungsmuster** (Doku) |
+| Persistenter 24h-Erfahrungs-Subagent (Option zu b) + Lesson-Decay/Confidence | **KONZEPT / OPTION** |
+| Fremder/lokaler Reasoner (Ollama/agy/codex/kimi) als neues Backend | **separat, nachrangig, optional** |
 
-> Implementierung erst nach Konzept-Abnahme (siehe `TODO.md` → Roadmap).
+> Die Modi (a)/(b) sind ein **Nutzungsmuster**, kein neuer Reasoning-Code. Schwere Code-Bauten
+> (eigenes Backend, langlebiger Daemon) erst nach gesonderter Abnahme (siehe `TODO.md` → Roadmap).

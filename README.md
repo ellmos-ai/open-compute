@@ -15,10 +15,10 @@ agents (LLM-driven GUI / desktop / browser automation). It implements the
 **perception → model-tool-call → action → feedback** loop and keeps the
 reasoning model swappable behind a single `ComputerBackend` interface. **No
 provider is privileged**: Anthropic Claude and OpenAI CUA are two equally-ranked
-API backends, the offline `mock` backend is the default, and a **local /
-self-hosted LLM backend** (e.g. an Ollama model, or a host-LLM subagent that
-needs no API key of its own) is a first-class **planned** path — see
-[Subagent-driver mode](#concept--subagent-driver-mode-planned). The core has
+API backends, and the offline `mock` backend is the default. A **keyless** path
+also exists today via Mode A, where the host model itself reasons — and it can
+run that loop either inline or in a self-spawned subagent for context economy
+(see [usage pattern](#usage-pattern--inline-a-vs-self-subagent-b)). The core has
 **zero runtime dependencies**; vendor SDKs (`anthropic`, `openai`) are
 **optional, lazily imported** extras — `import open_compute` works with none of
 them installed, and the default mock wiring runs fully offline.
@@ -27,11 +27,11 @@ them installed, and the default mock wiring runs fully offline.
 
 ## Why
 
-Every computer-use model — Anthropic's Claude `computer` tool, OpenAI's
-computer-use tool, and (planned) local / self-hosted LLMs — shares the same
-agent-loop *shape* but differs in transport, coordinate frame, and action names.
-open-compute factors out the common parts so you write the loop once and swap the
-reasoning model freely behind one `ComputerBackend` interface:
+Every computer-use model — Anthropic's Claude `computer` tool and OpenAI's
+computer-use tool — shares the same agent-loop *shape* but differs in transport,
+coordinate frame, and action names. open-compute factors out the common parts so
+you write the loop once and swap the reasoning model freely behind one
+`ComputerBackend` interface:
 
 - A **canonical action schema** with one mapper per backend.
 - **Normalized (0..1) coordinates** internally, denormalized per backend /
@@ -152,8 +152,9 @@ environment variable reference.
 ### Mode B — Autonomous loop with an API backend
 
 The backend is selected by name; `claude` and `openai` are equally supported
-(each needs its own key + extra). A keyless **local / subagent backend** is
-[planned](#concept--subagent-driver-mode-planned).
+(each needs its own key + extra). For a **keyless** path, use Mode A above — the
+host model reasons itself, optionally in a self-spawned subagent (see
+[usage pattern](#usage-pattern--inline-a-vs-self-subagent-b)).
 
 ```bash
 # Claude (needs ANTHROPIC_API_KEY + open-compute[local,claude]):
@@ -207,11 +208,16 @@ for trace in result.traces:
 | `mock` | none | scripted, offline | synthetic | Fully implemented (**default backend**) |
 | `claude` | `anthropic` (lazy) | `computer` tool `computer_20251124`, beta header `computer-use-2025-11-24`, default model `claude-opus-4-8` | global pixels; host executes | Implemented; tested via injected client |
 | `openai` | `openai` (lazy) | computer-use, model `computer-use-preview` *(configurable, `[UNSICHER]`)* | pixels; host executes | Implemented; model name / request shape not fully verified |
-| `local` / `subagent` | none (host LLM) | local / self-hosted LLM (Ollama etc.) **or** a host-LLM subagent (Claude Code / agy / codex / kimi) as reasoner — no own API key | host executes | **Planned (concept).** Not implemented yet — see [Subagent-driver mode](#concept--subagent-driver-mode-planned) |
+| `local` (foreign reasoner) | none | a *different* model as reasoner — local Ollama, or agy / codex / kimi CLIs | host executes | **Separate, low-priority, optional idea** — would be a real new backend with possible capability differences. Not scheduled. |
 
-All three implemented backends share one `ComputerBackend` Protocol and are
-dispatched by name from `get_backend()` (`open_compute/backends/factory.py`) —
-no provider is hard-wired into the loop. The Claude tool type / beta header pair
+The keyless / no-API path is **not** a backend row — it is Mode A, where the
+**host model itself** reasons (inline, or in a self-spawned subagent for context
+economy; see [usage pattern](#usage-pattern--inline-a-vs-self-subagent-b)).
+
+The implemented backends (`mock` / `claude` / `openai`) share one
+`ComputerBackend` Protocol and are dispatched by name from `get_backend()`
+(`open_compute/backends/factory.py`) — no provider is hard-wired into the loop.
+The Claude tool type / beta header pair
 is configurable on the backend
 (`tool_type=`, `beta_header=`) so you can target the older `computer_20250124`
 / `computer-use-2025-01-24` pair on older models.
@@ -302,35 +308,48 @@ is configurable on the backend
   accessibility feeds are **open / planned**.
 - The OpenAI backend's model name and exact Responses-API request shape are
   **not fully verified** — validate against live OpenAI docs before production.
-- **Local-LLM / subagent reasoning backend is not implemented** — it is a
-  designed concept only (see below).
+- The **self-subagent mode (b)** is a **usage pattern** (docs), not new reasoning
+  code — see below. A **foreign / local reasoner** (Ollama / agy / codex / kimi)
+  is a **separate, low-priority, optional** idea, not implemented.
 
 See `TODO.md` for the full breakdown.
 
 ---
 
-## Concept — Subagent-driver mode (planned)
+## Usage pattern — inline (a) vs. self-subagent (b)
 
-> **Status: CONCEPT, not implemented.** Design only; the implemented reasoning
-> backends remain `mock` / `claude` / `openai`. Full design in `ARCHITECTURE.md`
-> ("Agent-Brain backends & Subagent-driver mode").
+> **Pattern, not a new backend.** Same host model, no API key — only the
+> **context budget** differs. Full design in `ARCHITECTURE.md`
+> ("Host-Modell-Kontext: Inline (a) vs. Selbst-Subagent (b)").
 
-The `ComputerBackend` Protocol already lets any reasoner drive the loop. Two
-planned implementations make computer-use work **without an own API key** and
-with **local / self-hosted models**:
+When the host model (e.g. Claude Code on a subscription) runs the no-key Mode A
+loop, it can spend its context two ways — **same model, same vision, same
+reasoning**:
 
-- **`SubagentBackend`** — instead of calling a vendor API, it hands the goal +
-  current observation + active feeds to a **host-LLM subagent** (a Claude Code
-  `Task` subagent, or `agy` / `codex` / `kimi`, or a local Ollama model) and
-  parses the returned canonical `Action`s back. The loop is unchanged; it just
-  "feels like API" while reusing reasoning capacity you already have.
-- **Persistent 24h experience-agent** — a long-lived subagent that takes
-  repeated jobs and accumulates experience via `learning.py`
-  (LESSONS-LEARNED / `BetaPrior` / use-case profiles), dosed-pushed back into
-  later runs through the existing `FeedManager` / `InjectorSink`.
+- **(a) Inline (today's solution).** The host model runs
+  `capture → decide → do → recapture` **in its own context**. Best for
+  **short / simple** tasks (a few steps).
+- **(b) Self-subagent (concept).** The host model spawns a subagent **of
+  itself** (e.g. via a `Task`) that runs the whole loop in the **subagent's**
+  context and returns only the **distilled result** ("invoice found at …").
+  The **main context stays clean**; it "feels like API" but is the **same
+  model** — the win is **context economy, not a reasoning/vision trade-off**.
+  Best for **long / repeated / context-heavy** tasks.
 
-This is the mechanism that makes the local / keyless path real — it is named
-here as an equal-ranked goal, not as a shipped feature.
+**The model decides per task**, exactly like normal subagent delegation. Rough
+heuristic: short → inline (a); long / repeated / context-heavy → spawn a
+subagent (b).
+
+A **persistent 24h experience-subagent** is an optional variant of (b): a
+long-lived self-subagent that takes repeated jobs and reuses accumulated
+experience via the existing `learning.py` (`BetaPrior` / use-case profiles /
+LESSONS-LEARNED in `_state/`). Experience lives in `_state/` (persistent), not
+in the volatile subagent context. (Lessons should carry decay / confidence to
+avoid false lessons — a small additive change, not yet implemented.)
+
+> A *different* model as reasoner (local Ollama, or agy / codex / kimi CLIs) is a
+> **separate, low-priority, optional** idea — that would be a real new
+> `ComputerBackend` with possible capability differences, and is **not** mode (b).
 
 ---
 

@@ -162,23 +162,35 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
   Element-Baum mit center_norm; `oc click-name`/`oc invoke` Safety-Gate greift korrekt.
   Dokumenttext via TextPattern, Ribbon-Tab Name→Klick-Mitte, InvokePattern-Fallback-Kette.
 
-## Roadmap — Agent-Brain backends & Subagent-driver mode (CONCEPT, awaiting sign-off)
+## Usage pattern — host-model context delegation: inline (a) vs. self-subagent (b)
 
-> **Design only — not implemented.** Full design: `ARCHITECTURE.md` → "Agent-Brain-Backends &
-> Subagent-Treiber-Modus". Docks onto existing seams (`ComputerBackend`, `FeedManager`,
-> `LearningManager`). Build **only after concept approval** (do not start coding yet).
+> **Pattern / doc, NOT a new reasoning backend.** Same host model (e.g. Claude Code on a
+> subscription) — same vision, same reasoning, no API key — runs the computer-use loop either
+> **inline** or in a **self-spawned subagent**. The only difference is **context economy**, not
+> capability. Full design: `ARCHITECTURE.md` → "Host-Modell-Kontext: Inline (a) vs.
+> Selbst-Subagent (b)". The model decides per task (decision = (a) with option on (b)).
 
-- [ ] **`SubagentBackend` (`backends/subagent.py`)** — keyless / local reasoning backend that
-  implements the existing `ComputerBackend` Protocol. Hands goal + observation + feeds to a
-  **host-LLM subagent** (Claude Code `Task`, agy, codex, kimi) or a **local Ollama** model and
-  parses canonical `Action`s back. New `SubagentDriver` seam: `ClaudeCodeTaskDriver` /
-  `CliSubprocessDriver` / `OllamaHttpDriver`. Loop, Safety-Gate, Executor unchanged.
-  - Strict action parser (known `ActionType`s only, coords in [0,1]); per-turn timeout.
-- [ ] **Persistent 24h experience-agent** — long-lived subagent + job queue; experience
-  accumulated via `learning.py` (`log_outcome`/`BetaPrior`/profiles/lessons in `_state/`) and
-  dosed-push-injected into later runs via `FeedManager`/`InjectorSink`. Rotation on
-  domain-switch / context size; reset keeps `_state/` warmstart. Safety: isolated VM, allow/deny
-  list, `max_steps` + timeout, escalate on repeated failure.
+- [x] **(a) Inline mode** — host model drives `oc capture` / `oc do` in its own context.
+  **Already exists** (Mode A, `cli.py` + `SKILL.md`). Good for short/simple tasks.
+- [ ] **(b) Self-subagent mode (CONCEPT / pattern)** — host model spawns a subagent *of itself*
+  (e.g. via `Task`) that runs the full capture→do→recapture loop in the subagent's context
+  (preprocessing) and returns only the distilled result → main context stays clean, "feels like
+  API", **no reasoning/vision loss** (it is the same model). Documented as a usage pattern in
+  README (EN/DE) + SKILL.md; heuristic: short→inline, long/repeated/context-heavy→subagent.
+  No automatic switch in code; the model decides (like normal subagent delegation).
+- [ ] **Persistent 24h experience-subagent (OPTION on b, CONCEPT)** — long-lived self-subagent +
+  job queue; experience accumulated via the existing `learning.py`
+  (`log_outcome`/`BetaPrior`/profiles/lessons in `_state/`) and dosed into later jobs. Experience
+  lives in `_state/` (persistent), not in the volatile subagent context → rotation keeps warmstart.
+  - [ ] **Lessons with decay/confidence** (against false lessons): add timestamp-decay +
+    confidence (from `BetaPrior` sample count) to `Lesson`. Small additive change — NOT
+    implemented yet (`Lesson` already has `ts`).
+  - Safety: isolated VM, allow/deny list, `max_steps` + timeout, escalate on repeated failure.
+- [ ] **Separate, low-priority, optional — foreign/local reasoner (NOT (b))** — a *different*
+  model as reasoner (local Ollama, or agy/codex/kimi CLIs) would be a real new `ComputerBackend`
+  (reasoning source changes, possible capability/vision difference), attachable via the existing
+  `ComputerBackend` Protocol + `get_backend()` factory. Explicitly **not** the self-subagent mode.
+  Recorded, not scheduled.
 
 ## Backlog
 
