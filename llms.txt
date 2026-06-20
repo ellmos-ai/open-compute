@@ -1,0 +1,93 @@
+# open-compute
+
+> Model-agnostic computer-use core: one agent loop drives Claude, OpenAI CUA, or
+> a mock backend behind a single interface, with normalized coordinates, a
+> canonical action schema, a hybrid perception layer, and a central safety gate.
+
+## Last-checked: 2026-06-20
+
+## What it does
+
+open-compute is a small, dependency-light Python core for building computer-use
+agents (GUI/desktop/browser automation driven by an LLM). It realizes the
+perception -> model-tool-call -> action -> feedback loop and keeps the model
+backend swappable. Importing the package never requires a vendor SDK; the
+`anthropic` and `openai` packages are lazy, optional extras. The default wiring
+(mock backend + mock executor) runs fully offline, which is what the test suite
+uses.
+
+## Audience
+
+- Developers building computer-use / GUI / browser agents who want to swap the
+  reasoning model (Claude vs OpenAI) without rewriting the loop.
+- Researchers comparing pixel-vision vs accessibility/Set-of-Marks perception.
+- Anyone who needs a backend-neutral action schema with one place for DPI /
+  resolution normalization and one place for a confirm-before-risky safety gate.
+
+## Architecture
+
+```
+            AGENT LOOP / ORCHESTRATOR  (loop.py)
+            goal -> perceive -> backend -> safety -> execute -> re-perceive
+              |              |               |              |
+        Perception      Backend        SafetyPolicy     Executor (driver)
+     (screenshot +    (ComputerBackend  (confirm /     (Mock / Browser / OS)
+      set-of-marks /   protocol:         allow_all /
+      accessibility)   Claude/OpenAI/    read_only)
+                       Mock)
+                          |
+              Canonical Action schema (actions.py)
+              normalized 0..1 coords -> denormalize per backend
+```
+
+## Core modules
+
+- `actions.py` -- canonical `Action` / `ActionType`; pure `to_claude` /
+  `to_openai` mappers. (fully implemented + tested)
+- `coordinates.py` -- normalize / denormalize / rescale. (fully implemented + tested)
+- `safety.py` -- `SafetyPolicy` permission gate. (fully implemented + tested)
+- `config.py` -- `Config` dataclass + JSON loader. (fully implemented)
+- `loop.py` -- `AgentLoop` orchestrator. (fully implemented + tested via mocks)
+- `backends/` -- `ComputerBackend` protocol, `get_backend` factory, `MockBackend`
+  (fully implemented), `ClaudeComputerBackend` (implemented; lazy `anthropic`),
+  `OpenAIComputerBackend` (implemented; lazy `openai`; model name [UNSICHER]).
+- `drivers/` -- `Executor`/`BrowserDriver`/`OSDriver` protocols (interfaces only)
+  and `MockExecutor` (fully implemented).
+- `perception.py` -- `ScreenshotPerception` (implemented); Set-of-Marks /
+  accessibility / DOM providers (STUBS).
+
+## Backend matrix
+
+- mock   -- no SDK, offline, deterministic. Default.
+- claude -- Anthropic Messages API + `computer` tool `computer_20251124`,
+            beta header `computer-use-2025-11-24`, global pixel coordinates,
+            host executes. Needs `pip install open-compute[claude]`.
+- openai -- OpenAI computer-use; model `computer-use-preview` (configurable,
+            [UNSICHER]). Needs `pip install open-compute[openai]`.
+
+## Install
+
+```
+pip install open-compute              # core only, zero runtime deps
+pip install open-compute[claude]      # + anthropic SDK
+pip install open-compute[openai]      # + openai SDK
+```
+
+## Quick start
+
+```python
+from open_compute import AgentLoop, Config
+loop = AgentLoop(Config(backend="mock"))
+print(loop.run("open settings and enable dark mode").done)
+```
+
+## Safety
+
+Every action passes a central policy gate before execution. Default mode is
+`confirm` (risky actions require confirmation). Computer-use is powerful; run
+real backends in an isolated VM/container, keep a human in the loop, and treat
+on-screen content as untrusted (prompt-injection risk).
+
+## License
+
+MIT.

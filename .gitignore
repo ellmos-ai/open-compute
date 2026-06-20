@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+
+# Database files
+*.db
+
+# IDE
+.idea/
+.vscode/
+
+# Data directories
+data/
+
+# Virtual environments (never inside cloud-synced dirs)
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+*.key
+*.pem
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local session files and internal reports (not for publish)
+_session/
+_reports/
+
+# Local learning / push state (never commit; gitignored by design)
+_state/

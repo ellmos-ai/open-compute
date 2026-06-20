@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 160" width="900" height="160">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#1a1f2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="900" height="160" fill="url(#bg)" rx="10"/>
+
+  <!-- left accent bar -->
+  <rect x="0" y="0" width="5" height="160" fill="url(#accent)" rx="2"/>
+
+  <!-- icon: circuit / agent loop symbol -->
+  <g transform="translate(32, 50)" fill="none" stroke="#6366f1" stroke-width="2">
+    <!-- outer ring -->
+    <circle cx="30" cy="30" r="28" stroke-dasharray="6 3" opacity="0.5"/>
+    <!-- perception node -->
+    <circle cx="30" cy="6" r="5" fill="#6366f1" stroke="none"/>
+    <!-- action node -->
+    <circle cx="54" cy="42" r="5" fill="#8b5cf6" stroke="none"/>
+    <!-- feedback node -->
+    <circle cx="6" cy="42" r="5" fill="#6366f1" stroke="none"/>
+    <!-- arrows -->
+    <path d="M33 11 L50 37" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr)"/>
+    <path d="M49 47 L11 47" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <path d="M7 37 L27 11" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="102" y="88" font-family="'SF Mono','Fira Code','Consolas',monospace"
+        font-size="40" font-weight="700" fill="#f8fafc" letter-spacing="-1">
+    open-compute
+  </text>
+
+  <!-- tagline -->
+  <text x="103" y="120" font-family="'SF Pro','Segoe UI','Helvetica Neue',sans-serif"
+        font-size="15" fill="#94a3b8" letter-spacing="0.3">
+    model-agnostic computer-use core · Claude · OpenAI · Mock
+  </text>
+
+  <!-- alpha badge -->
+  <rect x="756" y="24" width="120" height="28" rx="6" fill="#f59e0b" opacity="0.15"/>
+  <rect x="756" y="24" width="120" height="28" rx="6" fill="none" stroke="#f59e0b" stroke-width="1"/>
+  <text x="816" y="43" font-family="'SF Pro','Segoe UI',sans-serif"
+        font-size="13" font-weight="600" fill="#fbbf24" text-anchor="middle" letter-spacing="1">
+    ALPHA v0.6.0
+  </text>
+
+  <!-- bottom stripe -->
+  <rect x="0" y="155" width="900" height="5" fill="url(#accent)" rx="2"/>
+</svg>

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-compute"
+version = "0.6.0"
+description = "Model-agnostic computer-use core: one agent loop for Claude, OpenAI CUA, and a mock backend, with normalized coordinates, a canonical action schema, and a central safety gate."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "The open-compute authors"},
+]
+keywords = [
+    "computer-use", "agent", "automation", "claude", "openai", "cua",
+    "gui-automation", "browser-automation", "set-of-marks", "ai-agent",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+claude = ["anthropic>=0.40.0"]
+openai = ["openai>=1.40.0"]
+browser = ["playwright>=1.40.0"]
+local = ["mss>=9.0"]
+compose = ["Pillow>=10.0"]
+uia = ["uiautomation>=2.0.18"]
+watch = ["watchdog>=3.0"]
+dev = ["pytest>=7.0"]
+all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "watchdog>=3.0"]
+
+[project.scripts]
+oc = "open_compute.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ellmos-ai/open-compute"
+Repository = "https://github.com/ellmos-ai/open-compute"
+Changelog = "https://github.com/ellmos-ai/open-compute/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["open_compute*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
