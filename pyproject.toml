@@ -36,9 +36,10 @@ browser = ["playwright>=1.40.0"]
 local = ["mss>=9.0"]
 compose = ["Pillow>=10.0"]
 uia = ["uiautomation>=2.0.18"]
+wgc = ["windows-capture>=2.0.0; platform_system == 'Windows'", "Pillow>=10.0"]
 watch = ["watchdog>=3.0"]
 dev = ["pytest>=7.0"]
-all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "watchdog>=3.0"]
+all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "windows-capture>=2.0.0; platform_system == 'Windows'", "watchdog>=3.0"]
 
 [project.scripts]
 oc = "open_compute.cli:main"

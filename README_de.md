@@ -95,10 +95,11 @@ pip install open-compute               # nur Kern, keine Laufzeit-Abhängigkeite
 pip install open-compute[claude]       # + anthropic-SDK
 pip install open-compute[openai]       # + openai-SDK
 pip install open-compute[local]        # + mss (echter Windows-Screenshot + Input)
+pip install open-compute[wgc]          # + WGC-Fallback für DirectX-Flächen (zieht numpy/OpenCV)
 pip install open-compute[compose]      # + Pillow (Vorher|Nachher-Composite + annotierter Shot)
 pip install open-compute[watch]        # + watchdog (native FS-Events für Directory-Watch-Feed)
-pip install open-compute[local,claude] # lokaler Executor + Claude-Backend
-pip install open-compute[all]          # + anthropic, openai, playwright, mss, Pillow, watchdog
+pip install open-compute[local,wgc,claude] # lokaler Executor + WGC-Fallback + Claude-Backend
+pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog
 ```
 
 Python 3.10+.
@@ -243,8 +244,11 @@ konfigurierbar
   Fake-Client getestet.
 - **`LocalExecutor`** (Windows, `open-compute[local]`): echter Screenshot via
   mss, echte Maus/Tastatur via ctypes SendInput mit VIRTUALDESK + DPI-Awareness.
-  Alle Action-Typen implementiert. Live-getestet: `oc capture` → PNG 368 KB
-  (1920×1080); `oc do mouse_move` → Cursor bewegt.
+  Das optionale Extra `open-compute[wgc]` ergänzt einen
+  Windows.Graphics.Capture-Fallback für DirectX- bzw. hardware-komponierte
+  Flächen, wenn mss/GDI-Capture fehlschlägt. Alle Action-Typen implementiert.
+  Live-getestet: `oc capture` → PNG 368 KB (1920×1080); `oc do mouse_move` →
+  Cursor bewegt.
 - **`oc` CLI** (`oc capture` / `oc do` / `oc run`): Modus A (kein Key, Skill)
   und Modus B (autonomer AgentLoop mit API-Backend) end-to-end verdrahtet.
 - **`SKILL.md`**: Loop-Protokoll für den Session-Agenten (Modus A).

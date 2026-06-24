@@ -32,14 +32,16 @@ executor init so that both GetSystemMetrics *and* mss report true physical
 pixel dimensions. Without this, scaled coordinates and grab dimensions
 diverge on high-DPI displays.
 
-Pure stdlib + optional mss. No numpy, no opencv, no Pillow, no pyautogui,
-no pynput (all carry GPL/LGPL or require mss is a transitive dep).
+The default path is pure stdlib + optional mss. The WGC fallback is isolated
+behind the ``open-compute[wgc]`` extra, which brings Pillow and the
+``windows-capture`` transitive dependencies.
 """
 
 from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import io
 import sys
 from dataclasses import dataclass, field
 from typing import Any
@@ -207,6 +209,57 @@ def to_sendinput_coords(
     return dx, dy
 
 
+def _capture_rect_to_sendinput_coords(
+    nx: float,
+    ny: float,
+    capture_left: int,
+    capture_top: int,
+    capture_width: int,
+    capture_height: int,
+    virt_left: int,
+    virt_top: int,
+    virt_width: int,
+    virt_height: int,
+) -> tuple[int, int]:
+    """Map normalized coordinates from a capture frame into virtual desktop input."""
+    if capture_width <= 0 or capture_height <= 0 or virt_width <= 0 or virt_height <= 0:
+        return 0, 0
+    nx = max(0.0, min(1.0, nx))
+    ny = max(0.0, min(1.0, ny))
+    px = capture_left + nx * max(0, capture_width - 1)
+    py = capture_top + ny * max(0, capture_height - 1)
+    dx = int(round(((px - virt_left) / max(1, virt_width - 1)) * 65535))
+    dy = int(round(((py - virt_top) / max(1, virt_height - 1)) * 65535))
+    return max(0, min(65535, dx)), max(0, min(65535, dy))
+
+
+def _place_png_on_virtual_canvas(
+    png_bytes: bytes,
+    frame_left: int,
+    frame_top: int,
+    virt_left: int,
+    virt_top: int,
+    virt_width: int,
+    virt_height: int,
+) -> bytes:
+    """Place a monitor PNG on a virtual-desktop-sized black canvas."""
+    from PIL import Image
+
+    with Image.open(io.BytesIO(png_bytes)) as img:
+        if (
+            frame_left == virt_left
+            and frame_top == virt_top
+            and img.width == virt_width
+            and img.height == virt_height
+        ):
+            return png_bytes
+        canvas = Image.new("RGB", (virt_width, virt_height), (0, 0, 0))
+        canvas.paste(img.convert("RGB"), (frame_left - virt_left, frame_top - virt_top))
+        out = io.BytesIO()
+        canvas.save(out, format="PNG")
+        return out.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Windows API helper functions
 # ---------------------------------------------------------------------------
@@ -320,24 +373,26 @@ class LocalExecutor:
 
     monitor_index: int = 0
     _virt: tuple[int, int, int, int] | None = field(default=None, init=False, repr=False)
+    _capture_rect: tuple[int, int, int, int] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _set_dpi_awareness()
         # Cache virtual desktop geometry (stable for the process lifetime on
         # a single-session machine; re-query if needed).
         self._virt = _get_virtual_desktop()
+        self._capture_rect = self._virt
 
     @property
     def width(self) -> int:
-        """Virtual desktop width in pixels (the mss capture frame width)."""
-        assert self._virt is not None
-        return self._virt[2]
+        """Current capture-frame width in pixels."""
+        assert self._capture_rect is not None
+        return self._capture_rect[2]
 
     @property
     def height(self) -> int:
-        """Virtual desktop height in pixels."""
-        assert self._virt is not None
-        return self._virt[3]
+        """Current capture-frame height in pixels."""
+        assert self._capture_rect is not None
+        return self._capture_rect[3]
 
     # ------------------------------------------------------------------
     # Executor protocol
@@ -387,7 +442,16 @@ class LocalExecutor:
         return self.screenshot()
 
     def screenshot(self) -> Observation:
-        """Capture the virtual desktop and return PNG bytes as an Observation."""
+        """Capture the virtual desktop and return PNG bytes as an Observation.
+
+        Uses fast GDI capture (``mss``) by default. When GDI ``BitBlt`` fails -
+        which it does for DirectX / hardware-rendered / occluded windows such as
+        Roblox Studio, Blender, or games ("Zugriff verweigert" / access denied) -
+        it falls back to the Windows.Graphics.Capture backend (``wgc``), which
+        grabs the composited monitor including hardware surfaces.
+        Requires a non-sandboxed Python (the Microsoft-Store Python destabilises
+        WGC); install python.org Python for reliable Studio/game capture.
+        """
         try:
             import mss  # noqa: F401 — lazy; optional extra
             import mss.tools
@@ -397,21 +461,54 @@ class LocalExecutor:
                 "Install it with: pip install open-compute[local]"
             ) from exc
 
-        with mss.mss() as sct:
-            monitors = sct.monitors
-            # monitors[0] is the virtual desktop (all monitors combined).
-            # monitors[1..N] are individual monitors.
-            idx = min(self.monitor_index, len(monitors) - 1)
-            mon = monitors[idx]
-            shot = sct.grab(mon)
-            # mss.tools.to_png converts the raw BGRA grab to a PNG byte string.
-            # No numpy, no opencv, no Pillow needed.
-            png_bytes: bytes = mss.tools.to_png(shot.rgb, shot.size)
-        return Observation(
-            screenshot=png_bytes,
-            width=shot.width,
-            height=shot.height,
-        )
+        selected_mon: dict[str, int] | None = None
+        try:
+            with mss.mss() as sct:
+                monitors = sct.monitors
+                # monitors[0] is the virtual desktop (all monitors combined).
+                # monitors[1..N] are individual monitors.
+                idx = min(self.monitor_index, len(monitors) - 1)
+                selected_mon = monitors[idx]
+                shot = sct.grab(selected_mon)
+                # mss.tools.to_png converts the raw BGRA grab to a PNG byte string.
+                png_bytes: bytes = mss.tools.to_png(shot.rgb, shot.size)
+            self._capture_rect = (
+                int(selected_mon.get("left", 0)),
+                int(selected_mon.get("top", 0)),
+                shot.width,
+                shot.height,
+            )
+            return Observation(
+                screenshot=png_bytes,
+                width=shot.width,
+                height=shot.height,
+            )
+        except Exception as mss_exc:
+            # GDI BitBlt failed (typically a DirectX/hardware-composited window).
+            # Fall back to Windows.Graphics.Capture if available.
+            try:
+                from . import wgc
+            except ImportError:
+                raise mss_exc
+            if not wgc.available():
+                raise mss_exc
+            # mss monitor 0 = virtual desktop, 1..N = monitors; WGC is 1-based per
+            # monitor. Map mss 0 -> primary monitor (1); otherwise pass through.
+            wgc_idx = self.monitor_index if self.monitor_index >= 1 else 1
+            png_bytes, width, height = wgc.grab_monitor_png(monitor_index=wgc_idx)
+            if self.monitor_index == 0:
+                assert self._virt is not None
+                vl, vt, vw, vh = self._virt
+                png_bytes = _place_png_on_virtual_canvas(
+                    png_bytes, 0, 0, vl, vt, vw, vh
+                )
+                self._capture_rect = self._virt
+                width, height = vw, vh
+            else:
+                left = int(selected_mon.get("left", 0)) if selected_mon else 0
+                top = int(selected_mon.get("top", 0)) if selected_mon else 0
+                self._capture_rect = (left, top, width, height)
+            return Observation(screenshot=png_bytes, width=width, height=height)
 
     # ------------------------------------------------------------------
     # OSDriver surface
@@ -457,8 +554,10 @@ class LocalExecutor:
     def _sendinput_coords(self, nx: float, ny: float) -> tuple[int, int]:
         """Convert normalized 0..1 to SendInput 0..65535 via virtual desktop."""
         assert self._virt is not None
+        assert self._capture_rect is not None
+        cl, ct, cw, ch = self._capture_rect
         vl, vt, vw, vh = self._virt
-        return to_sendinput_coords(nx, ny, vl, vt, vw, vh)
+        return _capture_rect_to_sendinput_coords(nx, ny, cl, ct, cw, ch, vl, vt, vw, vh)
 
     def _move(self, nx: float | None, ny: float | None) -> None:
         if nx is None or ny is None:

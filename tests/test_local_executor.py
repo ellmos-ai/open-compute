@@ -91,13 +91,13 @@ class TestToSendInputCoords:
 # 2. LocalExecutor: action dispatch (mocked Win32 calls)
 # ---------------------------------------------------------------------------
 
-def _make_executor():
+def _make_executor(virt=(0, 0, 1920, 1080)):
     """Build a LocalExecutor with all Win32 calls mocked out."""
     from open_compute.drivers.local import LocalExecutor
 
     with (
         patch("open_compute.drivers.local._set_dpi_awareness"),
-        patch("open_compute.drivers.local._get_virtual_desktop", return_value=(0, 0, 1920, 1080)),
+        patch("open_compute.drivers.local._get_virtual_desktop", return_value=virt),
     ):
         return LocalExecutor(monitor_index=0)
 
@@ -271,6 +271,89 @@ class TestImportWithoutMss:
         # by the top-level __init__.py
         import open_compute  # should succeed regardless of mss presence
         assert open_compute.__version__ == "0.6.0"
+
+
+# ---------------------------------------------------------------------------
+# 3b. Screenshot fallback: mss -> WGC
+# ---------------------------------------------------------------------------
+
+class TestScreenshotWgcFallback:
+    """WGC fallback tests with all screenshot backends mocked."""
+
+    def _install_failing_mss(self, monkeypatch, exc: Exception):
+        fake_mss = types.ModuleType("mss")
+        fake_tools = types.ModuleType("mss.tools")
+
+        class FakeMssContext:
+            monitors = [{"left": 0, "top": 0, "width": 1920, "height": 1080}]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def grab(self, _monitor):
+                raise exc
+
+        fake_mss.mss = FakeMssContext
+        fake_mss.tools = fake_tools
+        monkeypatch.setitem(sys.modules, "mss", fake_mss)
+        monkeypatch.setitem(sys.modules, "mss.tools", fake_tools)
+
+    def test_mss_failure_falls_back_to_wgc(self, monkeypatch):
+        executor = _make_executor()
+        self._install_failing_mss(monkeypatch, RuntimeError("BitBlt failed"))
+
+        with (
+            patch("open_compute.drivers.wgc.available", return_value=True),
+            patch(
+                "open_compute.drivers.local._place_png_on_virtual_canvas",
+                return_value=b"VIRTUAL_PNG",
+            ) as mock_canvas,
+            patch(
+                "open_compute.drivers.wgc.grab_monitor_png",
+                return_value=(b"WGC_PNG", 1280, 720),
+            ) as mock_grab,
+        ):
+            obs = executor.screenshot()
+
+        mock_grab.assert_called_once_with(monitor_index=1)
+        mock_canvas.assert_called_once_with(b"WGC_PNG", 0, 0, 0, 0, 1920, 1080)
+        assert obs.screenshot == b"VIRTUAL_PNG"
+        assert obs.width == 1920
+        assert obs.height == 1080
+        assert executor.width == 1920
+        assert executor.height == 1080
+
+    def test_wgc_virtual_canvas_preserves_primary_monitor_offset(self, monkeypatch):
+        executor = _make_executor(virt=(-1920, 0, 3840, 1080))
+        self._install_failing_mss(monkeypatch, RuntimeError("BitBlt failed"))
+
+        with (
+            patch("open_compute.drivers.wgc.available", return_value=True),
+            patch(
+                "open_compute.drivers.local._place_png_on_virtual_canvas",
+                return_value=b"VIRTUAL_PNG",
+            ),
+            patch(
+                "open_compute.drivers.wgc.grab_monitor_png",
+                return_value=(b"WGC_PNG", 1920, 1080),
+            ),
+        ):
+            executor.screenshot()
+
+        dx, dy = executor._sendinput_coords(0.75, 0.5)
+        assert abs(dx - 49151) <= 1
+        assert abs(dy - 32767) <= 1
+
+    def test_mss_failure_reraises_when_wgc_unavailable(self, monkeypatch):
+        executor = _make_executor()
+        self._install_failing_mss(monkeypatch, RuntimeError("BitBlt failed"))
+
+        with patch("open_compute.drivers.wgc.available", return_value=False):
+            with pytest.raises(RuntimeError, match="BitBlt failed"):
+                executor.screenshot()
 
 
 # ---------------------------------------------------------------------------

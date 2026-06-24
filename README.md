@@ -90,10 +90,11 @@ pip install open-compute               # core only, zero runtime deps
 pip install open-compute[claude]       # + anthropic SDK
 pip install open-compute[openai]       # + openai SDK
 pip install open-compute[local]        # + mss (real Windows screenshots + input)
+pip install open-compute[wgc]          # + WGC fallback for DirectX surfaces (pulls numpy/OpenCV)
 pip install open-compute[compose]      # + Pillow (Before|After composite + annotated shots)
 pip install open-compute[watch]        # + watchdog (native FS events for directory-watch feed)
-pip install open-compute[local,claude] # local executor + Claude backend
-pip install open-compute[all]          # + anthropic, openai, playwright, mss, Pillow, watchdog
+pip install open-compute[local,wgc,claude] # local executor + WGC fallback + Claude backend
+pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog
 ```
 
 Python 3.10+.
@@ -227,7 +228,7 @@ is configurable on the backend
 | Executor | Requires | Platform | Status |
 |---|---|---|---|
 | `MockExecutor` | none | any | Fully implemented; used in tests and dry-runs |
-| `LocalExecutor` | `mss` (`open-compute[local]`) | Windows only | Implemented; `oc capture` live-tested (368 KB PNG at 1920×1080); `oc do mouse_move` live-tested |
+| `LocalExecutor` | `mss` (`open-compute[local]`), optional WGC fallback (`open-compute[wgc]`) | Windows only | Implemented; `oc capture` live-tested (368 KB PNG at 1920×1080); `oc do mouse_move` live-tested |
 
 ---
 
@@ -245,7 +246,9 @@ is configurable on the backend
   injected fake client.
 - **`LocalExecutor`** (Windows, `open-compute[local]`): real screenshot via mss,
   real mouse/keyboard via ctypes SendInput with VIRTUALDESK + DPI-awareness.
-  Action dispatch for all action types. Live-tested: `oc capture` → PNG 368 KB
+  Optional `open-compute[wgc]` adds a Windows.Graphics.Capture fallback for
+  DirectX / hardware-composited surfaces when mss/GDI capture fails. Action
+  dispatch for all action types. Live-tested: `oc capture` → PNG 368 KB
   (1920×1080); `oc do mouse_move` → cursor moved.
 - **`oc` CLI** (`oc capture` / `oc do` / `oc run`): Mode A (no-key skill loop)
   and Mode B (autonomous AgentLoop with API backend) wired end-to-end.

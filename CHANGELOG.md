@@ -7,6 +7,28 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `LocalExecutor.screenshot()` now falls back from mss/GDI capture to a
+  Windows.Graphics.Capture backend when mss raises during monitor capture.
+  This targets DirectX / hardware-composited surfaces such as Roblox Studio,
+  Blender, and games.
+- For the default virtual-desktop capture (`monitor_index=0`), the WGC primary
+  monitor frame is placed on a virtual-desktop-sized canvas so normalized input
+  coordinates remain compatible with `oc do` and agent-loop actions.
+- New optional extra `open-compute[wgc]` installs `windows-capture` and Pillow
+  for the WGC fallback; `[all]` includes it. `windows-capture` pulls numpy and
+  OpenCV transitively and is guarded by a Windows platform marker.
+
+### Tests
+
+- Added mocked LocalExecutor coverage for the WGC success path and for
+  re-raising the original mss error when WGC is unavailable.
+
+---
+
 ## [0.6.0] - 2026-06-20
 
 ### Added — Feature #1: Feed-Manager + dosierte Push-Auto-Injektion
