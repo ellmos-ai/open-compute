@@ -4,7 +4,7 @@
 
 | Category | Status | Notes |
 |---|---|---|
-| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 354 pass, 1 skip (v0.6.0). |
+| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 358 pass (v0.6.0); GitHub Actions now runs the mock-only suite on push/PR. |
 | Import check | PASS | `python -c "import open_compute; import open_compute.feed_manager; import open_compute.learning"` — OK, zero extras. |
 | Documentation | READY | README (EN + DE), llms.txt, CHANGELOG, SECURITY, ARCHITECTURE present. |
 | Integration | DEVELOPMENT | Fits `.MODULES` as a standalone module. Contains marked stubs/interfaces (see below). |
@@ -195,7 +195,7 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
 ## Backlog
 
 - [ ] Live smoke test against a real Claude key in an isolated VM.
-- [ ] GitHub Actions CI: run mock-only tests on push.
+- [x] GitHub Actions CI: run mock-only tests on push.
 - [ ] Banner / logo asset for README.
 - [ ] OpenAI backend: add injected-client test + verify Responses-API shape.
 - [ ] macOS / Linux executor: port `LocalExecutor` to Quartz / X11 / xdotool.

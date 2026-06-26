@@ -47,7 +47,7 @@ oc = "open_compute.cli:main"
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/open-compute"
 Repository = "https://github.com/ellmos-ai/open-compute"
-Changelog = "https://github.com/ellmos-ai/open-compute/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/ellmos-ai/open-compute/blob/master/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["open_compute*"]

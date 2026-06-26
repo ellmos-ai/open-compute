@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-06-20
+## Last-checked: 2026-06-26
 
 ## What it does
 
@@ -59,6 +59,8 @@ uses.
   and `MockExecutor` (fully implemented).
 - `perception.py` -- `ScreenshotPerception` (implemented); Set-of-Marks /
   accessibility / DOM providers (STUBS).
+- `.github/workflows/tests.yml` -- mock-only pytest and compile check on
+  Python 3.10, 3.11, and 3.12.
 
 ## Backend matrix
 

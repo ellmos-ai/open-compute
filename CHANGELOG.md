@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- GitHub Actions workflow `open-compute tests` runs the mock-only pytest suite
+  and a compile check on Python 3.10, 3.11, and 3.12 for pushes and pull requests.
 - `LocalExecutor.screenshot()` now falls back from mss/GDI capture to a
   Windows.Graphics.Capture backend when mss raises during monitor capture.
   This targets DirectX / hardware-composited surfaces such as Roblox Studio,
