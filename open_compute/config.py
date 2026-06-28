@@ -49,6 +49,14 @@ class Config:
         default_factory=lambda: bool(os.environ.get("OC_ALWAYS_FOREGROUND", ""))
     )
     extra: dict[str, Any] = field(default_factory=dict)
+    clirec: dict[str, Any] = field(default_factory=lambda: {
+        "ringbuffer_enabled": False,
+        "ringbuffer_minutes": 15,
+        "capture_screenshots": True,
+        "mask_password_fields": True,
+        "pause_hotkey": "ctrl+alt+p",
+        "recordings_dir": "recordings",
+    })
 
     _VALID_BACKENDS = ("mock", "claude", "openai")
     _VALID_SCOPES = ("browser", "os")
@@ -69,10 +77,18 @@ class Config:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":
-        """Build a :class:`Config` from a plain dict (ignores unknown keys)."""
+        """Build a :class:`Config` from a plain dict (ignores unknown keys).
+
+        The ``clirec`` sub-dict is shallow-merged over defaults so that callers
+        only need to specify the keys they want to override.
+        """
         known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
-        filtered = {k: v for k, v in data.items() if k in known}
-        return cls(**filtered)
+        clirec_override = data.get("clirec") if isinstance(data.get("clirec"), dict) else None
+        filtered = {k: v for k, v in data.items() if k in known and k != "clirec"}
+        cfg = cls(**filtered)
+        if clirec_override is not None:
+            cfg.clirec = {**cfg.clirec, **clirec_override}
+        return cfg
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Config":
@@ -83,3 +99,21 @@ class Config:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
         return asdict(self)
+
+
+def clirec_recorder_config(cfg: "Config"):
+    """Map ``cfg.clirec`` to a :class:`~open_compute.clirec.recorder.RecorderConfig`.
+
+    The import is deferred to avoid circular imports between ``config`` and the
+    ``clirec`` sub-package.
+    """
+    from .clirec.recorder import RecorderConfig  # lazy import — avoids cycles
+
+    c = cfg.clirec
+    return RecorderConfig(
+        recordings_dir=c.get("recordings_dir", "recordings"),
+        capture_screenshots=c.get("capture_screenshots", True),
+        mask_password_fields=c.get("mask_password_fields", True),
+        ringbuffer_enabled=c.get("ringbuffer_enabled", False),
+        ringbuffer_minutes=c.get("ringbuffer_minutes", 15),
+    )
