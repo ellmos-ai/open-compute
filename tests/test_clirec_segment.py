@@ -46,3 +46,21 @@ def test_named_key_becomes_key_step():
     evts = [RawEvent("key_down", 0.0, key="enter")]
     steps = events_to_steps(evts)
     assert steps[0].action == "key" and steps[0].keys == "enter"
+
+
+def test_wheel_becomes_scroll():
+    evts = [RawEvent("wheel", 0.0, x=10, y=20, delta=-3)]
+    steps = events_to_steps(evts)
+    assert len(steps) == 1
+    assert steps[0].action == "scroll"
+    assert steps[0].scroll_dir == "down"
+    assert steps[0].scroll_amount == 3
+    assert steps[0].x == 10 and steps[0].y == 20
+
+
+def test_mask_disabled_keeps_plaintext():
+    evts = [RawEvent("char", 0.0, char="s"), RawEvent("char", 0.1, char="x")]
+    steps = events_to_steps(evts, probe=FakeProbe(pw=True), mask_passwords=False)
+    assert len(steps) == 1
+    assert steps[0].action == "type"
+    assert steps[0].text == "sx"
