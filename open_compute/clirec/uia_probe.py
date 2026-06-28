@@ -33,8 +33,7 @@ class _UiaAdapter:
         if ctrl is None:
             return False
         # Edit control with password style → IsPassword via legacy/value pattern
-        return bool(getattr(ctrl, "IsPassword", False)) or \
-            ctrl.ControlTypeName == "EditControl" and bool(getattr(ctrl, "IsPassword", False))
+        return bool(getattr(ctrl, "IsPassword", False))
 
 
 class DefaultProbe:
