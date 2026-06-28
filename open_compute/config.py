@@ -54,7 +54,7 @@ class Config:
         "ringbuffer_minutes": 15,
         "capture_screenshots": True,
         "mask_password_fields": True,
-        "pause_hotkey": "ctrl+alt+p",
+        "pause_hotkey": "ctrl+alt+p",  # reserved: global pause hotkey not yet wired (see ROADMAP.md)
         "recordings_dir": "recordings",
     })
 

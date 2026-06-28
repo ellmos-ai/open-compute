@@ -1,4 +1,3 @@
-import pytest
 from open_compute.actions import Action, ActionType
 from open_compute.perception import Observation
 from open_compute.clirec.format import Recording, Step

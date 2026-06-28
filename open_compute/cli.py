@@ -1398,6 +1398,8 @@ def cmd_rec(args: list[str]) -> None:
     if sub == "validate":
         if not rest:
             _die("usage: oc rec validate <file.clirec>")
+        if not os.path.exists(rest[0]):
+            _die(f"file not found: {rest[0]}")
         from .clirec.format import validate
         with open(rest[0], "r", encoding="utf-8") as fh:
             problems = validate(fh.read())
@@ -1423,6 +1425,8 @@ def cmd_rec(args: list[str]) -> None:
         if not rest:
             _die("usage: oc rec replay <file.clirec> [--param k=v ...]")
         path = rest[0]
+        if not os.path.exists(path):
+            _die(f"file not found: {path}")
         params: dict[str, str] = {}
         i = 1
         while i < len(rest):

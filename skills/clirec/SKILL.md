@@ -17,7 +17,9 @@ ein Ablauf schwer oder oft fehlschlug.
 
 ## Aufnehmen
 1. `oc rec start <name>` — Tätigkeit ausführen — `Strg+C` beendet und speichert.
-2. Ringpuffer (lokal, falls aktiviert): Tätigkeit machen, dann nachträglich schneiden.
+2. Ringpuffer (immer-an, retroaktiver Schnitt): Engine vorhanden, aber der
+   CLI-Trigger/Hintergrund-Daemon ist noch nicht gebaut (siehe ROADMAP.md). Aktuell
+   bitte die manuelle Aufnahme nutzen.
 3. Ergebnis: `<recordings_dir>/<name>.clirec` (+ `<name>.clirec.frames/` als Beleg).
 
 ## Referenzieren (Verweis-Konvention)
@@ -39,6 +41,8 @@ und die passende `.clirec` referenzieren, **wenn sie funktioniert**. Kein automa
 Export nötig — die Verknüpfung lebt im Skript-Text.
 
 ## Datenschutz
-Systemweiter Mitschnitt ist sensibel. Passwortfelder werden maskiert (`***`); der
-Pause-Hotkey (Default `Strg+Alt+P`) stoppt den Mitschnitt sofort. In der öffentlichen
-Version ist der Ringpuffer standardmäßig **aus**.
+Systemweiter Mitschnitt ist sensibel. Passwortfelder werden im Mitschnitt maskiert
+(`***`). Ein globaler Pause-Hotkey ist GEPLANT (Config `pause_hotkey`, noch nicht
+verdrahtet — siehe ROADMAP.md); aktuell kann der Mitschnitt nur programmatisch
+(`set_paused`) bzw. durch Beenden von `oc rec start` (Strg+C) gestoppt werden. In der
+öffentlichen Version ist der Ringpuffer standardmäßig **aus**.
