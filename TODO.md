@@ -4,7 +4,7 @@
 
 | Category | Status | Notes |
 |---|---|---|
-| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 358 pass (v0.6.0); GitHub Actions now runs the mock-only suite on push/PR. |
+| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 360 pass, 1 skipped (after the 2026-06-27 OpenAI-backend verification + 3 new tests); GitHub Actions now runs the mock-only suite on push/PR. |
 | Import check | PASS | `python -c "import open_compute; import open_compute.feed_manager; import open_compute.learning"` — OK, zero extras. |
 | Documentation | READY | README (EN + DE), llms.txt, CHANGELOG, SECURITY, ARCHITECTURE present. |
 | Integration | DEVELOPMENT | Fits `.MODULES` as a standalone module. Contains marked stubs/interfaces (see below). |
@@ -27,9 +27,14 @@
 
 ## Interface / stub (honest status)
 
-- [ ] **OpenAI backend** -- implemented but model name (`computer-use-preview`)
-  and exact Responses-API request shape are `[UNSICHER]`; validate against live
-  OpenAI docs and add an injected-client test like the Claude one.
+- [x] **OpenAI backend** -- verified against the live OpenAI computer-use docs
+  (2026-06-27): default model updated `computer-use-preview` → `gpt-5.5` (also
+  `gpt-5.4`), tool type updated `computer_use_preview` → `computer` (now
+  constructor-configurable; legacy shape with display dims kept for
+  `tool_type="computer_use_preview"`), screenshot output now sends
+  `detail: "original"`. Added injected-client tests (request shape + click
+  parsing + legacy path). **Live end-to-end smoke with a real key remains
+  deferred to the user** (see RELEASE_GATE.md / STATUS).
 - [ ] **Browser driver** -- interface only. Implement a Playwright/CDP driver.
 - [ ] **Set-of-Marks perception** -- stub. Wire in OmniParser V2 (note: icon_detect
   weight is AGPL; use as external service or choose pywinauto for accessibility).
@@ -199,3 +204,34 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
 - [ ] Banner / logo asset for README.
 - [ ] OpenAI backend: add injected-client test + verify Responses-API shape.
 - [ ] macOS / Linux executor: port `LocalExecutor` to Quartz / X11 / xdotool.
+
+## clirec — Aufnahmekanal (geplante Ausbaustufen)
+
+> Kern gebaut & getestet (2026-06-28, Branch master): `.clirec`-Format, manuelle Aufnahme
+> (`oc rec start <name>` → Strg+C → speichern), adaptiver Replay (`oc rec replay`),
+> Segmentierung, Passwort-Maskierung (Live-Pfad via UIA), WinAPI+pynput-Backends, Config,
+> `oc rec validate/list`, Teilskill `skills/clirec/SKILL.md`. Volle Suite grün (396/1).
+> Details/Begründung: `ROADMAP.md` + Spec `_reports/CLIREC_RECORDER_DESIGN_2026-06-28.md`.
+
+**Als nächstes (macht die immer-an-Konfiguration nutzbar):**
+- [ ] **Ringpuffer-Daemon** — `oc rec daemon`: dauerhafter Hintergrundprozess, der den
+  In-Memory-Ringpuffer hält (pump-Loop); `oc rec buffer --last Nm <name>` triggert den
+  retroaktiven Schnitt via Signal/Datei-IPC. Engine (`Recorder.cut_last`/`_prune`) ist bereits
+  gebaut & getestet — es fehlt nur der laufende Prozess + CLI-Trigger (aktuell Stub in `_rec_live`).
+- [ ] **Globaler Pause-Hotkey** — WinAPI `RegisterHotKey` (oder LL-Hook) toggelt `set_paused`;
+  Config-Key `clirec.pause_hotkey` verdrahten. Schließt das Datenschutz-Versprechen (Strg+Alt+P).
+- [ ] **Frame-Capture im Live-Recorder** — `frame_grabber` in `_rec_live` injizieren (LocalExecutor
+  `screenshot()`/mss), `Step.frame` verlinken; `.clirec`-Format unterstützt es bereits.
+
+**Robustheit / Minor (aus den Reviews):**
+- [ ] Test: dangling `mouse_down` ohne `mouse_up` + Step-Index-Sequenz absichern (`segment`).
+- [ ] `oc rec replay --param` ohne Wert: warnen statt still überspringen (`cli.py`).
+- [ ] WinAPI: `SetWindowsHookExW`-NULL-Rückgabe prüfen → bei Hook-Fehler warnen (`winapi.py`).
+- [ ] pynput-Backend `stop()`: Listener-Threads joinen (`pynput_backend.py`).
+- [ ] Live-Smoke: echte Aufnahme→Replay auf Windows-GUI manuell durchspielen (empirisch).
+- [ ] macOS/Linux: pynput-Backend live testen (derzeit nur Smoke + Top-Level-Importsicherheit).
+
+**Bewusst entkoppelt / nur bei Bedarf (Spec §2/§4):**
+- [ ] Self-Verifikations-Loop ist aktuell SKILL.md-Text (kein Mechanismus) — bewusst so.
+- [ ] KEINE `learning.py`-Anbindung (getrennte Systeme); falls je gewünscht, nur als
+  externer, entkoppelter Helfer — nicht in den clirec-Kern verdrahten.
