@@ -102,3 +102,94 @@ def test_claude_backend_with_injected_client(monkeypatch):
     assert action.x == pytest.approx(0.5)
     assert action.y == pytest.approx(0.5)
     assert result.done is False  # stop_reason == tool_use
+
+
+def test_openai_factory_without_sdk_raises_importerror():
+    # The 'openai' SDK is an optional extra and not installed in CI.
+    try:
+        import openai  # noqa: F401
+
+        has_sdk = True
+    except ImportError:
+        has_sdk = False
+
+    if has_sdk:
+        pytest.skip("openai SDK is installed; ImportError path not applicable")
+    with pytest.raises(ImportError):
+        get_backend("openai", 1280, 800)
+
+
+def test_openai_backend_with_injected_client():
+    """A fake client lets us test the OpenAI backend without the SDK.
+
+    Asserts the verified-current request shape (model gpt-5.5, bare "computer"
+    tool type) and that a computer_call click parses to a canonical LEFT_CLICK.
+    """
+    from open_compute.backends.openai import OpenAIComputerBackend
+
+    class _Item:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    class _Response:
+        def __init__(self):
+            self.id = "resp_1"
+            self.output = [
+                _Item(type="reasoning"),
+                _Item(
+                    type="computer_call",
+                    call_id="call_1",
+                    action={"type": "click", "x": 640, "y": 400, "button": "left"},
+                ),
+            ]
+
+    captured: dict = {}
+
+    class _Responses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response()
+
+    class _FakeClient:
+        responses = _Responses()
+
+    backend = OpenAIComputerBackend(1280, 800, client=_FakeClient())
+    result = backend.start("click center", _obs())
+
+    assert captured["model"] == "gpt-5.5"
+    assert captured["tools"][0]["type"] == "computer"
+    assert len(result.actions) == 1
+    assert result.actions[0].type is ActionType.LEFT_CLICK
+    assert result.actions[0].x == pytest.approx(0.5)
+    assert result.actions[0].y == pytest.approx(0.5)
+    assert result.done is False  # a computer_call means not done
+
+
+def test_openai_backend_legacy_tool_type_advertises_dimensions():
+    """tool_type='computer_use_preview' emits the legacy shape with display dims."""
+    from open_compute.backends.openai import OpenAIComputerBackend
+
+    captured: dict = {}
+
+    class _Resp:
+        id = "r"
+        output: list = []
+
+    class _Responses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Resp()
+
+    class _FakeClient:
+        responses = _Responses()
+
+    backend = OpenAIComputerBackend(
+        1280, 800, tool_type="computer_use_preview", client=_FakeClient()
+    )
+    result = backend.start("noop", _obs())
+
+    tool = captured["tools"][0]
+    assert tool["type"] == "computer_use_preview"
+    assert tool["display_width"] == 1280
+    assert tool["display_height"] == 800
+    assert result.done is True  # no actions in the fake response

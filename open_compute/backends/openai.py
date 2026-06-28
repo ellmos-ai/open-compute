@@ -5,13 +5,14 @@ pixel coordinates; the host executes them and returns a screenshot, mirroring
 the Claude loop. This backend translates OpenAI actions into the package's
 canonical :class:`~open_compute.actions.Action` objects.
 
-[UNSICHER] Model name: the OpenAI computer-use surface and its model identifier
-have shifted across previews (``computer-use-preview`` vs. newer ``gpt-5.x``
-variants). The default below is ``computer-use-preview`` and is treated as
-**configurable / not fully verified** -- override via the constructor. The exact
-Responses-API request shape is also version-sensitive; this backend keeps the
-SDK interaction minimal and is best validated against the live OpenAI docs
-before production use.
+Model & tool type (verified 2026-06-27 against the OpenAI computer-use docs):
+the current Responses-API surface uses model ``gpt-5.5`` (or ``gpt-5.4``) with a
+bare ``{"type": "computer"}`` tool definition; the older ``computer-use-preview``
+model and ``computer_use_preview`` tool type (which advertised display
+dimensions) are legacy. Defaults below target the current surface; both ``model``
+and ``tool_type`` are constructor-overridable, and the legacy shape is still
+emitted when ``tool_type="computer_use_preview"``. Live end-to-end validation
+against a real key is deferred (see RELEASE_GATE.md).
 
 The ``openai`` SDK is imported **lazily** inside :meth:`__init__`. Install it via
 the optional extra: ``pip install open-compute[openai]``.
@@ -25,8 +26,13 @@ from ..actions import Action, ActionType
 from ..perception import Observation
 from .base import BackendResult
 
-# [UNSICHER] -- configurable; treat as not-fully-verified (see module docstring).
-DEFAULT_MODEL = "computer-use-preview"
+# Verified against the OpenAI docs on 2026-06-27 (developers.openai.com computer-use
+# guide): the current Responses-API computer-use models are gpt-5.5 / gpt-5.4 and the
+# tool type is "computer" (the older "computer-use-preview" model + "computer_use_preview"
+# tool type are legacy). Both stay configurable via the constructor.
+DEFAULT_MODEL = "gpt-5.5"
+DEFAULT_TOOL_TYPE = "computer"
+LEGACY_TOOL_TYPE = "computer_use_preview"
 
 
 class OpenAIComputerBackend:
@@ -50,12 +56,14 @@ class OpenAIComputerBackend:
         height: int,
         *,
         model: str = DEFAULT_MODEL,
+        tool_type: str = DEFAULT_TOOL_TYPE,
         api_key: str | None = None,
         client: Any | None = None,
     ) -> None:
         self.width = width
         self.height = height
         self.model = model
+        self.tool_type = tool_type
         self._goal: str | None = None
         self._last_response_id: str | None = None
         self._last_call_id: str | None = None
@@ -78,15 +86,23 @@ class OpenAIComputerBackend:
 
     @property
     def tools(self) -> list[dict[str, Any]]:
-        """The computer-use tool definition."""
-        return [
-            {
-                "type": "computer_use_preview",
-                "display_width": self.width,
-                "display_height": self.height,
-                "environment": "browser",
-            }
-        ]
+        """The computer-use tool definition.
+
+        Current surface: a bare ``{"type": "computer"}`` -- the model returns
+        pixel coordinates that this backend normalizes via ``width``/``height``.
+        The legacy ``computer_use_preview`` surface additionally advertised the
+        display dimensions, so that shape is emitted for backward compatibility.
+        """
+        if self.tool_type == LEGACY_TOOL_TYPE:
+            return [
+                {
+                    "type": LEGACY_TOOL_TYPE,
+                    "display_width": self.width,
+                    "display_height": self.height,
+                    "environment": "browser",
+                }
+            ]
+        return [{"type": self.tool_type}]
 
     def start(self, goal: str, observation: Observation) -> BackendResult:
         self._goal = goal
@@ -118,6 +134,7 @@ class OpenAIComputerBackend:
                     "output": {
                         "type": "computer_screenshot",
                         "image_url": f"data:image/png;base64,{screenshot_b64}",
+                        "detail": "original",
                     },
                 }
             ],
