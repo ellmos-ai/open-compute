@@ -46,4 +46,6 @@ def test_apply_params_substitutes_placeholder():
     rec = fmt.apply_params(_sample(), {"post_text": "Hallo Welt"})
     assert rec.steps[1].text == "Hallo Welt"
     # Original bleibt unangetastet (kein In-Place-Mutieren):
-    assert _sample().steps[1].text == "${post_text}"
+    original = _sample()
+    fmt.apply_params(original, {"post_text": "Hallo Welt"})
+    assert original.steps[1].text == "${post_text}"

@@ -14,7 +14,6 @@ import copy
 import os
 import re
 from dataclasses import dataclass, field, replace
-from typing import Any
 
 VERSION = 1
 STEPS_MARKER = "--- steps ---"
@@ -239,7 +238,7 @@ def apply_params(rec: Recording, values: dict[str, str]) -> Recording:
     new_steps = []
     for s in rec.steps:
         ns = replace(s)
-        if ns.text:
+        if ns.text is not None:
             for k, v in values.items():
                 ns.text = ns.text.replace("${" + k + "}", v)
         new_steps.append(ns)
