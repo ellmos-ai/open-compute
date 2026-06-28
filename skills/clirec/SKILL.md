@@ -31,7 +31,7 @@ unter `recordings/` im Modul oder direkt **neben** der referenzierenden `SKILL.m
 
 ## Selbst-Verifikation (Pflicht beim Ausführen)
 Nach einem Ablauf/Replay **immer selbst prüfen**: „Habe ich das Ziel erreicht?" Bei
-Zweifel den Nutzer zuschauen lassen und Korrektionen aufnehmen lassen — nicht raten.
+Zweifel den Nutzer zuschauen lassen und Korrekturen aufnehmen lassen — nicht raten.
 
 ## Kontext-Referenzierung statt Auto-Export
 Wird ein Skill ausgeführt, **immer überlegen, in welchem Kontext er aufgerufen wurde**,
