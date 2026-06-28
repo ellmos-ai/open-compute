@@ -57,3 +57,14 @@ def test_set_paused_delegates():
     rec.pump()
     out = rec.stop()
     assert out.steps == []
+
+
+def test_stop_resets_buffer(tmp_path):
+    be = MockCaptureBackend([RawEvent("char", 0.0, char="a")])
+    rec = Recorder(be, config=RecorderConfig(recordings_dir=str(tmp_path)))
+    rec.start("r")
+    rec.pump()
+    rec.stop()
+    # Second stop without start/pump should yield empty steps
+    out = rec.stop()
+    assert out.steps == []

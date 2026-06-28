@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 
 from .capture.base import RawEvent
-from .format import Recording, Step, write
+from .format import Recording, write
 from .segment import events_to_steps
 
 
@@ -46,13 +46,11 @@ class Recorder:
         self._title = ""
         self._buf: list[RawEvent] = []
         self._frames: list[bytes] = []
-        self._t0 = 0.0
 
     def start(self, title: str) -> None:
         self._title = title
         self._buf = []
         self._frames = []
-        self._t0 = self._clock()
         self.backend.start()
 
     def set_paused(self, paused: bool) -> None:
@@ -89,6 +87,8 @@ class Recorder:
     def stop(self) -> Recording:
         rec = self._build(self._buf)
         self.backend.stop()
+        self._buf = []
+        self._frames = []
         return rec
 
     def cut_last(self, minutes: float, title: str) -> Recording:
