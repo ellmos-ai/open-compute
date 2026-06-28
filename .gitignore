@@ -40,3 +40,6 @@ RELEASE_GATE.md
 
 # Local learning / push state (never commit; gitignored by design)
 _state/
+
+# Archived throwaway/foreign scratch (kept, not published)
+_archive/
