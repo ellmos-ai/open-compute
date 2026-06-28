@@ -1398,15 +1398,19 @@ def cmd_rec(args: list[str]) -> None:
     if sub == "validate":
         if not rest:
             _die("usage: oc rec validate <file.clirec>")
+        from .clirec.format import validate
         with open(rest[0], "r", encoding="utf-8") as fh:
-            problems = __import__("open_compute.clirec.format", fromlist=["validate"]).validate(fh.read())
+            problems = validate(fh.read())
         print("OK" if not problems else "\n".join(problems))
         return
 
     if sub == "list":
         d = "recordings"
         if "--dir" in rest:
-            d = rest[rest.index("--dir") + 1]
+            idx = rest.index("--dir")
+            if idx + 1 >= len(rest):
+                _die("usage: oc rec list [--dir DIR]")
+            d = rest[idx + 1]
         if not os.path.isdir(d):
             print(f"(no recordings dir: {d})")
             return
