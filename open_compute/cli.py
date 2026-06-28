@@ -1367,11 +1367,117 @@ def cmd_watch_dir(args: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# clirec sub-commands  (Task 8)
+# ---------------------------------------------------------------------------
+
+def _run_replay(path: str, params: dict, executor):
+    """Testable seam: load a .clirec and replay it against *executor*.
+
+    Args:
+        path:     Path to the ``.clirec`` file to replay.
+        params:   Template parameter dict (e.g. ``{"msg": "hello"}``).
+        executor: Any object satisfying the Executor protocol
+                  (``execute(action) -> Observation``).  Injected by tests
+                  to avoid requiring a real Windows driver.
+
+    Returns:
+        ``ReplayReport`` from :func:`open_compute.clirec.replay.replay`.
+    """
+    from .clirec.format import read
+    from .clirec.replay import replay
+    rec = read(path)
+    return replay(rec, executor, params=params or None)
+
+
+def cmd_rec(args: list[str]) -> None:
+    """oc rec validate|list|replay|start|stop|buffer ..."""
+    if not args:
+        _die("usage: oc rec validate|list|replay|start|stop|buffer ...")
+    sub, rest = args[0], args[1:]
+
+    if sub == "validate":
+        if not rest:
+            _die("usage: oc rec validate <file.clirec>")
+        with open(rest[0], "r", encoding="utf-8") as fh:
+            problems = __import__("open_compute.clirec.format", fromlist=["validate"]).validate(fh.read())
+        print("OK" if not problems else "\n".join(problems))
+        return
+
+    if sub == "list":
+        d = "recordings"
+        if "--dir" in rest:
+            d = rest[rest.index("--dir") + 1]
+        if not os.path.isdir(d):
+            print(f"(no recordings dir: {d})")
+            return
+        for fn in sorted(os.listdir(d)):
+            if fn.endswith(".clirec"):
+                print(fn)
+        return
+
+    if sub == "replay":
+        if not rest:
+            _die("usage: oc rec replay <file.clirec> [--param k=v ...]")
+        path = rest[0]
+        params: dict[str, str] = {}
+        i = 1
+        while i < len(rest):
+            if rest[i] == "--param" and i + 1 < len(rest):
+                k, _, v = rest[i + 1].partition("=")
+                params[k] = v
+                i += 2
+            else:
+                i += 1
+        from .drivers.local import LocalExecutor  # real Windows executor
+        ex = LocalExecutor()
+        rep = _run_replay(path, params, ex)
+        print(f"replay: total={rep.total} ok={rep.ok} fallbacks={rep.fallbacks} "
+              f"failures={len(rep.failures)}")
+        for f in rep.failures:
+            print("  FAIL", f)
+        return
+
+    if sub in ("start", "stop", "buffer"):
+        _rec_live(sub, rest)
+        return
+
+    _die(f"unknown rec subcommand {sub!r}")
+
+
+def _rec_live(sub: str, rest: list[str]) -> None:
+    """Thin live-recording loop (not unit-tested). Drives Recorder.pump()."""
+    import time
+    from .config import Config, clirec_recorder_config
+    from .clirec.capture.base import get_backend
+    from .clirec.recorder import Recorder
+    from .clirec.uia_probe import DefaultProbe
+    cfg = Config()
+    rc = clirec_recorder_config(cfg)
+    backend = get_backend()
+    rec = Recorder(backend, config=rc, probe=DefaultProbe())
+    if sub == "start":
+        name = rest[0] if rest else "recording"
+        print(f"recording '{name}' — press Ctrl+C to stop")
+        rec.start(name)
+        try:
+            while True:
+                rec.pump()
+                time.sleep(0.05)
+        except KeyboardInterrupt:
+            out = rec.stop()
+            path = rec.save(out, name)
+            print(f"\nsaved: {path} ({len(out.steps)} steps)")
+    else:
+        print("note: 'stop'/'buffer' require a running daemon session; "
+              "use 'oc rec start <name>' (Ctrl+C to stop) for the MVP.")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Dispatch to sub-commands: capture | do | run | tree | click-name | invoke | push | watch-dir."""
+    """Dispatch to sub-commands: capture | do | run | tree | click-name | invoke | push | watch-dir | rec."""
     if len(sys.argv) < 2:
         print(textwrap.dedent("""\
             Usage:
@@ -1386,6 +1492,9 @@ def main() -> None:
               oc invoke "<query>" [--window SUBSTR] [--mode MODE] [--yes]
               oc push --status | --once [--window SUBSTR]
               oc watch-dir <path> [<path>...] [--for SECS] [--once]
+              oc rec validate <file.clirec> | list [--dir DIR]
+              oc rec replay <file.clirec> [--param k=v ...]
+              oc rec start <name>   (Ctrl+C to stop & save)
             """))
         sys.exit(0)
 
@@ -1408,8 +1517,10 @@ def main() -> None:
         cmd_push(rest)
     elif cmd == "watch-dir":
         cmd_watch_dir(rest)
+    elif cmd == "rec":
+        cmd_rec(rest)
     else:
-        _die(f"unknown command {cmd!r}; expected capture | do | run | tree | click-name | invoke | push | watch-dir")
+        _die(f"unknown command {cmd!r}; expected capture | do | run | tree | click-name | invoke | push | watch-dir | rec")
 
 
 if __name__ == "__main__":
