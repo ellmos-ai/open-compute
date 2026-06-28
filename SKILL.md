@@ -287,3 +287,9 @@ pip install open-compute[local,claude]
 # Alles
 pip install open-compute[all]
 ```
+
+---
+
+## Verwandte Teilskills
+
+> **Teilskill `clirec`** (`skills/clirec/SKILL.md`): Aufnahmekanal — Maus/Tastatur-Demos als `.clirec` aufnehmen und adaptiv abspielen, um schwere Abläufe vorzumachen.
