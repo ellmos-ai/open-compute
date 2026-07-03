@@ -102,18 +102,10 @@ class Config:
 
 
 def clirec_recorder_config(cfg: "Config"):
-    """Map ``cfg.clirec`` to a :class:`~open_compute.clirec.recorder.RecorderConfig`.
+    """Map ``cfg.clirec`` to a ``clirec.recorder.RecorderConfig``.
 
-    The import is deferred to avoid circular imports between ``config`` and the
-    ``clirec`` sub-package.
+    The import is deferred because clirec is an optional external package.
     """
-    from .clirec.recorder import RecorderConfig  # lazy import — avoids cycles
+    from clirec.config import recorder_config_from_dict
 
-    c = cfg.clirec
-    return RecorderConfig(
-        recordings_dir=c.get("recordings_dir", "recordings"),
-        capture_screenshots=c.get("capture_screenshots", True),
-        mask_password_fields=c.get("mask_password_fields", True),
-        ringbuffer_enabled=c.get("ringbuffer_enabled", False),
-        ringbuffer_minutes=c.get("ringbuffer_minutes", 15),
-    )
+    return recorder_config_from_dict(cfg.clirec)

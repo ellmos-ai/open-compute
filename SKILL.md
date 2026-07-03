@@ -292,4 +292,4 @@ pip install open-compute[all]
 
 ## Verwandte Teilskills
 
-> **Teilskill `clirec`** (`skills/clirec/SKILL.md`): Aufnahmekanal — Maus/Tastatur-Demos als `.clirec` aufnehmen und adaptiv abspielen, um schwere Abläufe vorzumachen.
+> **Externer Skill `clirec`** (`https://github.com/ellmos-ai/clirec`): Aufnahmekanal — Maus/Tastatur-Demos als `.clirec` aufnehmen und adaptiv abspielen. In open-compute bleibt `oc rec` als lazy geladener Kompatibilitäts-Shim.

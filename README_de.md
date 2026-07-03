@@ -99,8 +99,16 @@ pip install open-compute[local]        # + mss (echter Windows-Screenshot + Inpu
 pip install open-compute[wgc]          # + WGC-Fallback für DirectX-Flächen (zieht numpy/OpenCV)
 pip install open-compute[compose]      # + Pillow (Vorher|Nachher-Composite + annotierter Shot)
 pip install open-compute[watch]        # + watchdog (native FS-Events für Directory-Watch-Feed)
+pip install open-compute[clirec]       # + externes clirec-Paket für oc-rec-Workflows
+pip install open-compute[record]       # + clirec[record]-Capture-Backend-Kompatibilität
 pip install open-compute[local,wgc,claude] # lokaler Executor + WGC-Fallback + Claude-Backend
-pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog
+pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec
+```
+
+Bis `clirec` als Paket veröffentlicht ist, für `oc rec` direkt installieren:
+
+```bash
+pip install git+https://github.com/ellmos-ai/clirec.git
 ```
 
 Python 3.10+.
@@ -300,6 +308,9 @@ konfigurierbar
   (Set-of-Marks, OCR, Vision-Overlays, DOM) sind **noch nicht implementiert**.
 - `BachInjectorAdapter` ist ein dokumentierter Stub; `LocalFileInjector` ist der funktionierende Standard-Sink.
 - Always-on Push-Daemon (permanente Hintergrundschleife) ist **noch nicht implementiert**.
+- `oc rec` ist ein **lazy geladener Kompatibilitäts-Shim** für das externe
+  Paket [`ellmos-ai/clirec`](https://github.com/ellmos-ai/clirec); `clirec`
+  wird nur für Aufnahme-/Replay-Workflows benötigt.
 - Der UIA-Feed ist **Windows-only**; Linux (AT-SPI) und macOS (AXUIElement)
   Accessibility-Feeds sind **offen / geplant**.
 - Modellname und exakte Responses-API-Request-Form des OpenAI-Backends sind

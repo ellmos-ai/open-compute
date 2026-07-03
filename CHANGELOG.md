@@ -23,6 +23,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - New optional extra `open-compute[wgc]` installs `windows-capture` and Pillow
   for the WGC fallback; `[all]` includes it. `windows-capture` pulls numpy and
   OpenCV transitively and is guarded by a Windows platform marker.
+- Optional extra `open-compute[clirec]` now points to the external `clirec`
+  package; `oc rec` lazy-loads it only when recording/replay commands are used.
+
+### Changed
+
+- Extracted the previous `open_compute/clirec/` implementation into the new
+  standalone repository `ellmos-ai/clirec`. `open_compute.clirec.*` remains as
+  a compatibility wrapper namespace.
 
 ### Tests
 

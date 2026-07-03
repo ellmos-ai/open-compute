@@ -205,33 +205,8 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
 - [ ] OpenAI backend: add injected-client test + verify Responses-API shape.
 - [ ] macOS / Linux executor: port `LocalExecutor` to Quartz / X11 / xdotool.
 
-## clirec — Aufnahmekanal (geplante Ausbaustufen)
+## clirec — externer Aufnahmekanal
 
-> Kern gebaut & getestet (2026-06-28, Branch master): `.clirec`-Format, manuelle Aufnahme
-> (`oc rec start <name>` → Strg+C → speichern), adaptiver Replay (`oc rec replay`),
-> Segmentierung, Passwort-Maskierung (Live-Pfad via UIA), WinAPI+pynput-Backends, Config,
-> `oc rec validate/list`, Teilskill `skills/clirec/SKILL.md`. Volle Suite grün (396/1).
-> Details/Begründung: `ROADMAP.md` + Spec `_reports/CLIREC_RECORDER_DESIGN_2026-06-28.md`.
-
-**Als nächstes (macht die immer-an-Konfiguration nutzbar):**
-- [ ] **Ringpuffer-Daemon** — `oc rec daemon`: dauerhafter Hintergrundprozess, der den
-  In-Memory-Ringpuffer hält (pump-Loop); `oc rec buffer --last Nm <name>` triggert den
-  retroaktiven Schnitt via Signal/Datei-IPC. Engine (`Recorder.cut_last`/`_prune`) ist bereits
-  gebaut & getestet — es fehlt nur der laufende Prozess + CLI-Trigger (aktuell Stub in `_rec_live`).
-- [ ] **Globaler Pause-Hotkey** — WinAPI `RegisterHotKey` (oder LL-Hook) toggelt `set_paused`;
-  Config-Key `clirec.pause_hotkey` verdrahten. Schließt das Datenschutz-Versprechen (Strg+Alt+P).
-- [ ] **Frame-Capture im Live-Recorder** — `frame_grabber` in `_rec_live` injizieren (LocalExecutor
-  `screenshot()`/mss), `Step.frame` verlinken; `.clirec`-Format unterstützt es bereits.
-
-**Robustheit / Minor (aus den Reviews):**
-- [ ] Test: dangling `mouse_down` ohne `mouse_up` + Step-Index-Sequenz absichern (`segment`).
-- [ ] `oc rec replay --param` ohne Wert: warnen statt still überspringen (`cli.py`).
-- [ ] WinAPI: `SetWindowsHookExW`-NULL-Rückgabe prüfen → bei Hook-Fehler warnen (`winapi.py`).
-- [ ] pynput-Backend `stop()`: Listener-Threads joinen (`pynput_backend.py`).
-- [ ] Live-Smoke: echte Aufnahme→Replay auf Windows-GUI manuell durchspielen (empirisch).
-- [ ] macOS/Linux: pynput-Backend live testen (derzeit nur Smoke + Top-Level-Importsicherheit).
-
-**Bewusst entkoppelt / nur bei Bedarf (Spec §2/§4):**
-- [ ] Self-Verifikations-Loop ist aktuell SKILL.md-Text (kein Mechanismus) — bewusst so.
-- [ ] KEINE `learning.py`-Anbindung (getrennte Systeme); falls je gewünscht, nur als
-  externer, entkoppelter Helfer — nicht in den clirec-Kern verdrahten.
+`clirec` ist jetzt ein eigenes Repo/Paket: https://github.com/ellmos-ai/clirec.
+`open-compute` behält nur den lazy geladenen `oc rec`-Shim und alte Import-Wrapper.
+Neue Recorder-/Ringpuffer-/Pause-Hotkey-/Replay-Arbeit gehört in das `clirec`-Repo.

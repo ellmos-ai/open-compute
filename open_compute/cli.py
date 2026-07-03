@@ -1367,117 +1367,42 @@ def cmd_watch_dir(args: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# clirec sub-commands  (Task 8)
+# clirec sub-commands
 # ---------------------------------------------------------------------------
 
+def _missing_clirec() -> None:
+    _die(
+        "oc rec now uses the optional external `clirec` package. "
+        "Install it with `pip install clirec`, "
+        "`pip install git+https://github.com/ellmos-ai/clirec.git`, "
+        "or `pip install open-compute[clirec]` after the package release."
+    )
+
+
+def _clirec_executor_factory():
+    from .drivers.local import LocalExecutor
+    from clirec.integrations.open_compute import OpenComputeExecutorAdapter
+
+    return OpenComputeExecutorAdapter(LocalExecutor())
+
+
 def _run_replay(path: str, params: dict, executor):
-    """Testable seam: load a .clirec and replay it against *executor*.
-
-    Args:
-        path:     Path to the ``.clirec`` file to replay.
-        params:   Template parameter dict (e.g. ``{"msg": "hello"}``).
-        executor: Any object satisfying the Executor protocol
-                  (``execute(action) -> Observation``).  Injected by tests
-                  to avoid requiring a real Windows driver.
-
-    Returns:
-        ``ReplayReport`` from :func:`open_compute.clirec.replay.replay`.
-    """
-    from .clirec.format import read
-    from .clirec.replay import replay
-    rec = read(path)
-    return replay(rec, executor, params=params or None)
+    """Testable seam: load a .clirec and replay it against an open-compute executor."""
+    try:
+        from clirec.cli import _run_replay as clirec_run_replay
+        from clirec.integrations.open_compute import OpenComputeExecutorAdapter
+    except ModuleNotFoundError:
+        _missing_clirec()
+    return clirec_run_replay(path, params, OpenComputeExecutorAdapter(executor))
 
 
 def cmd_rec(args: list[str]) -> None:
-    """oc rec validate|list|replay|start|stop|buffer ..."""
-    if not args:
-        _die("usage: oc rec validate|list|replay|start|stop|buffer ...")
-    sub, rest = args[0], args[1:]
-
-    if sub == "validate":
-        if not rest:
-            _die("usage: oc rec validate <file.clirec>")
-        if not os.path.exists(rest[0]):
-            _die(f"file not found: {rest[0]}")
-        from .clirec.format import validate
-        with open(rest[0], "r", encoding="utf-8") as fh:
-            problems = validate(fh.read())
-        print("OK" if not problems else "\n".join(problems))
-        return
-
-    if sub == "list":
-        d = "recordings"
-        if "--dir" in rest:
-            idx = rest.index("--dir")
-            if idx + 1 >= len(rest):
-                _die("usage: oc rec list [--dir DIR]")
-            d = rest[idx + 1]
-        if not os.path.isdir(d):
-            print(f"(no recordings dir: {d})")
-            return
-        for fn in sorted(os.listdir(d)):
-            if fn.endswith(".clirec"):
-                print(fn)
-        return
-
-    if sub == "replay":
-        if not rest:
-            _die("usage: oc rec replay <file.clirec> [--param k=v ...]")
-        path = rest[0]
-        if not os.path.exists(path):
-            _die(f"file not found: {path}")
-        params: dict[str, str] = {}
-        i = 1
-        while i < len(rest):
-            if rest[i] == "--param" and i + 1 < len(rest):
-                k, _, v = rest[i + 1].partition("=")
-                params[k] = v
-                i += 2
-            else:
-                i += 1
-        from .drivers.local import LocalExecutor  # real Windows executor
-        ex = LocalExecutor()
-        rep = _run_replay(path, params, ex)
-        print(f"replay: total={rep.total} ok={rep.ok} fallbacks={rep.fallbacks} "
-              f"failures={len(rep.failures)}")
-        for f in rep.failures:
-            print("  FAIL", f)
-        return
-
-    if sub in ("start", "stop", "buffer"):
-        _rec_live(sub, rest)
-        return
-
-    _die(f"unknown rec subcommand {sub!r}")
-
-
-def _rec_live(sub: str, rest: list[str]) -> None:
-    """Thin live-recording loop (not unit-tested). Drives Recorder.pump()."""
-    import time
-    from .config import Config, clirec_recorder_config
-    from .clirec.capture.base import get_backend
-    from .clirec.recorder import Recorder
-    from .clirec.uia_probe import DefaultProbe
-    cfg = Config()
-    rc = clirec_recorder_config(cfg)
-    backend = get_backend()
-    rec = Recorder(backend, config=rc, probe=DefaultProbe())
-    if sub == "start":
-        name = rest[0] if rest else "recording"
-        print(f"recording '{name}' — press Ctrl+C to stop")
-        rec.start(name)
-        try:
-            while True:
-                rec.pump()
-                time.sleep(0.05)
-        except KeyboardInterrupt:
-            out = rec.stop()
-            path = rec.save(out, name)
-            print(f"\nsaved: {path} ({len(out.steps)} steps)")
-    else:
-        print("note: 'stop'/'buffer' require a running daemon session; "
-              "use 'oc rec start <name>' (Ctrl+C to stop) for the MVP.")
+    """Delegate ``oc rec`` to the optional external clirec package."""
+    try:
+        from clirec.cli import cmd_rec as clirec_cmd_rec
+    except ModuleNotFoundError:
+        _missing_clirec()
+    clirec_cmd_rec(args, executor_factory=_clirec_executor_factory)
 
 
 # ---------------------------------------------------------------------------
