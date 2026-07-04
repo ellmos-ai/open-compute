@@ -724,11 +724,11 @@ def cmd_do(args: list[str]) -> None:
     # -----------------------------------------------------------------------
     executor = _load_local_executor()
 
-    # Foreground check once, before first action
-    if ensure_fg:
-        current = _get_foreground_title()
-        if _should_activate(current, ensure_fg, always_fg):
-            executor.activate_window(ensure_fg)
+    # Foreground check: DEFERRED until the first action has passed the
+    # safety gate. activate_window() is itself a state-changing real input —
+    # running it before evaluate() bypassed read_only/confirm for the
+    # focus switch (found in module review 2026-07-04).
+    fg_pending = bool(ensure_fg)
 
     executed_count = 0
     per_step_composites: list[str] = []
@@ -763,6 +763,13 @@ def cmd_do(args: list[str]) -> None:
                 "executed_before": executed_count,
             }))
             sys.exit(1)
+
+        # ALLOW — first gated action: now the foreground switch may run
+        if fg_pending:
+            fg_pending = False
+            current = _get_foreground_title()
+            if _should_activate(current, ensure_fg, always_fg):
+                executor.activate_window(ensure_fg)
 
         # ALLOW — optionally capture before (single-action or per-step batch)
         if ns.label is not None and (ns.shots == "each" or not is_batch):
@@ -1379,30 +1386,90 @@ def _missing_clirec() -> None:
     )
 
 
-def _clirec_executor_factory():
+class _GatedExecutor:
+    """Executor-Wrapper: JEDE Replay-Aktion passiert SafetyPolicy.evaluate().
+
+    ``oc rec replay`` fuehrte .clirec-Dateien vorher gegen den rohen
+    LocalExecutor aus — ohne Confirm, Deny-Liste oder Audit-Trail
+    (Modul-Review 2026-07-04). Replay-Aktionen sind echte SendInput-Events
+    und muessen wie jede ``oc do``-Aktion gegatet werden.
+    """
+
+    def __init__(self, executor, policy: SafetyPolicy):
+        self._executor = executor
+        self._policy = policy
+
+    def __getattr__(self, name):
+        return getattr(self._executor, name)
+
+    def execute(self, action):
+        from .safety import Decision  # lazy — cli.py bleibt stdlib-only beim Import
+
+        result = self._policy.evaluate(action)
+        if result.decision is not Decision.ALLOW:
+            raise PermissionError(
+                f"safety gate: {result.decision.value} for replay action "
+                f"'{action.type.value}' — {result.reason} "
+                "(re-run with --yes or --mode allow_all to approve)"
+            )
+        return self._executor.execute(action)
+
+
+def _clirec_executor_factory(policy: "SafetyPolicy | None" = None):
     from .drivers.local import LocalExecutor
+    from .safety import SafetyPolicy
     from clirec.integrations.open_compute import OpenComputeExecutorAdapter
 
-    return OpenComputeExecutorAdapter(LocalExecutor())
+    if policy is None:
+        policy = SafetyPolicy(mode="confirm")
+    return OpenComputeExecutorAdapter(_GatedExecutor(LocalExecutor(), policy))
 
 
-def _run_replay(path: str, params: dict, executor):
-    """Testable seam: load a .clirec and replay it against an open-compute executor."""
+def _run_replay(path: str, params: dict, executor,
+                policy: "SafetyPolicy | None" = None):
+    """Testable seam: load a .clirec and replay it against an open-compute
+    executor. Every replayed action passes the safety gate."""
+    from .safety import SafetyPolicy
     try:
         from clirec.cli import _run_replay as clirec_run_replay
         from clirec.integrations.open_compute import OpenComputeExecutorAdapter
     except ModuleNotFoundError:
         _missing_clirec()
-    return clirec_run_replay(path, params, OpenComputeExecutorAdapter(executor))
+    if policy is None:
+        policy = SafetyPolicy(mode="confirm")
+    return clirec_run_replay(
+        path, params, OpenComputeExecutorAdapter(_GatedExecutor(executor, policy))
+    )
 
 
 def cmd_rec(args: list[str]) -> None:
-    """Delegate ``oc rec`` to the optional external clirec package."""
+    """Delegate ``oc rec`` to the optional external clirec package.
+
+    ``--mode``/``--yes`` werden hier extrahiert (clirec kennt sie nicht) und
+    als Safety-Gate um den Replay-Executor gelegt. Default: ``confirm`` —
+    ein Replay echter Eingaben laeuft nie ungefragt.
+    """
+    from .safety import SafetyPolicy
     try:
         from clirec.cli import cmd_rec as clirec_cmd_rec
     except ModuleNotFoundError:
         _missing_clirec()
-    clirec_cmd_rec(args, executor_factory=_clirec_executor_factory)
+    args = list(args)
+    mode = "confirm"
+    if "--yes" in args:
+        args.remove("--yes")
+        mode = "allow_all"
+    if "--mode" in args:
+        i = args.index("--mode")
+        if i + 1 >= len(args):
+            _die("--mode requires a value (allow_all|confirm|read_only)")
+        mode = args[i + 1]
+        del args[i:i + 2]
+    policy = SafetyPolicy(mode=mode)
+    try:
+        clirec_cmd_rec(args, executor_factory=lambda: _clirec_executor_factory(policy))
+    except PermissionError as e:
+        _die(str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -1426,7 +1493,7 @@ def main() -> None:
               oc push --status | --once [--window SUBSTR]
               oc watch-dir <path> [<path>...] [--for SECS] [--once]
               oc rec validate <file.clirec> | list [--dir DIR]
-              oc rec replay <file.clirec> [--param k=v ...]
+              oc rec replay <file.clirec> [--param k=v ...] [--mode MODE] [--yes]
               oc rec start <name>   (Ctrl+C to stop & save)
             """))
         sys.exit(0)

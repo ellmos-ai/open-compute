@@ -43,3 +43,9 @@ _state/
 
 # Archived throwaway/foreign scratch (kept, not published)
 _archive/
+
+# Multi-Agent Lock-System (lokal, nie committen)
+LOCK*.txt
+
+# SDD-Prozess-Artefakte (lokal)
+.superpowers/

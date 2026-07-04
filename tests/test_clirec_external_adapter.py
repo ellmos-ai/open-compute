@@ -1,7 +1,25 @@
-from clirec.replay import ReplayAction
-from clirec.integrations.open_compute import OpenComputeExecutorAdapter
+"""Adapter-Tests gegen das OPTIONALE externe clirec-Paket.
 
-from open_compute.actions import ActionType
+clirec ist ein optionales Extra (pyproject: open-compute[clirec]) — ohne
+installiertes Paket wird uebersprungen statt die Collection zu brechen.
+Fuer lokale Entwicklung wird ein Sibling-Checkout (../clirec) automatisch
+in sys.path aufgenommen.
+"""
+import sys
+from pathlib import Path
+
+import pytest
+
+_sibling = Path(__file__).resolve().parent.parent.parent / "clirec"
+if _sibling.is_dir() and str(_sibling) not in sys.path:
+    sys.path.insert(0, str(_sibling))
+
+pytest.importorskip("clirec", reason="optionales Extra clirec nicht installiert")
+
+from clirec.replay import ReplayAction  # noqa: E402
+from clirec.integrations.open_compute import OpenComputeExecutorAdapter  # noqa: E402
+
+from open_compute.actions import ActionType  # noqa: E402
 
 
 class FakeExecutor:

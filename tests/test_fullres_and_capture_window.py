@@ -437,6 +437,8 @@ class TestCaptureWindow:
     @pytest.mark.skipif(sys.platform != "win32", reason="Win32 only")
     def test_window_found_captures_region(self, tmp_path: pathlib.Path) -> None:
         """When window is found, mss grabs the region and saves PNG."""
+        # patch("mss.mss") importiert mss real — optionales Extra, sonst skip
+        pytest.importorskip("mss", reason="mss not installed — optional capture backend")
         png = _make_valid_png()
         mock_region = {"left": 100, "top": 200, "width": 800, "height": 500}
         mock_hwnd = 42

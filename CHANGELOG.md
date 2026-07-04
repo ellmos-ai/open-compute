@@ -9,6 +9,30 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security (module review 2026-07-04)
+
+- **`oc rec replay` no longer bypasses the safety gate.** Replaying a
+  `.clirec` file previously drove the raw `LocalExecutor` directly — real
+  mouse/keyboard input without confirm dialog, deny list, or audit trail.
+  A new `_GatedExecutor` wrapper now routes every replayed action through
+  `SafetyPolicy.evaluate()`; `oc rec` accepts `--mode`/`--yes` (default
+  `confirm` — a replay of real inputs never runs unprompted), and a gated
+  denial exits cleanly instead of tracebacking.
+- **`--ensure-foreground` no longer fires before the policy check** in the
+  batch/label path of `oc do`: even in `read_only` mode the real
+  focus switch (`SetForegroundWindow`) used to execute before the gate
+  denied the batch. The activation is now deferred until the first action
+  has passed the gate (matching the already-correct single-action path).
+- Regression tests for both in `tests/test_safety_gating_fixes.py`
+  (suite: 360 → 365 green).
+
+### Fixed
+
+- Test collection no longer breaks without the optional `clirec` package:
+  `tests/test_clirec_external_adapter.py` skips cleanly (and picks up a
+  sibling `../clirec` checkout for local development); the mss-dependent
+  window-capture test skips when `mss` is not installed.
+
 ### Added
 
 - GitHub Actions workflow `open-compute tests` runs the mock-only pytest suite

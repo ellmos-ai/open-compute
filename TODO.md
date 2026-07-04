@@ -1,5 +1,24 @@
 # TODO
 
+## Review 2026-07-04 (Modul-Review-Loop Lauf 6, frischer Subagent — HOCH-Funde gefixt)
+
+- [x] **(hoch)** `oc rec replay` umging das Safety-Gate komplett (roher
+      LocalExecutor, kein Confirm/Deny/Audit) → `_GatedExecutor` +
+      `--mode`/`--yes` für `oc rec`, Default confirm.
+- [x] **(hoch)** `--ensure-foreground` im Batch-/Label-Pfad lief VOR der
+      Policy-Auswertung (realer Fokus-Wechsel trotz read_only) → deferred bis
+      erste Aktion das Gate passiert hat. Beide: `tests/test_safety_gating_fixes.py`.
+- [x] Test-Collection brach ohne optionales clirec-Paket (harter Import nach
+      der Extraktion) → importorskip + Sibling-Checkout-Pfad; mss-Test ebenso.
+- [ ] **(Folge, mittel)** `_state/outcomes.jsonl` + `lessons.jsonl` wachsen
+      unbegrenzt (kein Pendant zu `_rotate_session`) — bei 24h-Betrieb
+      Rotation/Kompaktierung ergänzen.
+- [ ] **(Folge, mittel)** `oc watch-dir --once`: nicht-atomarer
+      Read-Modify-Write auf geteilte `_session/dirwatch_snapshot.json`
+      (lost update bei parallelen Instanzen) — Temp-Datei + `os.replace`.
+- [ ] **(Folge, niedrig)** Deny-Liste kennt nur ActionType — keine
+      Ziel-String-Regeln (z. B. `TYPE`-Inhalte, `LAUNCH_APP`-Namen).
+
 ## STATUS
 
 | Category | Status | Notes |
