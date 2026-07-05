@@ -35,6 +35,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **MCP server** (`open-compute[mcp]`): a FastMCP server (`open_compute/mcp_server.py`,
+  console script `open-compute-mcp`) exposing the keyless Mode-A loop as native MCP
+  tools — `capture` (returns an image), `do` (single or batch canonical actions),
+  `tree` / `click_name` / `invoke` (Windows UIA semantic targeting), `watch_dir`,
+  `push_status`, and `rec_replay`. One warm `LocalExecutor` persists for the process
+  lifetime (closes the "Prozess-Persistenz" TODO item); screenshots return as MCP
+  image blocks; every state-changing tool passes `SafetyPolicy` — `OC_SAFETY_MODE`
+  is an operator ceiling (a per-call `mode` can only tighten it, never loosen it) plus
+  an optional `OC_DENY` hard deny list. 19 mock-only tests (`tests/test_mcp_server.py`).
+  A thin npm launcher package `open-compute-mcp` (spawns the Python server, `npx`
+  parity with Node MCP servers) lives alongside the other MCP servers.
 - GitHub Actions workflow `open-compute tests` runs the mock-only pytest suite
   and a compile check on Python 3.10, 3.11, and 3.12 for pushes and pull requests.
 - `LocalExecutor.screenshot()` now falls back from mss/GDI capture to a

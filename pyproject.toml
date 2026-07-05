@@ -41,10 +41,12 @@ watch = ["watchdog>=3.0"]
 clirec = ["clirec>=0.1.0"]
 dev = ["pytest>=7.0"]
 record = ["clirec[record]>=0.1.0"]
-all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "windows-capture>=2.0.0; platform_system == 'Windows'", "watchdog>=3.0", "clirec[record]>=0.1.0"]
+mcp = ["mcp>=1.12,<2"]
+all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "windows-capture>=2.0.0; platform_system == 'Windows'", "watchdog>=3.0", "clirec[record]>=0.1.0", "mcp>=1.12,<2"]
 
 [project.scripts]
 oc = "open_compute.cli:main"
+open-compute-mcp = "open_compute.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/open-compute"

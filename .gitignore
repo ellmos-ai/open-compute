@@ -49,3 +49,6 @@ LOCK*.txt
 
 # SDD-Prozess-Artefakte (lokal)
 .superpowers/
+
+# Interner Planungsplan (lokal, nicht für Publish)
+MCP-PLAN.md

@@ -101,8 +101,9 @@ pip install open-compute[compose]      # + Pillow (Vorher|Nachher-Composite + an
 pip install open-compute[watch]        # + watchdog (native FS-Events für Directory-Watch-Feed)
 pip install open-compute[clirec]       # + externes clirec-Paket für oc-rec-Workflows
 pip install open-compute[record]       # + clirec[record]-Capture-Backend-Kompatibilität
+pip install open-compute[mcp]          # + mcp-SDK — MCP-Server (Console-Script: open-compute-mcp)
 pip install open-compute[local,wgc,claude] # lokaler Executor + WGC-Fallback + Claude-Backend
-pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec
+pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec, mcp
 ```
 
 Bis `clirec` als Paket veröffentlicht ist, für `oc rec` direkt installieren:
@@ -212,6 +213,51 @@ loop = AgentLoop(Config(backend="mock", safety_mode="allow_all"))
 result = loop.run("Öffne die Einstellungen und aktiviere den Dunkelmodus")
 print(result.done, result.steps)
 ```
+
+---
+
+## MCP-Server (native Tool-Calls, schlüssellos)
+
+Stellt die schlüssellose **Modus-A**-Schleife jedem MCP-Client als **native Tools**
+bereit — der Client ist der Reasoner (kein API-Key, modellagnostisch). Gegenüber dem
+manuellen `oc`-Betrieb hält ein langlebiger Server **einen warmen `LocalExecutor`**
+resident (kein Python-Neustart pro Aktion) und liefert Screenshots als MCP-**Bild**-
+Blöcke zurück. Für echtes Capture/Input Windows-only.
+
+```bash
+pip install open-compute[mcp,local,uia]
+open-compute-mcp          # stdio-Server (Console-Script)
+```
+
+**Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
+`invoke` (semantisches UIA-Zielen) · `watch_dir` · `push_status` · `rec_replay`.
+Koordinaten normiert 0..1.
+
+**Sicherheit.** `OC_SAFETY_MODE` ist eine Operator-**Obergrenze** (`confirm` Standard
+· `read_only` · `allow_all`); ein per-Call-`mode` kann sie nur *verschärfen*, nie
+lockern — ein prompt-injizierter Agent kann einen `read_only`/`confirm`-Server nicht
+via `mode="allow_all"` umgehen. Da stdio-MCP keinen Server→Client-Confirm-Callback
+hat, geben `confirm`/`read_only` ein `needs_confirmation`/`deny` **ohne auszuführen**
+zurück. Für interaktiven Betrieb den Server mit `OC_SAFETY_MODE=allow_all` **in einer
+isolierten VM** starten und den Tool-Berechtigungsdialog des Clients als
+Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) eine
+harte Deny-Liste.
+
+Client-Konfiguration (über `uvx`, ohne manuelle Installation):
+
+```json
+{ "mcpServers": { "open-compute": {
+  "command": "uvx",
+  "args": ["--from", "open-compute[mcp,local,uia] @ git+https://github.com/ellmos-ai/open-compute.git", "open-compute-mcp"] } } }
+```
+
+Der Snippet oben startet in der sicheren `confirm`-Obergrenze — der Server *meldet*
+Aktionen, führt sie aber nicht aus. Zum Ausführen `"env": {"OC_SAFETY_MODE":
+"allow_all"}` ergänzen (isolierte VM), gegated durch den Client-Dialog. Ein
+npm-Launcher (`npx open-compute-mcp`) ist für Parität mit Node-MCP-Servern ebenfalls
+verfügbar. Der MCP-Server ist ideal für kurze Inline-Aufgaben; für lange,
+kontextlastige Läufe weiterhin an einen selbst gespawnten Subagenten delegieren und
+die Tools darin nutzen.
 
 ---
 
