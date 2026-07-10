@@ -238,6 +238,15 @@ For interactive use, run the server with `OC_SAFETY_MODE=allow_all` **in an isol
 VM** and let the client's tool-permission dialog be the human-in-the-loop. Optional
 `OC_DENY` (comma-separated action types) is a hard deny list.
 
+**Troubleshooting: `do`/`click_name` only ever return `needs_confirmation` and never
+act.** That is the `confirm` ceiling working as designed under stdio MCP — there is
+no confirm callback, so the server reports instead of acting. Fix for interactive
+use: set `"env": {"OC_SAFETY_MODE": "allow_all"}` in the server registration and let
+the client's tool-approval dialog gate each action (do **not** auto-allow the
+`do`/`click_name`/`invoke` tools there, or you lose that gate). Note that the env
+change only takes effect when the server process (re)starts — an already-connected
+client keeps the old ceiling until it reconnects.
+
 Client config (via `uvx`, no manual install):
 
 ```json

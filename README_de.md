@@ -243,6 +243,16 @@ isolierten VM** starten und den Tool-Berechtigungsdialog des Clients als
 Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) eine
 harte Deny-Liste.
 
+**Troubleshooting: `do`/`click_name` liefern nur `needs_confirmation` und handeln
+nie.** Das ist die `confirm`-Obergrenze, die unter stdio-MCP designgemäß so wirkt —
+es gibt keinen Confirm-Callback, der Server meldet statt zu handeln. Fix für
+interaktiven Betrieb: `"env": {"OC_SAFETY_MODE": "allow_all"}` in der
+Server-Registrierung setzen und jede Aktion durch den Tool-Berechtigungsdialog des
+Clients gaten lassen (die Tools `do`/`click_name`/`invoke` dort **nicht** pauschal
+erlauben, sonst entfällt dieses Gate). Wichtig: Die env-Änderung greift erst, wenn
+der Serverprozess neu startet — ein bereits verbundener Client behält die alte
+Obergrenze bis zum Reconnect.
+
 Client-Konfiguration (über `uvx`, ohne manuelle Installation):
 
 ```json
