@@ -13,8 +13,8 @@
   oder ein leerer Desktop ohne sensible Fenster.
 - Installation mit dem passenden Extra:
   ```powershell
-  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\open-compute[local,claude]"   # Claude
-  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\open-compute[local,openai]"   # OpenAI
+  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\.TOOLS\open-compute[local,claude]"   # Claude
+  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\.TOOLS\open-compute[local,openai]"   # OpenAI
   ```
 
 ## 1. Keyless-Smoke zuerst (kein Key, bestätigt die Mechanik)

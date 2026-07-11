@@ -1,0 +1,41 @@
+{
+  "schema": "ellmos.module.v2",
+  "id": "open-compute",
+  "display_name": "open-compute",
+  "category": "tools",
+  "kind": "tool",
+  "status": "development",
+  "visibility": "public-candidate",
+  "provides": [
+    "tool.computer-use",
+    "runtime.perception-action"
+  ],
+  "requires": [],
+  "optional": [
+    "tool.demonstration-replay"
+  ],
+  "conflicts": [],
+  "surfaces": [
+    "library",
+    "cli"
+  ],
+  "state": {
+    "ownership": "module",
+    "location": "user-home"
+  },
+  "boundaries": {
+    "network": "optional",
+    "data": "application-defined",
+    "platforms": [
+      "windows",
+      "macos",
+      "linux"
+    ]
+  },
+  "source_of_truth": {
+    "type": "local-directory",
+    "path": ".",
+    "repository": null
+  },
+  "adapters": []
+}
