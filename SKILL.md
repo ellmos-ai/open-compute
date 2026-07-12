@@ -53,8 +53,14 @@ Alle Aktionen als JSON, Felder laut `open_compute/actions.py`:
 | `cursor_position` | — | — | Aktuelle Cursor-Position abfragen (read-only) |
 | `launch_app` | `app_name` | — | App starten |
 | `activate_window` | `app_name` | — | Fenster in Vordergrund bringen |
+| `mouse_down` | — | `x`, `y`, `button` (left/right/middle) | Maustaste **drücken und gedrückt lassen** (ohne `x`/`y` an der aktuellen Cursor-Position) |
+| `mouse_up` | — | `x`, `y`, `button` | Maustaste loslassen |
+| `key_down` | `text` | — | Taste(n) drücken und **gedrückt halten** (z. B. `"shift"`, `"ctrl+shift"`) |
+| `key_up` | `text` | — | Taste(n) loslassen |
 
 **Koordinaten** `x`, `y`, `end_x`, `end_y`: **normalisiert 0..1** (0,0 = oben-links, 1,1 = unten-rechts des virtuellen Desktops). NICHT Pixel.
+
+**Halte-Primitive** (`mouse_down`/`mouse_up`/`key_down`/`key_up`): Die zusammengesetzten Aktionen oben können keinen Zustand halten — `left_click_drag` zieht in einem Zug, und `key` drückt und löst sofort. Für Aufziehen einer Auswahlbox mit Zwischenschritten, modifikator-gehaltenes Klicken (Mehrfachauswahl) oder gedrückt-halten-Eingaben in Spielen braucht es die Hälften einzeln. Sie haben **kein** Pendant im Claude- oder OpenAI-Computer-Tool (die Mapper lehnen sie ab); der Host führt sie direkt aus. Der `LocalExecutor` führt Buch über alles Gedrückte und gibt es per `release_all()` wieder frei — der MCP-Server tut das beim Beenden automatisch, damit ein abgebrochener Zug keine gedrückte Taste hinterlässt.
 
 ### Beispiele
 
@@ -65,6 +71,15 @@ Alle Aktionen als JSON, Felder laut `open_compute/actions.py`:
 {"type": "scroll", "x": 0.5, "y": 0.5, "scroll_direction": "down", "scroll_amount": 3}
 {"type": "left_click_drag", "x": 0.1, "y": 0.1, "end_x": 0.9, "end_y": 0.9}
 {"type": "mouse_move", "x": 0.5, "y": 0.5}
+```
+
+Auswahlbox über mehrere Schritte aufziehen (als Batch):
+
+```json
+[{"type": "mouse_down", "x": 0.1, "y": 0.1},
+ {"type": "mouse_move", "x": 0.5, "y": 0.4},
+ {"type": "mouse_move", "x": 0.9, "y": 0.9},
+ {"type": "mouse_up"}]
 ```
 
 ---

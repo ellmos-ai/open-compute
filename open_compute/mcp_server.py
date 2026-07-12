@@ -33,6 +33,7 @@ Run:  ``open-compute-mcp``  or  ``python -m open_compute.mcp_server``
 
 from __future__ import annotations
 
+import atexit
 import os
 from typing import Any
 
@@ -174,6 +175,86 @@ def _gate(action: Action, policy: SafetyPolicy) -> dict | None:
 # Tools — perception (read-only)
 # ---------------------------------------------------------------------------
 
+# WGC only pushes a frame when the target redraws, so a window that is idle or
+# not capturable at all must fail *fast*: a tool call blocks the whole client.
+# Worst case here is retries * timeout + backoff ≈ 7s, against the ~30s the
+# monitor-grab defaults would cost.
+_WGC_SKIP = 2
+_WGC_TIMEOUT = 3.0
+_WGC_RETRIES = 2
+
+
+def _wgc_forced(title: str) -> bool:
+    """True if OC_WGC_WINDOWS marks this window title as WGC-only.
+
+    The blank-frame fallback below is automatic, so this is only for windows
+    that must skip the GDI attempt outright (a costly or visibly flickering
+    first grab). Comma-separated, case-insensitive title substrings.
+    """
+    raw = os.environ.get("OC_WGC_WINDOWS", "").strip()
+    if not raw:
+        return False
+    lowered = title.lower()
+    return any(tok.strip().lower() in lowered for tok in raw.split(",") if tok.strip())
+
+
+def _capture_window_png(window: str) -> bytes:
+    """Capture a single window, falling back to WGC when GDI yields a black frame.
+
+    A GDI region grab (mss) of a DirectX / hardware-composited window — Roblox
+    Studio, Blender, a GPU-accelerated browser — does not fail; it returns an
+    all-black rectangle. So a successful grab is not proof of a usable frame:
+    we check it, and re-grab through Windows.Graphics.Capture if it is blank.
+    """
+    import sys
+    if sys.platform != "win32":
+        raise RuntimeError("capture(window=...) is Windows-only.")
+    from . import cli  # stdlib-only at import; reuse the tested Win32 helpers
+    try:
+        from .drivers.local import _set_dpi_awareness
+        _set_dpi_awareness()
+    except Exception:  # pragma: no cover - best effort
+        pass
+
+    hwnd = cli._find_window_hwnd(window)
+    if hwnd is None:
+        raise ValueError(f"no window found matching {window!r}")
+
+    from .drivers import wgc
+
+    title = cli._window_title(hwnd)
+    png: bytes | None = None
+
+    if not _wgc_forced(title):
+        try:
+            region = cli._hwnd_to_mss_region(hwnd)
+            import mss
+            import mss.tools
+            with mss.mss() as sct:
+                shot = sct.grab(region)
+                png = mss.tools.to_png(shot.rgb, shot.size)
+        except Exception:
+            png = None  # GDI refused outright — try WGC below.
+        if png is not None and not wgc.is_blank_png(png):
+            return png
+        if not wgc.available() and png is not None:
+            # Blank, but the extra is not installed: a black frame still beats
+            # failing the call. Installing open-compute[wgc] fixes the black.
+            return png
+
+    try:
+        return wgc.grab_window_png(
+            hwnd,
+            skip=_WGC_SKIP,
+            max_seconds=_WGC_TIMEOUT,
+            retries=_WGC_RETRIES,
+        )[0]
+    except Exception as exc:
+        if png is not None:
+            return png  # degrade to the black frame rather than fail the call
+        raise RuntimeError(f"capture of {title!r} failed: {exc}") from exc
+
+
 @mcp.tool(description=mcp_i18n.tool_description("capture", _LANG))
 def capture(window: str | None = None) -> Image:
     """Take a screenshot of the local screen and return it as a PNG image.
@@ -183,32 +264,43 @@ def capture(window: str | None = None) -> Image:
 
     Args:
         window: Optional window-title substring (case-insensitive). If given,
-            captures only that window's bounding rect (Windows). Omit for the
-            full virtual desktop (recommended; matches `do`'s coordinate frame).
+            captures only that window (Windows), transparently via
+            Windows.Graphics.Capture when the window is hardware-composited and
+            a plain grab would come back black. Omit for the full virtual
+            desktop (recommended; matches `do`'s coordinate frame).
     """
     if window is not None:
-        import sys
-        if sys.platform != "win32":
-            raise RuntimeError("capture(window=...) is Windows-only.")
-        from . import cli  # stdlib-only at import; reuse the tested Win32 helpers
-        try:
-            from .drivers.local import _set_dpi_awareness
-            _set_dpi_awareness()
-        except Exception:  # pragma: no cover - best effort
-            pass
-        hwnd = cli._find_window_hwnd(window)
-        if hwnd is None:
-            raise ValueError(f"no window found matching {window!r}")
-        region = cli._hwnd_to_mss_region(hwnd)
-        import mss
-        import mss.tools
-        with mss.mss() as sct:
-            shot = sct.grab(region)
-            png = mss.tools.to_png(shot.rgb, shot.size)
-        return Image(data=png, format="png")
+        return Image(data=_capture_window_png(window), format="png")
 
     obs = _STATE.executor().screenshot()
     return Image(data=obs.screenshot, format="png")
+
+
+@mcp.tool(description=mcp_i18n.tool_description("list_windows", _LANG))
+def list_windows() -> list[dict]:
+    """List the open top-level windows, foreground first.
+
+    Use this before `capture(window=...)`, `tree(window=...)` or an
+    `activate_window` action instead of guessing a title: it returns the exact
+    titles, plus each window's pixel rect and its normalized 0..1 center in the
+    same coordinate frame `do` expects.
+    """
+    from .drivers.local import list_windows as _list_windows
+
+    return _list_windows()
+
+
+@mcp.tool(description=mcp_i18n.tool_description("get_screen_size", _LANG))
+def get_screen_size() -> dict:
+    """Return the virtual-desktop geometry and the per-monitor breakdown.
+
+    All normalized 0..1 coordinates are relative to the `virtual_desktop` rect
+    returned here, so this is how a pixel position from elsewhere is translated
+    into an `x`/`y` for `do`.
+    """
+    from .drivers.local import get_screen_size as _get_screen_size
+
+    return _get_screen_size()
 
 
 @mcp.tool(description=mcp_i18n.tool_description("tree", _LANG))
@@ -509,9 +601,34 @@ def _jsonable(value: Any) -> Any:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _release_held_input() -> None:
+    """Release anything the resident executor still holds down.
+
+    The hold primitives (``mouse_down`` / ``key_down``) survive the tool call
+    that pressed them — that is their purpose — but they must not survive the
+    server. A stranded button or modifier leaves the human at the keyboard with
+    an unusable desktop, so a client that dies mid-drag must not be able to
+    strand one. Only touches an executor that already exists (never spins one up
+    at shutdown) and never raises out of the exit path.
+    """
+    executor = _STATE._executor
+    if executor is None:
+        return
+    try:
+        executor.release_all()
+    except Exception:  # pragma: no cover - best effort on the way out
+        pass
+
+
 def main() -> None:
     """Run the open-compute MCP server over stdio."""
-    mcp.run(transport="stdio")
+    # Register once, at the single entry point: an atexit hook registered at
+    # import (or per call) would stack up on repeated imports.
+    atexit.register(_release_held_input)
+    try:
+        mcp.run(transport="stdio")
+    finally:
+        _release_held_input()
 
 
 if __name__ == "__main__":

@@ -326,6 +326,21 @@ def _find_window_hwnd(substr: str) -> int | None:
     return found[0] if found else None
 
 
+def _window_title(hwnd: int) -> str:
+    """Return the full title of a window handle (empty string if it has none)."""
+    if sys.platform != "win32":
+        return ""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value
+
+
 def _hwnd_to_mss_region(hwnd: int) -> dict:
     """Convert an HWND bounding rect to an mss region dict.
 

@@ -9,6 +9,48 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (comparison with AB498/computer-control-mcp, 2026-07-12)
+
+- **Hold primitives in the canonical schema:** `mouse_down` / `mouse_up` /
+  `key_down` / `key_up`, with an optional `button` field. The composite actions
+  cannot express a button that stays down *across* other actions, which is what
+  rubber-band selection, modifier-held multi-select and press-to-move game input
+  need. They are host-side (no Claude/OpenAI computer-tool equivalent — the
+  mappers reject them) and gated as risky in **both** halves, so `read_only`
+  stays free of synthesized input. `LocalExecutor` tracks what it holds and
+  offers `release_all()`; the MCP server calls it on shutdown so a client that
+  dies mid-drag cannot strand a pressed button or modifier on the user's desktop.
+- **`list_windows` and `get_screen_size` MCP tools.** The reasoner had no way to
+  discover window titles and was left guessing a substring for
+  `capture(window=...)` / `tree(window=...)`. `list_windows` returns exact titles,
+  pixel rects, minimized/foreground flags and a normalized 0..1 center in the same
+  frame `do` expects; `get_screen_size` returns the virtual-desktop geometry that
+  frame refers to.
+
+### Fixed
+
+- **`capture(window=...)` returned an all-black image for hardware-composited
+  windows** (Roblox Studio, Blender, GPU-accelerated browsers). A GDI region grab
+  of such a window does not fail — it silently yields a black rectangle, so
+  "the grab succeeded" was never proof of a usable frame. The capture path now
+  checks the frame (`wgc.is_blank_png`) and re-grabs through
+  Windows.Graphics.Capture when it is blank; `OC_WGC_WINDOWS` forces WGC for
+  named windows. Window resolution stays HWND-based (`grab_window_png(hwnd)`),
+  so WGC and GDI cannot disagree about which window was meant. Without the `wgc`
+  extra the black frame is still returned rather than failing the call.
+- **WGC could hang the calling process indefinitely.** The watchdog only received
+  its `CaptureControl` through the frame callback, so a target that never
+  produced a frame — WGC only pushes on redraw, so an idle window is normal —
+  left nothing to stop and blocked forever (reproduced on a real desktop: a
+  paused player window hung the call past 200s). Capture now runs
+  `start_free_threaded()`, which returns the control up front; an uncapturable
+  window now raises immediately and an idle one fails within seconds. This also
+  affected the pre-existing monitor fallback, not just the new window path.
+- **The `wgc` extra was not installed in the registered MCP venv**, so the
+  fallback was dead in the deployed server; and the editable install still
+  pointed at the pre-`.TOOLS` module path, so `import open_compute` failed
+  outside pytest. Both repaired on the laptop host.
+
 ### Security (module review 2026-07-04)
 
 - **`oc rec replay` no longer bypasses the safety gate.** Replaying a

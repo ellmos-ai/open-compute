@@ -21,9 +21,14 @@ class ActionType(str, Enum):
     """The canonical action vocabulary.
 
     The first block mirrors the intersection of the Claude ``computer`` tool
-    actions and the OpenAI computer-use action set. ``LAUNCH_APP`` and
-    ``ACTIVATE_WINDOW`` are host-side extensions with no native model-tool
-    equivalent.
+    actions and the OpenAI computer-use action set. The second block holds
+    host-side extensions with no native model-tool equivalent: the OS actions
+    (``LAUNCH_APP`` / ``ACTIVATE_WINDOW``) and the *hold primitives*
+    (``MOUSE_DOWN`` / ``MOUSE_UP`` / ``KEY_DOWN`` / ``KEY_UP``), which decompose
+    a click or key press into its press and release halves. Holds are what
+    press-and-drag, rubber-band selection, modifier-held clicking and
+    press-to-move game input need; the composite actions above cannot express a
+    button that stays down across several other actions.
     """
 
     SCREENSHOT = "screenshot"
@@ -42,6 +47,25 @@ class ActionType(str, Enum):
     # Host-side OS extensions (no native model-tool action):
     LAUNCH_APP = "launch_app"
     ACTIVATE_WINDOW = "activate_window"
+    # Host-side hold primitives (no native model-tool action):
+    MOUSE_DOWN = "mouse_down"
+    MOUSE_UP = "mouse_up"
+    KEY_DOWN = "key_down"
+    KEY_UP = "key_up"
+
+
+#: Hold primitives: press/release halves that leave the host in a held state.
+HOLD_ACTIONS = frozenset(
+    {
+        ActionType.MOUSE_DOWN,
+        ActionType.MOUSE_UP,
+        ActionType.KEY_DOWN,
+        ActionType.KEY_UP,
+    }
+)
+
+#: Mouse buttons accepted by the hold primitives.
+BUTTONS = ("left", "right", "middle")
 
 
 # Actions that carry a single point (normalized x/y in 0..1).
@@ -67,11 +91,14 @@ class Action:
         type: The :class:`ActionType`.
         x, y: Normalized start coordinate (0..1), if the action targets a point.
         end_x, end_y: Normalized end coordinate for drag actions.
-        text: Text to type, or the key combination for ``KEY`` actions.
+        text: Text to type, the key combination for ``KEY``, or the key(s) to
+            press/release for ``KEY_DOWN`` / ``KEY_UP``.
         scroll_direction: One of ``up``/``down``/``left``/``right``.
         scroll_amount: Integer scroll magnitude (clicks/notches).
         duration: Seconds to wait, for ``WAIT``.
         app_name: Target application, for host-side OS actions.
+        button: Mouse button for ``MOUSE_DOWN`` / ``MOUSE_UP`` (default
+            ``left``). One of :data:`BUTTONS`.
         meta: Free-form extra metadata; never sent to a backend by the mappers.
     """
 
@@ -85,6 +112,7 @@ class Action:
     scroll_amount: int | None = None
     duration: float | None = None
     app_name: str | None = None
+    button: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -96,6 +124,10 @@ class Action:
             raise ValueError("type action requires text")
         if self.type is ActionType.KEY and self.text is None:
             raise ValueError("key action requires text (the key combination)")
+        if self.type in (ActionType.KEY_DOWN, ActionType.KEY_UP) and self.text is None:
+            raise ValueError(f"{self.type.value} action requires text (the key to hold)")
+        if self.button is not None and self.button not in BUTTONS:
+            raise ValueError(f"button={self.button!r} must be one of {BUTTONS}")
         for name in ("x", "y", "end_x", "end_y"):
             value = getattr(self, name)
             if value is not None and not (0.0 <= float(value) <= 1.0):
@@ -105,8 +137,16 @@ class Action:
 
     @property
     def is_host_side(self) -> bool:
-        """True for actions the host executes outside the model tool."""
-        return self.type in (ActionType.LAUNCH_APP, ActionType.ACTIVATE_WINDOW)
+        """True for actions the host executes outside the model tool.
+
+        Covers the OS extensions and the hold primitives: neither the Claude nor
+        the OpenAI computer tool has an action for them, so the mappers refuse
+        them and the host driver executes them directly.
+        """
+        return (
+            self.type in (ActionType.LAUNCH_APP, ActionType.ACTIVATE_WINDOW)
+            or self.type in HOLD_ACTIONS
+        )
 
 
 def to_claude(action: Action, width: int, height: int) -> dict[str, Any]:

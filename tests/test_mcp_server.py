@@ -52,8 +52,8 @@ def _tool_names():
 
 def test_tools_registered():
     assert _tool_names() == [
-        "capture", "click_name", "do", "invoke",
-        "push_status", "rec_replay", "tree", "watch_dir",
+        "capture", "click_name", "do", "get_screen_size", "invoke",
+        "list_windows", "push_status", "rec_replay", "tree", "watch_dir",
     ]
 
 

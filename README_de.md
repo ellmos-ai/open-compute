@@ -225,13 +225,26 @@ resident (kein Python-Neustart pro Aktion) und liefert Screenshots als MCP-**Bil
 Blöcke zurück. Für echtes Capture/Input Windows-only.
 
 ```bash
-pip install open-compute[mcp,local,uia]
+pip install open-compute[mcp,local,uia,wgc]
 open-compute-mcp          # stdio-Server (Console-Script)
 ```
 
 **Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
-`invoke` (semantisches UIA-Zielen) · `watch_dir` · `push_status` · `rec_replay`.
-Koordinaten normiert 0..1.
+`invoke` (semantisches UIA-Zielen) · `list_windows` · `get_screen_size` ·
+`watch_dir` · `push_status` · `rec_replay`. Koordinaten normiert 0..1;
+`list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
+kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
+
+**Hardware-komponierte Fenster (`wgc`-Extra).** Ein GDI-Grab eines DirectX-Fensters —
+Roblox Studio, Blender, ein GPU-beschleunigter Browser — schlägt nicht fehl; es
+liefert still ein **komplett schwarzes** Rechteck. `capture(window=...)` prüft das
+Bild deshalb und holt es bei einem leeren Frame erneut über Windows.Graphics.Capture.
+Dafür `open-compute[wgc]` installieren; ohne das Extra wird der schwarze Frame
+zurückgegeben, statt den Call scheitern zu lassen. `OC_WGC_WINDOWS`
+(kommagetrennte Titel-Teilstrings) überspringt den GDI-Versuch für Fenster, die
+bekanntermaßen WGC brauchen. WGC liefert nur ein Bild, wenn das Fenster **neu
+zeichnet**: ein untätiges oder nicht erfassbares Fenster scheitert schnell
+(zeitlich begrenzt), statt zu hängen.
 
 **Sicherheit.** `OC_SAFETY_MODE` ist eine Operator-**Obergrenze** (`confirm` Standard
 · `read_only` · `allow_all`); ein per-Call-`mode` kann sie nur *verschärfen*, nie

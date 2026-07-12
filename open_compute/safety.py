@@ -29,6 +29,13 @@ class Decision(str, Enum):
 # Actions considered "risky" by default: they change external state or are hard
 # to reverse. Read-only/observational actions (screenshot, cursor_position,
 # wait, mouse_move) are allowed without confirmation.
+#
+# The hold primitives are risky in both halves: ``mouse_down``/``key_down``
+# obviously so, but the matching ``_up`` is gated too, because a policy that
+# denied the press must not be talked into a stray release, and ``read_only``
+# must stay free of synthesized input entirely. A gate that allowed the press
+# and blocked the release would strand the host with a button held down — which
+# is why an executor that presses is also expected to offer ``release_all()``.
 DEFAULT_RISKY_ACTIONS = frozenset(
     {
         ActionType.LEFT_CLICK,
@@ -40,6 +47,10 @@ DEFAULT_RISKY_ACTIONS = frozenset(
         ActionType.TYPE,
         ActionType.KEY,
         ActionType.LAUNCH_APP,
+        ActionType.MOUSE_DOWN,
+        ActionType.MOUSE_UP,
+        ActionType.KEY_DOWN,
+        ActionType.KEY_UP,
     }
 )
 

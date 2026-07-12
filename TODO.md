@@ -1,5 +1,32 @@
 # TODO
 
+## Vergleich mit AB498/computer-control-mcp (2026-07-12)
+
+Fremdserver (153 Sterne, PyAutoGUI + RapidOCR) gegen unseren Kern verglichen.
+Architektonisch bleibt unser Weg (semantisches UIA-Zielen, Safety-Gate,
+normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
+
+- [x] **WGC im Fenster-Capture verdrahtet.** Ein GDI-Grab eines
+      hardware-komponierten Fensters (Roblox Studio, Blender, GPU-Browser)
+      scheitert nicht — es liefert still ein schwarzes Rechteck. `capture(window=…)`
+      prüft den Frame jetzt und holt ihn bei Leere über Windows.Graphics.Capture.
+      Dabei fiel ein Aufhänger im bestehenden WGC-Backend auf (Watchdog ohne
+      Handle → blockierte unbegrenzt), ebenfalls gefixt (`start_free_threaded`).
+- [x] **`list_windows` + `get_screen_size` als MCP-Tools** — der Reasoner musste
+      Fenstertitel bisher raten.
+- [x] **Halte-Primitive** `mouse_down`/`mouse_up`/`key_down`/`key_up` inkl.
+      Held-State-Tracking und `release_all()` (Server gibt beim Beenden frei).
+- [ ] **(bewusst NICHT übernommen) OCR-Feed.** Sie liefern RapidOCR + ONNXRuntime
+      (~70 MB Erstdownload) mit. Der UIA-Elementbaum löst native Apps besser; falls
+      OCR nötig wird, ist `Windows.Media.Ocr` der dependency-freie Weg (so auch in
+      `ARCHITECTURE.md` Feed ③ vorgesehen).
+- [ ] **(offen, mittel)** Vollbild-`capture()` erkennt kein Schwarzbild: ist nur ein
+      *Teil* des Desktops ein GPU-Fenster, bleibt der Rest sichtbar und die
+      Blank-Heuristik greift nicht. Bis dahin gilt für solche Fenster
+      `capture(window=…)`. Denkbar: `OC_CAPTURE_BACKEND=wgc` als Zwang.
+- [ ] **(offen, niedrig)** Cross-Platform-Ausführung: sie decken über PyAutoGUI auch
+      macOS/Linux ab, unser `LocalExecutor` ist Windows-only.
+
 ## Review 2026-07-04 (Modul-Review-Loop Lauf 6, frischer Subagent — HOCH-Funde gefixt)
 
 - [x] **(hoch)** `oc rec replay` umging das Safety-Gate komplett (roher

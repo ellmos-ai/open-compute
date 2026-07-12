@@ -315,6 +315,124 @@ def _send_input(*inputs: _INPUT) -> int:
     return ctypes.windll.user32.SendInput(n, arr, ctypes.sizeof(_INPUT))
 
 
+def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
+    """Enumerate top-level windows with titles, in Z-order (foreground first).
+
+    Lets the reasoner discover what is actually on screen instead of guessing a
+    title substring for ``capture(window=...)`` / ``activate_window``. Each entry
+    carries both the physical rect and a normalized center, so a window can be
+    clicked in the same 0..1 virtual-desktop frame the other actions use.
+
+    Args:
+        visible_only: Skip windows that are not visible or have an empty title.
+
+    Returns:
+        List of dicts with ``title``, ``hwnd``, ``rect`` (left/top/width/height
+        in physical pixels), ``center`` (normalized x/y in 0..1 of the virtual
+        desktop), ``minimized`` and ``foreground``. Empty list off Windows.
+    """
+    if sys.platform != "win32":
+        return []
+
+    user32 = ctypes.windll.user32
+    foreground_hwnd = user32.GetForegroundWindow()
+    vl, vt, vw, vh = _get_virtual_desktop()
+    windows: list[dict[str, Any]] = []
+
+    # Keep the callback wrapper alive in a local until EnumWindows returns
+    # (a locally-defined WINFUNCTYPE can otherwise be collected mid-call).
+    _EnumCB = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+
+    def _enum_impl(hwnd: int, _lp: int) -> bool:
+        if visible_only and not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if visible_only and length <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+
+        rect = ctypes.wintypes.RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return True
+        width = rect.right - rect.left
+        height = rect.bottom - rect.top
+
+        cx = rect.left + width / 2
+        cy = rect.top + height / 2
+        windows.append(
+            {
+                "title": buf.value,
+                "hwnd": int(hwnd),
+                "rect": {
+                    "left": int(rect.left),
+                    "top": int(rect.top),
+                    "width": int(width),
+                    "height": int(height),
+                },
+                "center": {
+                    "x": round(_clamp01((cx - vl) / vw) if vw > 0 else 0.0, 4),
+                    "y": round(_clamp01((cy - vt) / vh) if vh > 0 else 0.0, 4),
+                },
+                "minimized": bool(user32.IsIconic(hwnd)),
+                "foreground": int(hwnd) == int(foreground_hwnd),
+            }
+        )
+        return True
+
+    _cb = _EnumCB(_enum_impl)
+    user32.EnumWindows(_cb, 0)
+    return windows
+
+
+def get_screen_size() -> dict[str, Any]:
+    """Return the virtual-desktop geometry (the coordinate frame of all actions).
+
+    Normalized 0..1 coordinates are relative to the ``virtual_desktop`` rect
+    below, so this is what a client needs to translate a pixel position it knows
+    from elsewhere into an ``x``/``y`` for :meth:`LocalExecutor.execute`.
+
+    The per-monitor breakdown is best-effort: it needs ``mss`` (the ``local``
+    extra) and is omitted when that is not installed.
+    """
+    if sys.platform != "win32":
+        return {"virtual_desktop": None, "monitors": [], "platform": sys.platform}
+
+    _set_dpi_awareness()
+    left, top, width, height = _get_virtual_desktop()
+    out: dict[str, Any] = {
+        "virtual_desktop": {
+            "left": left,
+            "top": top,
+            "width": width,
+            "height": height,
+        },
+        "monitors": [],
+        "platform": "win32",
+    }
+    try:
+        import mss
+    except ImportError:
+        return out
+    with mss.mss() as sct:
+        # monitors[0] is the virtual desktop; 1..N are the physical monitors.
+        for index, mon in enumerate(sct.monitors[1:], start=1):
+            out["monitors"].append(
+                {
+                    "index": index,
+                    "left": int(mon["left"]),
+                    "top": int(mon["top"]),
+                    "width": int(mon["width"]),
+                    "height": int(mon["height"]),
+                }
+            )
+    return out
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
 def _mouse_event(flags: int, dx: int = 0, dy: int = 0, data: int = 0) -> _INPUT:
     inp = _INPUT()
     inp.type = INPUT_MOUSE
@@ -374,6 +492,10 @@ class LocalExecutor:
     monitor_index: int = 0
     _virt: tuple[int, int, int, int] | None = field(default=None, init=False, repr=False)
     _capture_rect: tuple[int, int, int, int] | None = field(default=None, init=False, repr=False)
+    # Hold primitives leave the host in a pressed state that outlives the call;
+    # we track it so release_all() can always restore a clean keyboard/mouse.
+    _held_buttons: list[str] = field(default_factory=list, init=False, repr=False)
+    _held_keys: list[int] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _set_dpi_awareness()
@@ -439,7 +561,45 @@ class LocalExecutor:
             self.launch_app(action.app_name or "")
         elif t is ActionType.ACTIVATE_WINDOW:
             self.activate_window(action.app_name or "")
+        elif t is ActionType.MOUSE_DOWN:
+            self._button_hold(action.x, action.y, action.button or "left", press=True)
+        elif t is ActionType.MOUSE_UP:
+            self._button_hold(action.x, action.y, action.button or "left", press=False)
+        elif t is ActionType.KEY_DOWN:
+            self._key_hold(action.text or "", press=True)
+        elif t is ActionType.KEY_UP:
+            self._key_hold(action.text or "", press=False)
         return self.screenshot()
+
+    # ------------------------------------------------------------------
+    # Held state (hold primitives)
+    # ------------------------------------------------------------------
+
+    @property
+    def held(self) -> dict[str, list]:
+        """Buttons and virtual key codes currently held down by this executor."""
+        return {"buttons": list(self._held_buttons), "keys": list(self._held_keys)}
+
+    def release_all(self) -> dict[str, list]:
+        """Release everything this executor is still holding down.
+
+        A stranded ``mouse_down`` or a held modifier makes the whole desktop
+        unusable for the human at the keyboard, so every path that can press
+        must have a way back: the MCP server calls this at shutdown, and a
+        client can call it after an aborted drag.
+
+        Returns:
+            What was released (same shape as :attr:`held`); empty if nothing was.
+        """
+        released = self.held
+        # Iterate over copies: _button_hold mutates the held lists.
+        for button in reversed(released["buttons"]):
+            self._button_hold(None, None, button, press=False)
+        for vk in reversed(released["keys"]):
+            _send_input(_key_event(vk, KEYEVENTF_KEYUP))
+        self._held_buttons.clear()
+        self._held_keys.clear()
+        return released
 
     def screenshot(self) -> Observation:
         """Capture the virtual desktop and return PNG bytes as an Observation.
@@ -619,17 +779,81 @@ class LocalExecutor:
             arr = (_INPUT * n)(*events)
             ctypes.windll.user32.SendInput(n, arr, ctypes.sizeof(_INPUT))
 
-    def _key(self, combo: str) -> None:
-        """Press a key combination like ``ctrl+s`` or ``Return``."""
+    def _vks_for(self, combo: str) -> list[int]:
+        """Resolve ``ctrl+s`` / ``Return`` / ``a`` to a list of virtual key codes."""
         parts = [p.strip() for p in combo.replace("+", " ").split() if p.strip()]
         vks: list[int] = []
         for part in parts:
-            key_lower = part.lower()
-            vk = _VK_MAP.get(key_lower)
+            vk = _VK_MAP.get(part.lower())
             if vk is None:
                 # Single printable character
                 vk = ctypes.windll.user32.VkKeyScanW(ord(part[0])) & 0xFF
             vks.append(vk)
+        return vks
+
+    def _button_hold(
+        self,
+        nx: float | None,
+        ny: float | None,
+        button: str,
+        press: bool,
+    ) -> None:
+        """Press or release one mouse button, optionally moving there first.
+
+        Unlike :meth:`_click` this does not pair the press with a release: the
+        button stays down until a ``mouse_up`` (or :meth:`release_all`) arrives,
+        which is what a press-drag-release sequence across several actions needs.
+        """
+        events: list[_INPUT] = []
+        if nx is not None and ny is not None:
+            dx, dy = self._sendinput_coords(nx, ny)
+            move_flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+            events.append(_mouse_event(move_flags, dx, dy))
+        else:
+            dx = dy = 0
+
+        down_flag, up_flag = {
+            "left": (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+            "right": (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            "middle": (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        }[button]
+        flag = down_flag if press else up_flag
+        # ABSOLUTE|VIRTUALDESK only carries meaning together with a coordinate;
+        # without one we send a plain button event at the current cursor position.
+        if nx is not None and ny is not None:
+            flag |= MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        events.append(_mouse_event(flag, dx, dy))
+        _send_input(*events)
+
+        if press:
+            if button not in self._held_buttons:
+                self._held_buttons.append(button)
+        elif button in self._held_buttons:
+            self._held_buttons.remove(button)
+
+    def _key_hold(self, combo: str, press: bool) -> None:
+        """Press or release key(s) without the matching other half.
+
+        ``key_down`` on a combo presses its keys left-to-right; ``key_up``
+        releases right-to-left, mirroring how a human holds ``ctrl+shift``.
+        """
+        vks = self._vks_for(combo)
+        if not vks:
+            return
+        if press:
+            _send_input(*[_key_event(vk) for vk in vks])
+            for vk in vks:
+                if vk not in self._held_keys:
+                    self._held_keys.append(vk)
+        else:
+            _send_input(*[_key_event(vk, KEYEVENTF_KEYUP) for vk in reversed(vks)])
+            for vk in vks:
+                if vk in self._held_keys:
+                    self._held_keys.remove(vk)
+
+    def _key(self, combo: str) -> None:
+        """Press a key combination like ``ctrl+s`` or ``Return``."""
+        vks = self._vks_for(combo)
 
         # Press all keys down, then release in reverse
         down_events = [_key_event(vk) for vk in vks]

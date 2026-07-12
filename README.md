@@ -221,13 +221,25 @@ per action) and returns screenshots as MCP **image** blocks. Windows-only for re
 capture/input.
 
 ```bash
-pip install open-compute[mcp,local,uia]
+pip install open-compute[mcp,local,uia,wgc]
 open-compute-mcp          # stdio server (console script)
 ```
 
 **Tools:** `capture` · `do` (single or batch canonical actions) · `tree` ·
-`click_name` · `invoke` (UIA semantic targeting) · `watch_dir` · `push_status` ·
-`rec_replay`. Coordinates are normalized 0..1.
+`click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
+`get_screen_size` · `watch_dir` · `push_status` · `rec_replay`. Coordinates are
+normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
+client can name a window exactly instead of guessing a title substring.
+
+**Hardware-composited windows (`wgc` extra).** A GDI grab of a DirectX window —
+Roblox Studio, Blender, a GPU-accelerated browser — does not fail; it quietly
+returns an **all-black** rectangle. `capture(window=...)` therefore checks the
+frame and, when it comes back blank, re-grabs it through Windows.Graphics.Capture.
+Install `open-compute[wgc]` for that fallback; without it a black frame is still
+returned rather than failing the call. `OC_WGC_WINDOWS` (comma-separated title
+substrings) skips the GDI attempt outright for windows known to need WGC.
+Note that WGC only produces a frame when the window *redraws*: an idle or
+non-capturable window fails fast (bounded, a few seconds) instead of hanging.
 
 **Safety.** `OC_SAFETY_MODE` is an operator **ceiling** (`confirm` default ·
 `read_only` · `allow_all`); a per-call `mode` can only *tighten* it, never loosen it,

@@ -53,3 +53,12 @@ class MockExecutor:
 
     def activate_window(self, app_name: str) -> None:
         self.performed.append(Action(ActionType.ACTIVATE_WINDOW, app_name=app_name))
+
+    def release_all(self) -> dict[str, list]:
+        """Mirror LocalExecutor.release_all so callers can hold it uniformly.
+
+        The mock synthesizes no real input, so it holds nothing and there is
+        nothing to release; it reports the empty state rather than raising, so
+        the server's shutdown path works against any injected executor.
+        """
+        return {"buttons": [], "keys": []}
