@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -65,6 +66,49 @@ def _state_dir() -> pathlib.Path:
         d = pathlib.Path(__file__).resolve().parent.parent / "_state"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _write_text_atomic(path: pathlib.Path, text: str) -> None:
+    """Atomically replace *path* with *text*."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            if os.path.exists(tmp_name):
+                os.unlink(tmp_name)
+        except OSError:
+            pass
+
+
+def _trim_jsonl_tail(path: pathlib.Path, keep: int) -> None:
+    """Keep only the newest *keep* JSONL rows in *path*."""
+    if not path.exists():
+        return
+    if keep <= 0:
+        _write_text_atomic(path, "")
+        return
+
+    tail: list[str] = []
+    line_count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line_count += 1
+            tail.append(raw_line)
+            if len(tail) > keep:
+                tail.pop(0)
+
+    if line_count > keep:
+        _write_text_atomic(path, "".join(tail))
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +257,19 @@ class LearningManager:
     All state is persisted to ``_state/`` (gitignored, local).
 
     Args:
-        state_dir:    Override for the state directory path (used in tests).
-        max_lessons:  Maximum number of recent lessons loaded at startup.
+        state_dir:             Override for the state directory path (used in tests).
+        max_lessons:           Maximum number of recent lessons loaded at startup.
+        max_outcomes_history:  Maximum number of JSONL outcome rows kept on disk.
+        max_lessons_history:   Maximum number of JSONL lesson rows kept on disk.
+                               Defaults to ``max(max_lessons, 1000)``.
     """
 
     def __init__(
         self,
         state_dir: str | pathlib.Path | None = None,
         max_lessons: int = 100,
+        max_outcomes_history: int = 5000,
+        max_lessons_history: int | None = None,
     ) -> None:
         if state_dir is not None:
             self._state_dir = pathlib.Path(state_dir)
@@ -229,6 +278,10 @@ class LearningManager:
             self._state_dir = _state_dir()
 
         self._max_lessons = max_lessons
+        self._max_outcomes_history = max(0, int(max_outcomes_history))
+        if max_lessons_history is None:
+            max_lessons_history = max(max_lessons, 1000)
+        self._max_lessons_history = max(0, int(max_lessons_history))
 
         # In-memory weight table: key → BetaPrior
         self._weights: dict[str, BetaPrior] = {}
@@ -296,6 +349,7 @@ class LearningManager:
         try:
             with self._outcomes_path().open("a", encoding="utf-8") as f:
                 f.write(json.dumps(outcome.to_dict(), ensure_ascii=False) + "\n")
+            _trim_jsonl_tail(self._outcomes_path(), self._max_outcomes_history)
         except Exception:  # noqa: BLE001
             pass  # best-effort; in-memory update still happens
 
@@ -361,8 +415,9 @@ class LearningManager:
     def _save_weights(self) -> None:
         try:
             data = {k: v.to_dict() for k, v in self._weights.items()}
-            self._weights_path().write_text(
-                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            _write_text_atomic(
+                self._weights_path(),
+                json.dumps(data, ensure_ascii=False, indent=2),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -428,8 +483,9 @@ class LearningManager:
 
     def _save_profiles(self) -> None:
         try:
-            self._profiles_path().write_text(
-                json.dumps(self._profiles, ensure_ascii=False, indent=2), encoding="utf-8"
+            _write_text_atomic(
+                self._profiles_path(),
+                json.dumps(self._profiles, ensure_ascii=False, indent=2),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -469,6 +525,7 @@ class LearningManager:
         try:
             with self._lessons_path().open("a", encoding="utf-8") as f:
                 f.write(json.dumps(l.to_dict(), ensure_ascii=False) + "\n")
+            _trim_jsonl_tail(self._lessons_path(), self._max_lessons_history)
         except Exception:  # noqa: BLE001
             pass
 

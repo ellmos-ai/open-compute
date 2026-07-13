@@ -508,6 +508,36 @@ class TestWatchDirCLIParsing:
             "A's files leaked into B's --once diff (path-keying bug)"
         )
 
+    def test_once_preserves_existing_snapshot_keys(self, tmp_path: Path, monkeypatch) -> None:
+        """Updating one path-set must keep snapshots for other path-sets intact."""
+        import io
+        from open_compute.cli import cmd_watch_dir, _load_json_dict
+
+        session_dir = tmp_path / "session"
+        monkeypatch.setenv("OC_SESSION_DIR", str(session_dir))
+
+        existing_key = "C:/already|tracked"
+        existing_snapshot = {"C:/already/tracked.txt": 123.0}
+        session_dir.mkdir()
+        snap_file = session_dir / "dirwatch_snapshot.json"
+        snap_file.write_text(
+            json.dumps({existing_key: existing_snapshot}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        watched = tmp_path / "fresh"
+        watched.mkdir()
+        (watched / "new.txt").write_text("x")
+
+        with patch("sys.stdout", new_callable=io.StringIO):
+            cmd_watch_dir(["--once", str(watched)])
+
+        store = _load_json_dict(snap_file)
+        new_key = str(watched.resolve())
+        assert existing_key in store
+        assert store[existing_key] == existing_snapshot
+        assert new_key in store
+
 
 # ---------------------------------------------------------------------------
 # 8. Import without watchdog

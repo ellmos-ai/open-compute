@@ -96,6 +96,7 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
 import textwrap
 import time as _time
 
@@ -114,6 +115,85 @@ def _session_dir() -> pathlib.Path:
         d = pathlib.Path(__file__).resolve().parent.parent / "_session"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _session_lock_path(name: str) -> pathlib.Path:
+    """Return the lock-file path for a session-local state file."""
+    return _session_dir() / f"{name}.lock"
+
+
+def _acquire_lock(lock_path: pathlib.Path, timeout_s: float = 2.0) -> None:
+    """Create a simple cross-process lock file."""
+    deadline = _time.monotonic() + timeout_s
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            return
+        except FileExistsError:
+            if _time.monotonic() >= deadline:
+                raise TimeoutError(f"timeout while acquiring lock: {lock_path}")
+            _time.sleep(0.05)
+
+
+def _release_lock(lock_path: pathlib.Path) -> None:
+    """Release a lock created by :func:`_acquire_lock`."""
+    try:
+        lock_path.unlink()
+    except OSError:
+        pass
+
+
+def _write_text_atomic(path: pathlib.Path, text: str) -> None:
+    """Atomically replace *path* with *text*."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            if os.path.exists(tmp_name):
+                os.unlink(tmp_name)
+        except OSError:
+            pass
+
+
+def _load_json_dict(path: pathlib.Path) -> dict:
+    """Load a JSON object from *path*, falling back to an empty dict."""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _update_dirwatch_snapshot_store(
+    snap_file: pathlib.Path,
+    pathset_key: str,
+    snapshot: dict[str, float],
+) -> None:
+    """Merge one path-set snapshot into the shared store and write it atomically."""
+    lock_path = _session_lock_path("dirwatch_snapshot")
+    _acquire_lock(lock_path)
+    try:
+        store = _load_json_dict(snap_file)
+        store[pathset_key] = snapshot
+        _write_text_atomic(
+            snap_file,
+            json.dumps(store, ensure_ascii=False),
+        )
+    finally:
+        _release_lock(lock_path)
 
 
 def _next_session_path(label: str | None = None, suffix: str = ".png") -> pathlib.Path:
@@ -1341,8 +1421,6 @@ def cmd_watch_dir(args: list[str]) -> None:
         # Snapshot diff mode: load baseline from _session/dirwatch_snapshot.json.
         # Baselines are keyed by a canonical path-set string so that watching
         # different directories in separate ``--once`` calls never cross-contaminates.
-        import json as _json
-
         abs_paths = sorted(str(pathlib.Path(p).resolve()) for p in ns.paths)
         pathset_key = "|".join(abs_paths)  # e.g. "/tmp/a|/tmp/b"
 
@@ -1350,20 +1428,14 @@ def cmd_watch_dir(args: list[str]) -> None:
         snap_file = session_d / "dirwatch_snapshot.json"
 
         # Load the full store; find baseline for this specific path-set.
-        store: dict = {}
-        if snap_file.exists():
-            try:
-                store = _json.loads(snap_file.read_text(encoding="utf-8"))
-            except Exception:
-                store = {}
+        store = _load_json_dict(snap_file)
         baseline: dict | None = store.get(pathset_key)
 
         events, new_snap = feed.snapshot_diff(ns.paths, baseline)
 
         # Persist updated snapshot for this path-set (leave other keys intact).
         try:
-            store[pathset_key] = new_snap
-            snap_file.write_text(_json.dumps(store), encoding="utf-8")
+            _update_dirwatch_snapshot_store(snap_file, pathset_key, new_snap)
         except Exception:
             pass
 

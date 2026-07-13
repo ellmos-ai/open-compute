@@ -209,6 +209,17 @@ class TestLogOutcome:
         # alpha=3, beta=1 → 3/4 = 0.75
         assert abs(mgr2.success_rate("uia_windows", "word", "invoke") - 0.75) < 1e-9
 
+    def test_log_outcome_trims_jsonl_history(self, tmp_path):
+        from open_compute.learning import LearningManager
+        mgr = LearningManager(state_dir=tmp_path, max_outcomes_history=3)
+        for idx in range(5):
+            mgr.log_outcome("uia_windows", "word", f"invoke_{idx}", success=True)
+
+        lines = (tmp_path / "outcomes.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 3
+        records = [json.loads(line) for line in lines]
+        assert [record["action_type"] for record in records] == ["invoke_2", "invoke_3", "invoke_4"]
+
 
 # ---------------------------------------------------------------------------
 # 5. LearningManager.success_rate
@@ -376,6 +387,18 @@ class TestAddLesson:
         mgr2 = LearningManager(state_dir=tmp_path)
         assert len(mgr2.lessons) == 1
         assert mgr2.lessons[0].lesson == "Persistent lesson"
+
+    def test_add_lesson_trims_jsonl_history(self, tmp_path):
+        from open_compute.learning import LearningManager
+        mgr = LearningManager(state_dir=tmp_path, max_lessons_history=2)
+        mgr.add_lesson("L1")
+        mgr.add_lesson("L2")
+        mgr.add_lesson("L3")
+
+        lines = (tmp_path / "lessons.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+        records = [json.loads(line) for line in lines]
+        assert [record["lesson"] for record in records] == ["L2", "L3"]
 
 
 # ---------------------------------------------------------------------------

@@ -37,12 +37,14 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
       erste Aktion das Gate passiert hat. Beide: `tests/test_safety_gating_fixes.py`.
 - [x] Test-Collection brach ohne optionales clirec-Paket (harter Import nach
       der Extraktion) → importorskip + Sibling-Checkout-Pfad; mss-Test ebenso.
-- [ ] **(Folge, mittel)** `_state/outcomes.jsonl` + `lessons.jsonl` wachsen
-      unbegrenzt (kein Pendant zu `_rotate_session`) — bei 24h-Betrieb
-      Rotation/Kompaktierung ergänzen.
-- [ ] **(Folge, mittel)** `oc watch-dir --once`: nicht-atomarer
-      Read-Modify-Write auf geteilte `_session/dirwatch_snapshot.json`
-      (lost update bei parallelen Instanzen) — Temp-Datei + `os.replace`.
+- [x] **(Folge, mittel)** `_state/outcomes.jsonl` + `lessons.jsonl` wachsen
+      nicht mehr unbegrenzt. Erledigt 2026-07-13: beide JSONL-Logs werden nach
+      dem Append auf eine begrenzte Tail-Historie gekappt; `weights.json` und
+      `profiles.json` schreiben dabei ebenfalls atomar.
+- [x] **(Folge, mittel)** `oc watch-dir --once`: Snapshot-Store für
+      `_session/dirwatch_snapshot.json` schreibt jetzt gelockt und atomar.
+      Erledigt 2026-07-13: bestehende Path-Set-Schlüssel bleiben erhalten,
+      Snapshot-Datei wird per Temp-Datei + `os.replace` aktualisiert.
 - [ ] **(Folge, niedrig)** Deny-Liste kennt nur ActionType — keine
       Ziel-String-Regeln (z. B. `TYPE`-Inhalte, `LAUNCH_APP`-Namen).
 

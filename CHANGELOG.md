@@ -29,6 +29,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`LearningManager` no longer lets `_state/outcomes.jsonl` and
+  `_state/lessons.jsonl` grow without bound.** Both logs are now trimmed to a
+  bounded tail after each append, so long-lived 24h sessions keep warmstart
+  history without accumulating an ever-growing JSONL file. The related
+  `weights.json` and `profiles.json` writes now also go through the same
+  atomic temp-file replacement path.
+- **`oc watch-dir --once` now updates `_session/dirwatch_snapshot.json` with a
+  lock file and atomic replace.** Snapshot updates for one watched path-set no
+  longer risk clobbering unrelated stored baselines through a direct
+  read-modify-write writeback, and the on-disk JSON store is never rewritten in
+  place.
+
 - **`capture(window=...)` returned an all-black image for hardware-composited
   windows** (Roblox Studio, Blender, GPU-accelerated browsers). A GDI region grab
   of such a window does not fail — it silently yields a black rectangle, so
