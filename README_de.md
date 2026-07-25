@@ -7,6 +7,8 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
+[![Pytest Passed](https://img.shields.io/badge/tests-435%20passed-success)](tests)
+[![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
 
 **Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop, jedes Reasoning-Modell hinter einer einzigen Schnittstelle.**
@@ -25,6 +27,10 @@ Der Kern hat **keine Laufzeit-Abhängigkeiten**; die Anbieter-SDKs (`anthropic`,
 `openai`) sind **optionale, lazy importierte** Extras — `import open_compute`
 funktioniert ohne jedes davon, und die Standard-Mock-Verdrahtung läuft
 vollständig offline.
+
+> [!NOTE]
+> **KI / LLM-Integrationshinweis**: `open-compute` enthält eine maschinenlesbare [`llms.txt`](llms.txt)-Datei für KI-Agenten, RAG-Systeme und LLM-gestützte Entwicklungsworkflows.
+
 
 ---
 

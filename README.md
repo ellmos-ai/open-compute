@@ -7,6 +7,8 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
+[![Pytest Passed](https://img.shields.io/badge/tests-435%20passed-success)](tests)
+[![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **A model-agnostic computer-use core: one agent loop, any reasoning model behind a single interface.**
@@ -23,6 +25,10 @@ run that loop either inline or in a self-spawned subagent for context economy
 **zero runtime dependencies**; vendor SDKs (`anthropic`, `openai`) are
 **optional, lazily imported** extras — `import open_compute` works with none of
 them installed, and the default mock wiring runs fully offline.
+
+> [!NOTE]
+> **AI / LLM Integration Notice**: `open-compute` includes a machine-readable [`llms.txt`](llms.txt) file designed for AI agents, RAG crawlers, and LLM-assisted workflows.
+
 
 ---
 

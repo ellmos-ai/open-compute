@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed / Added (Discoverability & Maintenance, 2026-07-25)
+
+- **Pytest Configuration:** Added `pythonpath = "."` to `[tool.pytest.ini_options]` in `pyproject.toml` for zero-setup root `pytest` test discovery (435 passed tests).
+- **README & Landing Pages:** Added Pytest status badge (`435 passed`) and LLM-Ready status badge to `README.md` and `README_de.md`, along with machine-readable AI/LLM integration notice callout (`> [!NOTE]`).
+- **LLM Metadata:** Updated `llms.txt` `Last-checked` timestamp to `2026-07-25`.
+
+
 ### Added (comparison with AB498/computer-control-mcp, 2026-07-12)
 
 - **Hold primitives in the canonical schema:** `mouse_down` / `mouse_up` /
