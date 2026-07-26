@@ -107,6 +107,36 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
 Ziel: **weniger Modell-Mikromanagement**, kein manuelles Capture/Schätzen pro Schritt,
 keine losen Screenshot-Dateien. (Live-Test Modus A funktionierte, war aber „schleppend".)
 
+### User-Auftrag 2026-07-25 — „läuft noch nicht flüssig" (dieser Strang ist wieder aktiv)
+
+Lukas hat den Strang erneut aufgemacht: open-compute soll **schneller reagieren**, **schneller
+zeigen wo ein Problem sitzt**, und **Teilprozesse modulintern automatisieren**. Das ist inhaltlich
+derselbe Befund wie 2026-06-20 („schleppend") — deshalb hier fortgeschrieben statt neu aufgemacht.
+**Vor jedem Umbau messen, nicht raten:** erst belegen, wohin die Zeit tatsächlich geht
+(Prozessstart, Screenshot-Erzeugung/-Transport, UIA-Baumaufbau, MCP-Overhead), dann optimieren.
+
+1. **Schnellere Reaktion** → höchste Priorität hat der bereits erfasste Punkt
+   **„Prozess-Persistenz"** weiter unten (Python-Neustart pro `oc do`), danach der
+   **„Live-Bild-Modus `oc watch`"**. Beide sind offen und adressieren genau diese Klage.
+   Zusätzlich launcher-seitig: der npm-Launcher zieht den Server per `uvx` bei jedem Start von
+   GitHub (Kaltstart) — erfasst in `.MCP/TODO.md`, hier nicht duplizieren.
+2. **Schnellere Problemlokalisierung** → NEU, bisher nirgends erfasst (siehe eigener Punkt unten).
+3. **Automatisierung von Teilprozessen im Modul** → deckt sich mit **„Semantisches Zielen"** und
+   der Makro-/Batch-Linie; offen ist die Bündelung wiederkehrender Schrittfolgen (siehe unten).
+
+- [ ] **NEU (aus Auftrag 2026-07-25): Timing- und Diagnose-Feld pro Aufruf.** Heute ist bei einer
+  zähen oder fehlschlagenden Aktion nicht schnell erkennbar, WO es klemmt. Jeder Tool-/CLI-Aufruf
+  soll optional Phasen-Timings und einen sprechenden Fehlerpfad zurückgeben, sodass
+  „Server-/Prozessstart langsam" vs. „Capture langsam" vs. „UIA-Baum langsam" vs. „Element nicht
+  gefunden" vs. „Fenster nicht im Vordergrund" vs. „Safety-Gate hat blockiert" ohne Nachfragen
+  unterscheidbar sind. Schaltbar (Env/Flag), damit der Normalbetrieb schlank bleibt.
+  Doppelnutzen: dieselben Zahlen sind die Messgrundlage für Punkt 1.
+- [ ] **NEU (aus Auftrag 2026-07-25): wiederkehrende Schrittfolgen modulintern bündeln.** Was der
+  Client heute Aufruf für Aufruf steuern muss, als ein Modul-Schritt anbieten — Kandidaten:
+  `list_windows` → Fenster fokussieren → `tree` → Ziel treffen; „warte bis Element existiert";
+  „Retry mit erneutem Rescan des Baums". Senkt Roundtrips zusätzlich zum Batch-Modus (v0.3.0),
+  der nur Aktionen bündelt, aber keine Wahrnehmungs-/Warte-Schritte.
+
 - [x] **Screenshots immer in Modul-`_session/`** (gitignored), nie lose im Desktop/CWD.
   Capture-Default-Out = `_session/` mit Zeitstempel/Sequenznummer; alte rotieren/aufräumen.
   → Implementiert v0.3.0: `_session_dir()`, `_next_session_path()`, `_rotate_session()`; `OC_SESSION_DIR`/`OC_SESSION_KEEP`.
