@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-07-25
+## Last-checked: 2026-07-26
 
 ## What it does
 
@@ -67,9 +67,9 @@ uses.
 - mock   -- no SDK, offline, deterministic. Default.
 - claude -- Anthropic Messages API + `computer` tool `computer_20251124`,
             beta header `computer-use-2025-11-24`, global pixel coordinates,
-            host executes. Needs `pip install open-compute[claude]`.
+            host executes. Needs the `[claude]` extra (see Install).
 - openai -- OpenAI computer-use; model `computer-use-preview` (configurable,
-            [UNSICHER]). Needs `pip install open-compute[openai]`.
+            [UNSICHER]). Needs the `[openai]` extra (see Install).
 - (keyless) -- NOT a backend row. Mode A: the host model reasons itself, inline
             or in a self-spawned subagent (context economy, same model). Usage
             pattern, see ARCHITECTURE.md "Host-Modell-Kontext: Inline (a) vs.
@@ -80,10 +80,14 @@ uses.
 
 ## Install
 
+NOT ON PYPI. The name `open-compute` on PyPI belongs to an unrelated project;
+`pip install open-compute` therefore installs someone else's package. Install
+from the repository instead:
+
 ```
-pip install open-compute              # core only, zero runtime deps
-pip install open-compute[claude]      # + anthropic SDK
-pip install open-compute[openai]      # + openai SDK
+pip install "git+https://github.com/ellmos-ai/open-compute.git"                        # core only, zero runtime deps
+pip install "open-compute[claude] @ git+https://github.com/ellmos-ai/open-compute.git" # + anthropic SDK
+pip install "open-compute[openai] @ git+https://github.com/ellmos-ai/open-compute.git" # + openai SDK
 ```
 
 ## Quick start

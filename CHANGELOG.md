@@ -9,10 +9,28 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed (After-Care-Pflegerunde, 2026-07-26)
+
+- **Installationsanleitung zeigte auf ein fremdes Paket.** `pip install open-compute` installiert
+  nicht dieses Projekt: Der Name ist auf PyPI von einem unabhängigen Projekt belegt
+  ("multi-agent systems for healthtech", 0.1.9), und open-compute hat dort nie veröffentlicht.
+  README (EN + DE), `llms.txt` und `SKILL.md` weisen jetzt auf
+  `git+https://github.com/ellmos-ai/open-compute.git` und benennen die Namenskollision
+  ausdrücklich. Die Extras-Liste ist dabei von einem Codeblock in eine Tabelle gewandert.
+- **Test-Zahl nachgezählt statt fortgeschrieben:** Badge und Fließtext sagten `434 passed`,
+  der Lauf ergibt `434 passed, 1 skipped`. In README (EN + DE), `CHANGELOG.md` und der
+  STATUS-Tabelle in `TODO.md` (dort stand noch `360 pass`) korrigiert.
+- **Verweise auf `RELEASE_GATE.md` entfernt.** Die Datei ist gitignored; drei veröffentlichte
+  Dateien zeigten auf sie und liefen für Leser ins Leere.
+- **Interne Angaben entfernt:** absoluter lokaler Installationspfad in `LIVE_SMOKE_RUNBOOK.md`,
+  Verweise auf interne Ablagen und ein Personenname in `TODO.md`.
+- **Modul-Manifest:** `visibility` von `public-candidate` auf `public` — das Repository ist
+  seit Längerem öffentlich.
+
 ### Changed / Added (Discoverability & Maintenance, 2026-07-25)
 
-- **Pytest Configuration:** Added `pythonpath = "."` to `[tool.pytest.ini_options]` in `pyproject.toml` for zero-setup root `pytest` test discovery (435 passed tests).
-- **README & Landing Pages:** Added Pytest status badge (`435 passed`) and LLM-Ready status badge to `README.md` and `README_de.md`, along with machine-readable AI/LLM integration notice callout (`> [!NOTE]`).
+- **Pytest Configuration:** Added `pythonpath = "."` to `[tool.pytest.ini_options]` in `pyproject.toml` for zero-setup root `pytest` test discovery (434 passed tests).
+- **README & Landing Pages:** Added Pytest status badge (`434 passed`) and LLM-Ready status badge to `README.md` and `README_de.md`, along with machine-readable AI/LLM integration notice callout (`> [!NOTE]`).
 - **LLM Metadata:** Updated `llms.txt` `Last-checked` timestamp to `2026-07-25`.
 
 

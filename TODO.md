@@ -1,5 +1,26 @@
 # TODO
 
+## Befunde der Pflegerunde 2026-07-26 (surface-after-care)
+
+- [ ] **Distributionsname klären — `open-compute` ist auf PyPI fremdbelegt.** Unter
+  https://pypi.org/project/open-compute/ liegt seit Version 0.1.9 ein *anderes* Projekt
+  („Open Compute — multi-agent systems for healthtech"). Bis 2026-07-26 wiesen README (EN/DE),
+  `llms.txt` und `SKILL.md` mit `pip install open-compute` also auf ein fremdes Paket. Die
+  Anleitungen zeigen jetzt auf `git+https://github.com/ellmos-ai/open-compute.git` — das ist
+  die ehrliche Zwischenlösung, aber keine Entscheidung. Zu entscheiden: entweder einen freien
+  Distributionsnamen wählen (z. B. `open-compute-core`, `ellmos-open-compute`) und
+  veröffentlichen, oder bewusst git-only bleiben und das im README als Dauerzustand benennen.
+  Der Import-Name `open_compute` und die Console-Scripts `oc` / `open-compute-mcp` sind davon
+  unberührt.
+- [ ] **`mss.mss()` ist deprecated.** Der Testlauf meldet
+  `DeprecationWarning: mss.mss is deprecated ... use mss.MSS instead`
+  (`open_compute/drivers/local.py:417`). Vor dem Umstellen prüfen, ab welcher mss-Version
+  `mss.MSS` existiert, und `mss>=…` in `pyproject.toml` entsprechend anheben — sonst bricht
+  die untere Grenze `mss>=9.0`.
+- [ ] **`SKILL.md` trägt Version 0.5.0, das Paket steht auf 0.6.0.** Bewusst nicht angefasst,
+  weil unklar ist, ob die Skill-Version eigenständig zählt. Einmal festlegen: entweder mit der
+  Paketversion mitziehen oder als eigenständige Skill-Version kennzeichnen.
+
 ## Vergleich mit AB498/computer-control-mcp (2026-07-12)
 
 Fremdserver (153 Sterne, PyAutoGUI + RapidOCR) gegen unseren Kern verglichen.
@@ -52,10 +73,11 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
 
 | Category | Status | Notes |
 |---|---|---|
-| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 360 pass, 1 skipped (after the 2026-06-27 OpenAI-backend verification + 3 new tests); GitHub Actions now runs the mock-only suite on push/PR. |
+| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 434 pass, 1 skipped (re-counted 2026-07-26); GitHub Actions runs the mock-only suite on push/PR. |
 | Import check | PASS | `python -c "import open_compute; import open_compute.feed_manager; import open_compute.learning"` — OK, zero extras. |
 | Documentation | READY | README (EN + DE), llms.txt, CHANGELOG, SECURITY, ARCHITECTURE present. |
-| Integration | DEVELOPMENT | Fits `.MODULES` as a standalone module. Contains marked stubs/interfaces (see below). |
+| Integration | DEVELOPMENT | Usable as a standalone module. Contains marked stubs/interfaces (see below). |
+| Distribution | OPEN | Not published on PyPI. The name `open-compute` there belongs to an unrelated project — see the open point below. |
 
 ## Fully implemented + tested (v0.2.0)
 
@@ -82,7 +104,7 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
   `tool_type="computer_use_preview"`), screenshot output now sends
   `detail: "original"`. Added injected-client tests (request shape + click
   parsing + legacy path). **Live end-to-end smoke with a real key remains
-  deferred to the user** (see RELEASE_GATE.md / STATUS).
+  deferred to the user** (see `LIVE_SMOKE_RUNBOOK.md` / STATUS).
 - [ ] **Browser driver** -- interface only. Implement a Playwright/CDP driver.
 - [ ] **Set-of-Marks perception** -- stub. Wire in OmniParser V2 (note: icon_detect
   weight is AGPL; use as external service or choose pywinauto for accessibility).
@@ -109,7 +131,7 @@ keine losen Screenshot-Dateien. (Live-Test Modus A funktionierte, war aber „sc
 
 ### User-Auftrag 2026-07-25 — „läuft noch nicht flüssig" (dieser Strang ist wieder aktiv)
 
-Lukas hat den Strang erneut aufgemacht: open-compute soll **schneller reagieren**, **schneller
+Der Strang ist erneut aufgemacht worden: open-compute soll **schneller reagieren**, **schneller
 zeigen wo ein Problem sitzt**, und **Teilprozesse modulintern automatisieren**. Das ist inhaltlich
 derselbe Befund wie 2026-06-20 („schleppend") — deshalb hier fortgeschrieben statt neu aufgemacht.
 **Vor jedem Umbau messen, nicht raten:** erst belegen, wohin die Zeit tatsächlich geht
@@ -119,7 +141,7 @@ derselbe Befund wie 2026-06-20 („schleppend") — deshalb hier fortgeschrieben
    **„Prozess-Persistenz"** weiter unten (Python-Neustart pro `oc do`), danach der
    **„Live-Bild-Modus `oc watch`"**. Beide sind offen und adressieren genau diese Klage.
    Zusätzlich launcher-seitig: der npm-Launcher zieht den Server per `uvx` bei jedem Start von
-   GitHub (Kaltstart) — erfasst in `.MCP/TODO.md`, hier nicht duplizieren.
+   GitHub (Kaltstart) — das gehört in den Launcher (`ellmos-ai/open-compute-mcp`), nicht hierher.
 2. **Schnellere Problemlokalisierung** → NEU, bisher nirgends erfasst (siehe eigener Punkt unten).
 3. **Automatisierung von Teilprozessen im Modul** → deckt sich mit **„Semantisches Zielen"** und
    der Makro-/Batch-Linie; offen ist die Bündelung wiederkehrender Schrittfolgen (siehe unten).
@@ -158,8 +180,7 @@ derselbe Befund wie 2026-06-20 („schleppend") — deshalb hier fortgeschrieben
   „klick auf Einfügen" → System schlägt „Einfügen" in der Karte nach, führt die Maus zur
   Box-Mitte und klickt. Modell muss KEINE Pixel mehr schätzen.
   - Mögliche OCR-Quellen (Lizenz prüfen): Tesseract via pytesseract (Apache-2.0),
-    EasyOCR (Apache-2.0), Windows.Media.Ocr via winrt; ggf. Reuse aus
-    `.SOFTWARE/ENTERTAINMENT/DEV_USBPodcastStudio/ocr/` (MIT).
+    EasyOCR (Apache-2.0), Windows.Media.Ocr via winrt.
   - Output idealerweise als annotierte Karte: `{text, box, center_norm}` je Treffer;
     Mehrdeutigkeit (mehrfach gleicher Text) → Disambiguierung über Region/Index.
   - Kombinierbar mit Accessibility (UIA-Elementnamen) als robusterem Zweitkanal.

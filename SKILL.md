@@ -3,7 +3,7 @@
 **Skill-ID:** `open-compute`
 **Version:** 0.5.0
 **Modus:** A — OHNE API-Key, Session-Modell als Reasoner, manuelles Stepping
-**Voraussetzungen:** `pip install open-compute[local]` (mss muss installiert sein); Windows-Host; `oc` CLI aufrufbar via `python -m open_compute.cli`
+**Voraussetzungen:** Extra `[local]` installiert (mss; siehe Installation unten — das Paket kommt aus dem Git-Repo, nicht von PyPI); Windows-Host; `oc` CLI aufrufbar via `python -m open_compute.cli`
 
 ---
 
@@ -202,7 +202,7 @@ python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.3}' \
   --ensure-foreground "Word" --yes
 python -m open_compute.cli run "Ziel" --backend claude --ensure-foreground "Word"
 
-# UIA-Feed: Elementbaum (v0.4, Windows — pip install open-compute[uia])
+# UIA-Feed: Elementbaum (v0.4, Windows — Extra [uia])
 python -m open_compute.cli tree
 python -m open_compute.cli tree --window "Datei-Explorer"   # nach Fenstertitel filtern
 python -m open_compute.cli tree --max 50 --depth 8          # Element-/Tiefenlimit
@@ -274,7 +274,7 @@ oc watch-dir /tmp/downloads --once
 
 `oc run "<ziel>" --backend claude [--max-steps N] [--model ID] [--ensure-foreground SUBSTR]`
 
-- Braucht `ANTHROPIC_API_KEY` in der Umgebung + `pip install open-compute[claude]`.
+- Braucht `ANTHROPIC_API_KEY` in der Umgebung + das Extra `[claude]` (siehe Installation).
 - Loop läuft vollautonomen via `AgentLoop` + `ClaudeComputerBackend` + `LocalExecutor`.
 - OpenAI-Backend (`--backend openai`) ist als `[UNSICHER]` markiert — Request-Shape nicht vollständig verifiziert.
 - `--ensure-foreground SUBSTR`: einmaliger Pre-Loop-Check.
@@ -283,24 +283,29 @@ oc watch-dir /tmp/downloads --once
 
 ## Installation
 
+**Nicht auf PyPI.** Der Name `open-compute` ist dort von einem fremden Projekt belegt — immer aus dem Repository installieren:
+
 ```bash
 # Kern (zero deps)
-pip install open-compute
+pip install "git+https://github.com/ellmos-ai/open-compute.git"
 
 # Mit lokalem Executor (Screenshot + Maus/Tastatur)
-pip install open-compute[local]
+pip install "open-compute[local] @ git+https://github.com/ellmos-ai/open-compute.git"
 
 # Mit Pillow (Before|After Composite-Stitching + Annotierter After-Shot)
-pip install open-compute[compose]
+pip install "open-compute[compose] @ git+https://github.com/ellmos-ai/open-compute.git"
 
 # Mit watchdog (native FS-Events für Directory-Watch-Feed)
-pip install open-compute[watch]
+pip install "open-compute[watch] @ git+https://github.com/ellmos-ai/open-compute.git"
 
 # Mit Claude-Backend
-pip install open-compute[local,claude]
+pip install "open-compute[local,claude] @ git+https://github.com/ellmos-ai/open-compute.git"
 
 # Alles
-pip install open-compute[all]
+pip install "open-compute[all] @ git+https://github.com/ellmos-ai/open-compute.git"
+
+# Aus einem Klon heraus
+pip install -e ".[local]"
 ```
 
 ---

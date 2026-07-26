@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-435%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-434%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -92,20 +92,35 @@ you write the loop once and swap the reasoning model freely behind one
 
 ## Install
 
+> [!IMPORTANT]
+> **Not on PyPI — install from Git.** This project has no PyPI release yet. The
+> name `open-compute` on PyPI is taken by an **unrelated** project ("multi-agent
+> systems for healthtech"), so a plain `pip install open-compute` installs
+> someone else's package. Always install from this repository:
+
 ```bash
-pip install open-compute               # core only, zero runtime deps
-pip install open-compute[claude]       # + anthropic SDK
-pip install open-compute[openai]       # + openai SDK
-pip install open-compute[local]        # + mss (real Windows screenshots + input)
-pip install open-compute[wgc]          # + WGC fallback for DirectX surfaces (pulls numpy/OpenCV)
-pip install open-compute[compose]      # + Pillow (Before|After composite + annotated shots)
-pip install open-compute[watch]        # + watchdog (native FS events for directory-watch feed)
-pip install open-compute[clirec]       # + external clirec package for oc rec workflows
-pip install open-compute[record]       # + clirec[record] capture backend compatibility
-pip install open-compute[mcp]          # + mcp SDK — MCP server (console script: open-compute-mcp)
-pip install open-compute[local,wgc,claude] # local executor + WGC fallback + Claude backend
-pip install open-compute[all]          # + anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec, mcp
+pip install "git+https://github.com/ellmos-ai/open-compute.git"                        # core only, zero runtime deps
+pip install "open-compute[claude] @ git+https://github.com/ellmos-ai/open-compute.git" # + anthropic SDK
 ```
+
+The same `extra @ git+…` form works for every extra below:
+
+| Extra | Adds |
+|---|---|
+| `claude` | anthropic SDK |
+| `openai` | openai SDK |
+| `local` | mss — real Windows screenshots + input |
+| `wgc` | WGC fallback for DirectX surfaces (pulls numpy/OpenCV) |
+| `compose` | Pillow — Before\|After composite + annotated shots |
+| `watch` | watchdog — native FS events for the directory-watch feed |
+| `clirec` | external clirec package for `oc rec` workflows |
+| `record` | clirec[record] capture backend compatibility |
+| `mcp` | mcp SDK — MCP server (console script: `open-compute-mcp`) |
+| `dev` | pytest |
+| `all` | anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec, mcp |
+
+Extras combine as usual, e.g. `open-compute[local,wgc,claude]`. Working from a
+clone instead? `pip install -e ".[local,claude]"` from the repository root.
 
 Until `clirec` has a package release, install it directly when using `oc rec`:
 
@@ -126,7 +141,7 @@ model sees the PNG via the Read tool and decides the next action:
 
 ```bash
 # 1. Install the local extra (Windows only; provides real screenshots + input)
-pip install open-compute[local]
+pip install "open-compute[local] @ git+https://github.com/ellmos-ai/open-compute.git"
 
 # 2. Capture a screenshot — saved automatically to _session/ (never loose on Desktop)
 oc capture
@@ -227,7 +242,7 @@ per action) and returns screenshots as MCP **image** blocks. Windows-only for re
 capture/input.
 
 ```bash
-pip install open-compute[mcp,local,uia,wgc]
+pip install "open-compute[mcp,local,uia,wgc] @ git+https://github.com/ellmos-ai/open-compute.git"
 open-compute-mcp          # stdio server (console script)
 ```
 
@@ -460,8 +475,8 @@ See `SECURITY.md`.
 python -X utf8 -m pytest -q
 ```
 
-Tests are mock-only and require no SDK. `pip install open-compute[dev]` for
-pytest.
+Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
+installs pytest. Current state: **434 passed, 1 skipped**.
 
 ---
 
