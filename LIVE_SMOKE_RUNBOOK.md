@@ -1,20 +1,19 @@
 # open-compute — Live-Smoke Runbook (vom Nutzer auszuführen)
 
-> Stand 2026-06-27. Der autonome Teil ist fertig: Mock-Suite **360 grün (+1 skip)**, das
+> Stand 2026-07-26. Der autonome Teil ist fertig: Mock-Suite **434 grün (+1 skip)**, das
 > OpenAI-Backend ist gegen die aktuellen Docs verifiziert (Modell `gpt-5.5`, Tool-Type `computer`),
-> Claude-Backend per injected-client getestet. **Was hier offen bleibt, braucht echte API-Keys +
-> dein Auge** — daher dieses Runbook statt eines automatisierten Laufs. Nach erfolgreichem Lauf:
-> Haken in `RELEASE_GATE.md` setzen.
+> Claude-Backend per injected-client getestet. **Was hier offen bleibt, braucht echte API-Keys und
+> ein menschliches Auge** — daher dieses Runbook statt eines automatisierten Laufs.
 
 ## 0. Voraussetzungen
 
 - Windows 11 (LocalExecutor ist Windows-verifiziert), Python ≥ 3.10.
 - Isolierte/unkritische Sitzung (Computer-Use steuert echte Maus/Tastatur). Idealerweise eine VM
   oder ein leerer Desktop ohne sensible Fenster.
-- Installation mit dem passenden Extra:
+- Installation mit dem passenden Extra, aus dem Wurzelverzeichnis dieses Checkouts:
   ```powershell
-  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\.TOOLS\open-compute[local,claude]"   # Claude
-  pip install -e "C:\Users\User\OneDrive\.TOPICS\.AI\.MODULES\.TOOLS\open-compute[local,openai]"   # OpenAI
+  pip install -e ".[local,claude]"   # Claude
+  pip install -e ".[local,openai]"   # OpenAI
   ```
 
 ## 1. Keyless-Smoke zuerst (kein Key, bestätigt die Mechanik)
@@ -55,7 +54,7 @@ Erwartet: gleiche Schleife wie Claude. Falls ein 400/Modell-Fehler kommt: prüfe
 - [ ] Claude end-to-end ok
 - [ ] OpenAI end-to-end ok (oder Modellfreigabe-Status notiert)
 - [ ] Keine verwaisten Prozesse, Safety-Gate hat vor riskanten Aktionen gefragt
-- [ ] Ergebnis in `RELEASE_GATE.md` / `TODO.md` (STATUS) eingetragen → dann ist open-compute „fertig"
+- [ ] Ergebnis in `TODO.md` (STATUS) eingetragen → dann ist open-compute „fertig"
 
 > Ohne diesen vom Nutzer ausgeführten Lauf bleibt open-compute beim Stand „autonom fertig, Live-Verify
 > ausstehend" — das ist die bewusste, dokumentierte Grenze, nicht eine offene Baustelle im Code.

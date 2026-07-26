@@ -5,7 +5,7 @@
   "category": "tools",
   "kind": "tool",
   "status": "development",
-  "visibility": "public-candidate",
+  "visibility": "public",
   "provides": [
     "tool.computer-use",
     "runtime.perception-action"

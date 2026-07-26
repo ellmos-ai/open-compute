@@ -12,7 +12,7 @@ model and ``computer_use_preview`` tool type (which advertised display
 dimensions) are legacy. Defaults below target the current surface; both ``model``
 and ``tool_type`` are constructor-overridable, and the legacy shape is still
 emitted when ``tool_type="computer_use_preview"``. Live end-to-end validation
-against a real key is deferred (see RELEASE_GATE.md).
+against a real key is deferred (see LIVE_SMOKE_RUNBOOK.md).
 
 The ``openai`` SDK is imported **lazily** inside :meth:`__init__`. Install it via
 the optional extra: ``pip install open-compute[openai]``.
