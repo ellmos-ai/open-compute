@@ -47,6 +47,9 @@ _archive/
 # Multi-Agent Lock-System (lokal, nie committen)
 LOCK*.txt
 
+# Pflegelauf-Protokolle (Pipeline-Material, kein Repo-Inhalt)
+_after-care/
+
 # SDD-Prozess-Artefakte (lokal)
 .superpowers/
 
