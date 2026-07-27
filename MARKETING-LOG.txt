@@ -1,0 +1,15 @@
+# MARKETING-LOG.txt — ellmos-ai/open-compute
+
+## 2026-07-27 — Discoverability & Marketing Audit
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` wurde gewählt, da es laut `CHECK-REG.txt` zuvor noch nie im Pfad B (Discoverability & Marketing Audit) geprüft wurde (`NEVER`), 100% sauberer Git-Zustand auf Branch `master` vorlag und der 24h-Cooldown-Check bestanden wurde (letzter Remote-Push/Commit `f6fc79c` am 2026-07-26T06:24:15Z vor >27.3h).
+- **Status & Design**: Model-agnostic computer-use core with 435 passing unit tests.
+- **Automatisch umgesetzt**:
+  1. `llms.txt`: Last-checked Datum auf `2026-07-27` aktualisiert.
+  2. `README.md` & `README_de.md`: Pytest Test-Badge auf `435 passed` aktualisiert, Ecosystem Badge (`Ecosystem: ELLMOS / open-bricks`) & Hygiene Badge (`Hygiene: 2026-07-27`) ergänzt.
+  3. `CHANGELOG.md`: Release-Eintrag für Discoverability & Marketing Pass unter `[Unreleased]` ergänzt.
+
+- **Nicht automatisch abgeschlossen (Empfehlungen für manuelles Marketing & Community Outreach)**:
+  1. **PyPI Package Renaming / Disambiguation**: Da der Name `open-compute` auf PyPI von einem unbezogenen Projekt belegt ist, sollte mittelfristig ein Paketname wie `ellmos-open-compute` oder `open-compute-core` auf PyPI registriert werden, um PyPI-Installationen ohne `git+https` Syntax zu ermöglichen.
+  2. **Computer-Use Video / Animated GIF Demo**: Erstellung eines animated Screencasts (GIF/MP4) der Mock & Claude computer-use backend action execution (Normalized Coordinates, Action Schema Mapper & Safety Policy Gate), um die Visuelle Präsenz auf GitHub & Social Media zu steigern.
+  3. **AI Agent Framework Directories Submissions**: Einreichung von `open-compute` in KI-Agenten-Verzeichnissen (z. B. Glama, Smithery, Awesome-AI-Agents, LobeHub), um die Reichweite des modellunabhängigen Computer-Use Runtimes zu maximieren.

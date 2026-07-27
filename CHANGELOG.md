@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed / Added (Discoverability & Marketing Pass, 2026-07-27)
+
+- **Test Suite Alignment:** Updated test badges and `llms.txt` index status to reflect 435 passing tests (100% green).
+- **README & Landing Pages:** Added Ecosystem badge (`Ecosystem: ELLMOS / open-bricks`) and Hygiene verification badge (`Hygiene: 2026-07-27`) to `README.md` and `README_de.md`.
+- **LLM Metadata:** Updated `llms.txt` `Last-checked` timestamp to `2026-07-27`.
+
 ### Fixed (After-Care-Pflegerunde, 2026-07-26)
 
 - **Installationsanleitung zeigte auf ein fremdes Paket.** `pip install open-compute` installiert
