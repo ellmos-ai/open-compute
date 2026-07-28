@@ -417,7 +417,7 @@ def get_screen_size() -> dict[str, Any]:
         import mss
     except ImportError:
         return out
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         # monitors[0] is the virtual desktop; 1..N are the physical monitors.
         for index, mon in enumerate(sct.monitors[1:], start=1):
             out["monitors"].append(
@@ -626,7 +626,7 @@ class LocalExecutor:
 
         selected_mon: dict[str, int] | None = None
         try:
-            with mss.mss() as sct:
+            with mss.MSS() as sct:
                 monitors = sct.monitors
                 # monitors[0] is the virtual desktop (all monitors combined).
                 # monitors[1..N] are individual monitors.

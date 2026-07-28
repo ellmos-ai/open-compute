@@ -1,7 +1,7 @@
 # open-compute Skill — Mode A: Session-Agent als Reasoner
 
 **Skill-ID:** `open-compute`
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Modus:** A — OHNE API-Key, Session-Modell als Reasoner, manuelles Stepping
 **Voraussetzungen:** Extra `[local]` installiert (mss; siehe Installation unten — das Paket kommt aus dem Git-Repo, nicht von PyPI); Windows-Host; `oc` CLI aufrufbar via `python -m open_compute.cli`
 

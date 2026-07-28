@@ -297,6 +297,7 @@ class TestScreenshotWgcFallback:
                 raise exc
 
         fake_mss.mss = FakeMssContext
+        fake_mss.MSS = FakeMssContext
         fake_mss.tools = fake_tools
         monkeypatch.setitem(sys.modules, "mss", fake_mss)
         monkeypatch.setitem(sys.modules, "mss.tools", fake_tools)
