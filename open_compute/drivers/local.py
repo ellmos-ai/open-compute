@@ -357,6 +357,8 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
             return True
         width = rect.right - rect.left
         height = rect.bottom - rect.top
+        process_id = ctypes.c_ulong(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
 
         cx = rect.left + width / 2
         cy = rect.top + height / 2
@@ -364,6 +366,7 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
             {
                 "title": buf.value,
                 "hwnd": int(hwnd),
+                "pid": int(process_id.value),
                 "rect": {
                     "left": int(rect.left),
                     "top": int(rect.top),

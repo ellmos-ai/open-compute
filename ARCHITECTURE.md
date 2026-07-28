@@ -13,6 +13,22 @@ das Modell **gewichtet situativ** und wählt selbst.
 **Multi-Feed = Robustheit:** Mehr Kanäle = mehr Wege zum Ziel. Fällt einer weg (anderes OS,
 schlecht „verkabelte" App), tragen die anderen.
 
+## Companion, Handoff und Control-Leases
+
+`session.py` trennt Beobachtung und Kontrolle als fail-closed State-Machine:
+`OBSERVE → COMPANION/ASSIST → HANDOFF → CONTROL`, mit `PAUSED` als sofortigem
+Abbruchzustand. `HANDOFF` ist nur eine Anfrage; erst die explizite Erteilung der
+genau passenden Lease-ID aktiviert `CONTROL`. Jede Lease hat Eigentümer, Scope
+und Ablaufzeit. Menschliche Aktivität, Ablauf oder Fehler geben die Kontrolle
+sofort ab; rohe Eingaben und Screenshots werden nicht im Session-Audit gespeichert.
+
+Eine Desktop-Mutation braucht zwei unabhängige Freigaben: einen aktiven,
+passenden Control-Scope (z. B. `window:42`) und die bestehende `SafetyPolicy`.
+`window_control.py` löst Titel/PID/HWND eindeutig auf und meldet Mehrdeutigkeit,
+statt das erste Fenster zu wählen. `adaptive_capture.py` ist beobachtend,
+hart begrenzt und dedupliziert identische Frames; Vollbild ist nur nach
+explizitem Opt-in möglich.
+
 ## Die Feeds
 
 1. **Screenshot-Live-Feed** — `live.png`, ~1×/s neu geschrieben; immer ~aktueller Pixel-Stand.

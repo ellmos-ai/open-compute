@@ -9,6 +9,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Companion/Handoff core, 2026-07-28)
+
+- Added an explicit, fail-closed companion/handoff/control state machine with
+  scoped expiring leases, heartbeat, pause/release and human-interrupt yield.
+- Added `oc session ...`, lease- and SafetyPolicy-gated `oc window ...`
+  operations, and bounded deduplicating `oc capture-series`.
+- Added unambiguous title/PID/HWND resolution and injectable Win32 adapters;
+  ambiguous selectors return candidates instead of choosing the first match.
+- Added 17 pure/mock CLI and core tests. Full suite: 452 passed. Real Windows
+  interaction, human-interrupt detection, voice, overlays and virtual displays
+  remain explicit live/future gates.
+
 ### Changed / Added (Discoverability & Marketing Pass, 2026-07-27)
 
 - **Test Suite Alignment:** Updated test badges and `llms.txt` index status to reflect 435 passing tests (100% green).

@@ -47,6 +47,7 @@ DEFAULT_RISKY_ACTIONS = frozenset(
         ActionType.TYPE,
         ActionType.KEY,
         ActionType.LAUNCH_APP,
+        ActionType.ACTIVATE_WINDOW,
         ActionType.MOUSE_DOWN,
         ActionType.MOUSE_UP,
         ActionType.KEY_DOWN,

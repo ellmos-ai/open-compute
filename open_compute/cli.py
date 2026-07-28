@@ -100,6 +100,8 @@ import tempfile
 import textwrap
 import time as _time
 
+from .window_control import Win32WindowAdapter
+
 
 # ---------------------------------------------------------------------------
 # _session helpers
@@ -559,6 +561,217 @@ def _parse_actions(raw: str) -> list:
 # ---------------------------------------------------------------------------
 # sub-commands
 # ---------------------------------------------------------------------------
+
+def _control_session_store():
+    from .session import SessionStore
+
+    return SessionStore(_session_dir() / "control-session.json")
+
+
+def cmd_session(args: list[str]) -> None:
+    """Manage the explicit COMPANION -> HANDOFF -> CONTROL state machine."""
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="oc session",
+        description="Inspect or change the local companion/control session.",
+    )
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("status")
+    companion = sub.add_parser("companion")
+    companion.add_argument("--owner", required=True)
+    assist = sub.add_parser("assist")
+    assist.add_argument("--owner", default=None)
+    request = sub.add_parser("request-control")
+    request.add_argument("--owner", required=True)
+    request.add_argument("--scope", action="append", required=True)
+    request.add_argument("--ttl", type=int, default=60)
+    grant = sub.add_parser("grant")
+    grant.add_argument("--lease-id", required=True)
+    heartbeat = sub.add_parser("heartbeat")
+    heartbeat.add_argument("--lease-id", required=True)
+    pause = sub.add_parser("pause")
+    pause.add_argument("--reason", default="paused by operator")
+    sub.add_parser("release")
+    ns = p.parse_args(args)
+
+    from .session import ControlSession, SessionMode
+
+    store = _control_session_store()
+    try:
+        session = store.load()
+        if ns.command == "companion":
+            session = ControlSession.companion(ns.owner)
+        elif ns.command == "assist":
+            if ns.owner:
+                session.human_owner = ns.owner.strip()
+            if not session.human_owner:
+                _die("assist mode requires an existing or explicit --owner")
+            session.set_mode(SessionMode.ASSIST)
+        elif ns.command == "request-control":
+            session.request_control(ns.owner, ns.scope, ns.ttl)
+        elif ns.command == "grant":
+            session.grant_control(ns.lease_id)
+        elif ns.command == "heartbeat":
+            session.heartbeat(ns.lease_id)
+        elif ns.command == "pause":
+            session.pause(ns.reason)
+        elif ns.command == "release":
+            session.release()
+        if ns.command != "status":
+            store.save(session)
+    except (OSError, ValueError, PermissionError) as exc:
+        _die(str(exc))
+
+    output = session.to_dict()
+    if ns.command == "request-control" and session.lease is not None:
+        output["lease_id"] = session.lease.lease_id
+    print(json.dumps(output, ensure_ascii=False))
+
+
+def _capture_window_bytes(window: str) -> bytes:
+    """Capture one named window through the existing HWND/mss path."""
+    if sys.platform != "win32":
+        raise RuntimeError("window capture is Windows-only")
+    hwnd = _find_window_hwnd(window)
+    if hwnd is None:
+        raise ValueError(f"no window found matching {window!r}")
+    region = _hwnd_to_mss_region(hwnd)
+    import mss
+    import mss.tools
+
+    with mss.mss() as sct:
+        shot = sct.grab(region)
+        return mss.tools.to_png(shot.rgb, shot.size)
+
+
+def cmd_capture_series(args: list[str]) -> None:
+    """Capture a hard-bounded series, retaining only unique frames."""
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="oc capture-series",
+        description="Capture window-scoped frames until stable or bounded.",
+    )
+    p.add_argument("--window", default=None)
+    p.add_argument("--allow-fullscreen", action="store_true")
+    p.add_argument("--max-frames", type=int, default=8)
+    p.add_argument("--stable-frames", type=int, default=2)
+    p.add_argument("--max-unique", type=int, default=4)
+    p.add_argument("--interval", type=float, default=0.2)
+    p.add_argument("--out-dir", type=pathlib.Path, default=None)
+    ns = p.parse_args(args)
+    if ns.window is None and not ns.allow_fullscreen:
+        _die("--window is required unless --allow-fullscreen is explicit")
+
+    from .adaptive_capture import capture_until_stable
+
+    scope = f"window:{ns.window}" if ns.window else "fullscreen"
+    if ns.window:
+        capture_fn = lambda: _capture_window_bytes(ns.window)
+    else:
+        executor = _load_local_executor(0)
+        capture_fn = lambda: executor.screenshot().screenshot
+    try:
+        result = capture_until_stable(
+            capture_fn,
+            scope=scope,
+            max_frames=ns.max_frames,
+            stable_frames=ns.stable_frames,
+            max_unique=ns.max_unique,
+            interval_seconds=ns.interval,
+            allow_fullscreen=ns.allow_fullscreen,
+        )
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError, PermissionError) as exc:
+        _die(str(exc))
+
+    out_dir = ns.out_dir or _session_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = _time.strftime("%Y%m%dT%H%M%S")
+    paths: list[str] = []
+    for index, frame in enumerate(result.frames, start=1):
+        path = out_dir / f"capture_series_{stamp}_{index:02d}.png"
+        path.write_bytes(frame)
+        paths.append(str(path))
+    print(
+        json.dumps(
+            {
+                "scope": result.scope,
+                "reason": result.reason,
+                "captured_count": result.captured_count,
+                "unique_count": result.unique_count,
+                "final_digest": result.final_digest,
+                "paths": paths,
+            }
+        )
+    )
+
+
+def cmd_window(args: list[str]) -> None:
+    """Apply one unambiguous, lease- and safety-gated Win32 window operation."""
+    import argparse
+
+    p = argparse.ArgumentParser(prog="oc window")
+    p.add_argument(
+        "operation",
+        choices=("activate", "minimize", "maximize", "restore", "move", "resize"),
+    )
+    selector = p.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--title")
+    selector.add_argument("--hwnd", type=int)
+    selector.add_argument("--pid", type=int)
+    p.add_argument("--rect", nargs=4, type=int, metavar=("LEFT", "TOP", "WIDTH", "HEIGHT"))
+    p.add_argument("--mode", choices=("confirm", "allow_all", "read_only"), default="confirm")
+    p.add_argument("--yes", action="store_true")
+    ns = p.parse_args(args)
+
+    from .actions import Action, ActionType
+    from .safety import DEFAULT_RISKY_ACTIONS, Decision, SafetyPolicy
+    from .window_control import (
+        WindowAmbiguousError,
+        WindowController,
+        WindowNotFoundError,
+    )
+
+    risky = DEFAULT_RISKY_ACTIONS | frozenset({ActionType.ACTIVATE_WINDOW})
+    policy = SafetyPolicy(
+        mode=ns.mode,
+        risky_actions=risky,
+        confirm_callback=(lambda _action: ns.yes),
+    )
+    policy_result = policy.evaluate(
+        Action(ActionType.ACTIVATE_WINDOW, app_name=ns.title or str(ns.hwnd or ns.pid))
+    )
+    if policy_result.decision is not Decision.ALLOW:
+        print(json.dumps({"result": "deny", "reason": policy_result.reason}))
+        raise SystemExit(1)
+
+    store = _control_session_store()
+    try:
+        session = store.load()
+        controller = WindowController(Win32WindowAdapter())
+        output = controller.apply(
+            operation=ns.operation,
+            title=ns.title,
+            hwnd=ns.hwnd,
+            pid=ns.pid,
+            rect=tuple(ns.rect) if ns.rect is not None else None,
+            authorize=lambda scope: session.authorize(scope),
+        )
+        store.save(session)
+    except WindowAmbiguousError as exc:
+        print(
+            json.dumps(
+                {"result": "ambiguous", "candidates": exc.candidates},
+                ensure_ascii=False,
+            )
+        )
+        raise SystemExit(1)
+    except (OSError, RuntimeError, ValueError, PermissionError, WindowNotFoundError) as exc:
+        _die(str(exc), code=1)
+    output["result"] = "executed"
+    print(json.dumps(output, ensure_ascii=False))
+
 
 def cmd_capture(args: list[str]) -> None:
     """oc capture [--out PATH] [--monitor N] [--window SUBSTR]
@@ -1564,11 +1777,14 @@ def cmd_rec(args: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Dispatch to sub-commands: capture | do | run | tree | click-name | invoke | push | watch-dir | rec."""
+    """Dispatch the open-compute CLI subcommands."""
     if len(sys.argv) < 2:
         print(textwrap.dedent("""\
             Usage:
               oc capture [--out PATH] [--monitor N] [--window SUBSTR]
+              oc capture-series --window SUBSTR [--max-frames N] [--stable-frames N]
+              oc session status|companion|assist|request-control|grant|heartbeat|pause|release
+              oc window activate|minimize|maximize|restore|move|resize --hwnd N [--yes]
               oc do '<json-action-or-array>' [--mode allow_all|confirm|read_only] [--yes]
                      [--label NAME] [--shots each] [--ensure-foreground SUBSTR] [--fullres]
               oc run "<goal>" --backend claude|openai [--max-steps N]
@@ -1590,6 +1806,12 @@ def main() -> None:
 
     if cmd == "capture":
         cmd_capture(rest)
+    elif cmd == "capture-series":
+        cmd_capture_series(rest)
+    elif cmd == "session":
+        cmd_session(rest)
+    elif cmd == "window":
+        cmd_window(rest)
     elif cmd == "do":
         cmd_do(rest)
     elif cmd == "run":
@@ -1607,7 +1829,11 @@ def main() -> None:
     elif cmd == "rec":
         cmd_rec(rest)
     else:
-        _die(f"unknown command {cmd!r}; expected capture | do | run | tree | click-name | invoke | push | watch-dir | rec")
+        _die(
+            f"unknown command {cmd!r}; expected capture | capture-series | "
+            "session | window | do | run | tree | click-name | invoke | push | "
+            "watch-dir | rec"
+        )
 
 
 if __name__ == "__main__":

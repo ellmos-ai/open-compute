@@ -174,7 +174,7 @@ Alternativ Umgebungsvariable: `OC_SAFETY_MODE=allow_all`
 
 ---
 
-## CLI-Kurzreferenz (v0.5)
+## CLI-Kurzreferenz
 
 ```bash
 # Screenshot (in _session/, kein loser Desktop-Screenshot)
@@ -182,6 +182,13 @@ python -m open_compute.cli capture
 python -m open_compute.cli capture --out pfad/screenshot.png   # explizit
 python -m open_compute.cli capture --monitor 1                  # Diagnose-Modus
 python -m open_compute.cli capture --window "Word"              # nur Fenster-Rect (v0.5)
+python -m open_compute.cli capture-series --window "Word" --max-frames 8 --stable-frames 2
+
+# Companion/Handoff: Fenster-Mutationen brauchen Lease + Safety-Bestätigung
+python -m open_compute.cli session companion --owner local-user
+python -m open_compute.cli session request-control --owner agent-a --scope window:42 --ttl 60
+python -m open_compute.cli session grant --lease-id LEASE_ID
+python -m open_compute.cli window minimize --hwnd 42 --yes
 
 # Einzelne Aktion (Legacy — kein --label)
 python -m open_compute.cli do '{"type":"mouse_move","x":0.5,"y":0.5}'

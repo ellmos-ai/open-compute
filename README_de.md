@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-435%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-452%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Gefrüft](https://img.shields.io/badge/Hygiene-2026--07--27-blue)](CHANGELOG.md)
@@ -182,6 +182,15 @@ oc capture --window "Word"
 # 3g. Verzeichnis auf Änderungen überwachen (v0.5)
 oc watch-dir ~/Downloads --for 5       # 5 Sekunden Events sammeln, JSON ausgeben
 oc watch-dir ~/Downloads --once        # einmaliger Snapshot-Diff
+
+# 3h. Explizite Companion-Übergabe (Mutationen brauchen einen erteilten Scope-Lease)
+oc session companion --owner local-user
+oc session request-control --owner agent-a --scope window:42 --ttl 60
+oc session grant --lease-id <lease_id-aus-vorheriger-ausgabe>
+oc window minimize --hwnd 42 --yes
+
+# 3i. Begrenzte, deduplizierte Fenster-Capture-Serie
+oc capture-series --window "Word" --max-frames 8 --stable-frames 2
 
 # 4. Neuen Screenshot aufnehmen, wiederholen bis fertig.
 #    Alternativ: After-Shot direkt aus dem Composite lesen → ein Roundtrip weniger.
@@ -481,7 +490,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
-einem Klon installiert pytest. Aktueller Stand: **434 passed, 1 skipped**.
+einem Klon installiert pytest. Aktueller Stand: **452 passed**.
 
 ---
 

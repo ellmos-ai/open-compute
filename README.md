@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-435%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-452%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--07--27-blue)](CHANGELOG.md)
@@ -176,6 +176,15 @@ oc capture --window "Word"
 # 3g. Watch a directory for changes (v0.5)
 oc watch-dir ~/Downloads --for 5       # collect 5 s, print JSON events
 oc watch-dir ~/Downloads --once        # one-time snapshot diff
+
+# 3h. Explicit companion handoff (mutations need a granted, scoped lease)
+oc session companion --owner local-user
+oc session request-control --owner agent-a --scope window:42 --ttl 60
+oc session grant --lease-id <lease_id-from-previous-output>
+oc window minimize --hwnd 42 --yes
+
+# 3i. Bounded, deduplicated window capture (full screen needs explicit opt-in)
+oc capture-series --window "Word" --max-frames 8 --stable-frames 2
 
 # 4. Recapture and repeat until done (or read the "composite" After-shot directly).
 ```
@@ -478,7 +487,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current state: **434 passed, 1 skipped**.
+installs pytest. Current state: **452 passed**.
 
 ---
 

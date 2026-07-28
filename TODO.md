@@ -1,5 +1,20 @@
 # TODO
 
+## Companion-/Handoff-Slice 2026-07-28
+
+- [x] Fail-closed Session-Modi `OBSERVE`, `COMPANION`, `ASSIST`, `HANDOFF`,
+  `CONTROL`, `PAUSED` mit zeitlich und räumlich begrenzter Lease.
+- [x] Menschliche Aktivität, Lease-Ablauf und Pause entziehen Kontrolle sofort;
+  Audit enthält nur Übergangsmetadaten, keine Screenshots oder rohen Eingaben.
+- [x] Eindeutige Fensterauflösung per Titel/PID/HWND und mockbare Operationen
+  activate/minimize/maximize/restore/move/resize; Mutation braucht Lease und
+  SafetyPolicy.
+- [x] Begrenzte, SHA-256-deduplizierte Capture-Serie; Fenster-Scope als Default,
+  Vollbild nur mit explizitem Opt-in.
+- [ ] Sichtbarer Windows-Live-Smoke für Fensteroperationen, Human-Interrupt und
+  Capture-Timing; Voice, Overlay und virtueller Monitor bleiben außerhalb
+  dieses engen CLI/Core-Slices.
+
 ## Befunde der Pflegerunde 2026-07-26 (surface-after-care)
 
 - [ ] **Distributionsname klären — `open-compute` ist auf PyPI fremdbelegt.** Unter
@@ -73,7 +88,7 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
 
 | Category | Status | Notes |
 |---|---|---|
-| Tests | PASS | `python -X utf8 -m pytest -q` green from the module root — 434 pass, 1 skipped (re-counted 2026-07-26); GitHub Actions runs the mock-only suite on push/PR. |
+| Tests | PASS | `py -3.12 -m pytest -q` green from the module root — 452 passed (2026-07-28); GitHub Actions runs the mock-only suite on push/PR. |
 | Import check | PASS | `python -c "import open_compute; import open_compute.feed_manager; import open_compute.learning"` — OK, zero extras. |
 | Documentation | READY | README (EN + DE), llms.txt, CHANGELOG, SECURITY, ARCHITECTURE present. |
 | Integration | DEVELOPMENT | Usable as a standalone module. Contains marked stubs/interfaces (see below). |

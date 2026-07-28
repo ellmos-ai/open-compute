@@ -1,6 +1,6 @@
 # open-compute — Live-Smoke Runbook (vom Nutzer auszuführen)
 
-> Stand 2026-07-26. Der autonome Teil ist fertig: Mock-Suite **434 grün (+1 skip)**, das
+> Stand 2026-07-28. Der autonome Teil ist fertig: Suite **452 grün**, das
 > OpenAI-Backend ist gegen die aktuellen Docs verifiziert (Modell `gpt-5.5`, Tool-Type `computer`),
 > Claude-Backend per injected-client getestet. **Was hier offen bleibt, braucht echte API-Keys und
 > ein menschliches Auge** — daher dieses Runbook statt eines automatisierten Laufs.
@@ -23,6 +23,12 @@ oc capture --window "Editor"          # erwartet: PNG geschrieben, Pfad ausgegeb
 oc do mouse_move --x 0.5 --y 0.5      # erwartet: Cursor bewegt sich zur Bildschirmmitte
 oc tree --window "Editor"             # erwartet: UIA-Baum nur für das benannte Fenster (v0.4.1-Fix)
 oc do --fullres                       # erwartet: Full-Res-Annotation (v0.5)
+oc capture-series --window "Editor" --max-frames 4 --stable-frames 1
+oc session companion --owner local-user
+oc session request-control --owner smoke-agent --scope window:<HWND> --ttl 60
+oc session grant --lease-id <LEASE_ID>
+oc window minimize --hwnd <HWND> --yes
+oc window restore --hwnd <HWND> --yes
 ```
 Erfolg = Screenshots/Tree plausibel, Safety-Gate fragt vor riskanten Aktionen. Das deckt UIA-Window-
 Scoping + Fullres ab (die noch offenen „Live-Verify"-Punkte).
@@ -51,6 +57,7 @@ Erwartet: gleiche Schleife wie Claude. Falls ein 400/Modell-Fehler kommt: prüfe
 ## 4. Sign-off-Checkliste (nach den Läufen)
 
 - [ ] Keyless (capture/do/tree/fullres/window) auf echtem Windows ok
+- [ ] Companion/Handoff, Ablauf/Unterbrechung und Capture-Serie sichtbar plausibel
 - [ ] Claude end-to-end ok
 - [ ] OpenAI end-to-end ok (oder Modellfreigabe-Status notiert)
 - [ ] Keine verwaisten Prozesse, Safety-Gate hat vor riskanten Aktionen gefragt
