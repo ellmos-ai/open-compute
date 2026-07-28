@@ -349,6 +349,12 @@ is configurable on the backend
   confirmation callback, audit log).
 - `Config` dataclass + JSON loader.
 - Agent loop orchestrator (dry-run via mocks).
+- **Headless cooperative core** (`cooperative.py`, `human_activity.py`):
+  injectable perceive/stabilize/act/verify ports, scoped lease and
+  human/emergency-stop gates, no-replay action IDs, bounded retries,
+  screen-prompt-injection blocking, hash-chained sanitized audit, explicit
+  retention/deletion and crash cleanup. `GetLastInputInfo` is a single-shot
+  adapter tested only with injected callables; no hook or monitor is enabled.
 - Backend dispatch via factory + `MockBackend`; Claude backend tested with an
   injected fake client.
 - **`LocalExecutor`** (Windows, `open-compute[local]`): real screenshot via mss,
@@ -414,6 +420,9 @@ is configurable on the backend
   (Set-of-Marks, OCR, vision overlays, DOM) are **not yet implemented**.
 - `BachInjectorAdapter` is a documented stub; `LocalFileInjector` is the working default sink.
 - Always-on push daemon (permanent background loop) is **not yet implemented**.
+- Live human-input monitoring, ownership-overlay rendering, global emergency
+  hotkeys, voice, virtual-display/session control, and any productive wiring of
+  the headless cooperative core are **not implemented or activated**.
 - `oc rec` is a **lazy compatibility shim** for the external
   [`ellmos-ai/clirec`](https://github.com/ellmos-ai/clirec) package; install
   `clirec` only when recording/replay workflows are needed.

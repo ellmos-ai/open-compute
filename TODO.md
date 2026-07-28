@@ -1,5 +1,25 @@
 # TODO
 
+## Headless Cooperative-Core-Slice 2026-07-28 [U]
+
+- [x] Mockbare, inhaltfreie Human-Activity-Klassifikation mit bounded
+  Own-Input-Provenienz. `GetLastInputInfo` nur als expliziter Single-Shot-
+  Adapter; Unit-Tests injizieren Zeitquellen und aktivieren keine Win32-API.
+- [x] Backendunabhängiger `perceive -> stabilize -> act -> verify`-Orchestrator
+  mit Fake-Ports, Scope-Lease, Human-/Not-Aus-Pause, Idempotenz,
+  Drei-Versuche-Hardlimit und Verifikationsgate.
+- [x] Kein Retry nach unsicherem oder nachweislich angewendetem Aktionsergebnis;
+  Retry nur nach beweisbar nicht angewendetem, explizit retrybarem Fehler.
+- [x] Screen-Prompt-Injection fail-closed, SHA-256-verkettetes sanitisiertes
+  Audit, begrenzte Retention mit explizitem Löschadapter sowie Crash-Cleanup.
+- [x] Ownership-/Overlay- und Not-Aus-Verträge als nicht-rendernde Pure-Core-
+  Schnittstellen.
+- [ ] **BEWUSST ÜBERSPRUNGEN / LIVE-GATES:** echte Maus-/Tastaturinjektion oder
+  Human-Monitoring; Fokus-/Fensteroperationen; sichtbares Overlay/globaler
+  Not-Aus-Hotkey; Screen-Capture-Livebenchmark; Multi-Monitor-/DPI-Smoke;
+  virtueller Display-/VM-/RDP-Start; Mikrofon/TTS/STT; interaktive GUI-/MCP-/
+  Launcher-Akzeptanz. Neuer ausdrücklicher Nutzerauftrag erforderlich.
+
 ## Companion-/Handoff-Slice 2026-07-28
 
 - [x] Fail-closed Session-Modi `OBSERVE`, `COMPANION`, `ASSIST`, `HANDOFF`,

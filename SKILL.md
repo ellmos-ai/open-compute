@@ -190,6 +190,10 @@ python -m open_compute.cli session request-control --owner agent-a --scope windo
 python -m open_compute.cli session grant --lease-id LEASE_ID
 python -m open_compute.cli window minimize --hwnd 42 --yes
 
+# Headless-Kooperationskern (API, kein Live-Hook/Renderer):
+# cooperative.py + human_activity.py sind nur mit injizierten Ports zu verdrahten.
+# Der GetLastInputInfo-Adapter ist Single-Shot; kein Monitoring automatisch starten.
+
 # Einzelne Aktion (Legacy — kein --label)
 python -m open_compute.cli do '{"type":"mouse_move","x":0.5,"y":0.5}'
 python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.5}' --yes

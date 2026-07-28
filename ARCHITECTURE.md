@@ -29,6 +29,47 @@ statt das erste Fenster zu wählen. `adaptive_capture.py` ist beobachtend,
 hart begrenzt und dedupliziert identische Frames; Vollbild ist nur nach
 explizitem Opt-in möglich.
 
+### Headless-Kooperationskern (2026-07-28)
+
+`cooperative.py` ergänzt den bestehenden modellorientierten `AgentLoop` um
+einen engeren, backendunabhängigen Ablauf:
+
+```
+perceive -> stabilize -> lease/human/not-aus/prompt-injection gate
+         -> act -> perceive -> stabilize -> verify
+```
+
+Alle Außenwirkungen liegen hinter injizierten Protokollen. Der Kern besitzt
+selbst weder Capture noch Rendering, Maus/Tastatur, Fokus/Fenster, Audio oder
+GUI. Dadurch sind Happy Path, menschliche Übernahme, Not-Aus, Lease-Fehler,
+unsicherer Aktionserfolg, Retrybudget, Verifikation und Crash-Cleanup rein mit
+Fakes prüfbar.
+
+Sicherheitsinvarianten:
+
+- Eine `action_id`, die erfolgreich **oder unsicher** ausgeführt wurde, wird
+  nicht wiederholt. Nur ein nachweislich nicht angewendeter, explizit
+  retrybarer Adapterfehler darf innerhalb des kleinen Budgets wiederholt
+  werden.
+- Bildschirm-/unbekannte Instruktionsquellen autorisieren keine Aktion.
+  Meldet die Wahrnehmung ein Prompt-Injection-Signal, wird vor `act` pausiert
+  und aufgeräumt.
+- Das Audit ist append-only und SHA-256-verkettet. Es akzeptiert nur
+  Kontrollmetadaten; Prompt-, Bild-, Text-, Audio-, Credential- und
+  Tastendaten sind als Felder gesperrt.
+- Retention-Metadaten sind begrenzt. Kapazitäts- und TTL-Löschungen laufen über
+  einen injizierten Löschadapter; ein Löschfehler bleibt sichtbar/fail-closed.
+- Overlay und Not-Aus existieren ausschließlich als Protokoll bzw.
+  nicht-rendernde/in-memory Implementierung. Ein sichtbares Overlay oder
+  globaler Hotkey ist nicht implementiert oder aktiviert.
+
+`human_activity.py` enthält eine zeitstempelbasierte,
+inhaltfreie Klassifikation von menschlicher gegenüber eigener Eingabe. Der
+`GetLastInputInfoAdapter` ist ein expliziter Single-Shot-Adapter: kein Hook,
+kein Polling, kein Keylogging. Die Tests injizieren beide Zeitquellen und rufen
+die native Windows-API nicht auf. Eine Live-Verdrahtung bleibt ein separates
+Abnahmegate.
+
 ## Die Feeds
 
 1. **Screenshot-Live-Feed** — `live.png`, ~1×/s neu geschrieben; immer ~aktueller Pixel-Stand.

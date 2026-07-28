@@ -9,6 +9,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Headless cooperative safety core, 2026-07-28)
+
+- Added a pure/mockable `GetLastInputInfo` single-shot adapter and timestamp-only
+  human-vs-agent activity classifier; no hook, watcher, or raw input logging.
+- Added a backend-independent perceive/stabilize/act/verify orchestrator with
+  scoped lease, human/emergency-stop gates, action idempotency, bounded retries
+  and fail-closed verification.
+- Added screen-prompt-injection blocking, SHA-256 hash-chained sanitized audit,
+  bounded retention with explicit deletion, and crash cleanup contracts.
+- Added non-rendering ownership-indicator and in-memory emergency-stop
+  interfaces. Live input/capture/window/overlay/voice/display/GUI acceptance
+  remains explicitly outside this headless slice.
+- Added 25 pure/mock tests. The headless suite is green with 473 passed and
+  four explicitly deselected host-query tests.
+
 ### Added (Companion/Handoff core, 2026-07-28)
 
 - Added an explicit, fail-closed companion/handoff/control state machine with

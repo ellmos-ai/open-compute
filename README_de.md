@@ -351,6 +351,13 @@ konfigurierbar
   Bestätigungs-Callback, Audit-Log).
 - `Config`-Dataclass + JSON-Loader.
 - Agenten-Loop-Orchestrator (Trockenlauf über Mocks).
+- **Headless-Kooperationskern** (`cooperative.py`, `human_activity.py`):
+  injizierbare Perceive-/Stabilize-/Act-/Verify-Ports, Scope-Lease und
+  Human-/Not-Aus-Gates, nicht wiederholbare Action-IDs, begrenzte Retries,
+  Screen-Prompt-Injection-Blockade, hash-verkettetes sanitisiertes Audit,
+  explizite Retention/Löschung und Crash-Cleanup. `GetLastInputInfo` ist ein
+  Single-Shot-Adapter, der nur über injizierte Callables getestet ist; kein
+  Hook oder Monitoring ist aktiviert.
 - Backend-Dispatch über Factory + `MockBackend`; Claude-Backend mit injiziertem
   Fake-Client getestet.
 - **`LocalExecutor`** (Windows, `open-compute[local]`): echter Screenshot via
@@ -410,6 +417,10 @@ konfigurierbar
   (Set-of-Marks, OCR, Vision-Overlays, DOM) sind **noch nicht implementiert**.
 - `BachInjectorAdapter` ist ein dokumentierter Stub; `LocalFileInjector` ist der funktionierende Standard-Sink.
 - Always-on Push-Daemon (permanente Hintergrundschleife) ist **noch nicht implementiert**.
+- Live-Human-Input-Monitoring, sichtbares Ownership-Overlay, globaler
+  Not-Aus-Hotkey, Voice, virtuelle Display-/Session-Steuerung und jede
+  produktive Verdrahtung des Headless-Kerns sind **nicht implementiert oder
+  aktiviert**.
 - `oc rec` ist ein **lazy geladener Kompatibilitäts-Shim** für das externe
   Paket [`ellmos-ai/clirec`](https://github.com/ellmos-ai/clirec); `clirec`
   wird nur für Aufnahme-/Replay-Workflows benötigt.

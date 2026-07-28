@@ -24,8 +24,23 @@ from __future__ import annotations
 from .actions import Action, ActionType, to_claude, to_openai
 from .backends import BackendResult, ComputerBackend, MockBackend, get_backend
 from .config import Config
+from .cooperative import (
+    CooperativeOrchestrator,
+    HashChainAudit,
+    InstructionOrigin,
+    LatchedEmergencyStop,
+    ObservationDigest,
+    WorkflowOutcome,
+    WorkflowPlan,
+)
 from .coordinates import denormalize, normalize, rescale
 from .drivers import Executor, MockExecutor
+from .human_activity import (
+    GetLastInputInfoAdapter,
+    HumanActivityClassifier,
+    InputProvenance,
+    LastInputSample,
+)
 from .loop import AgentLoop, LoopResult, StepTrace
 from .perception import Observation, PerceptionProvider, ScreenshotPerception
 from .safety import Decision, PolicyResult, SafetyPolicy
@@ -38,6 +53,17 @@ __all__ = [
     "to_claude",
     "to_openai",
     "Config",
+    "CooperativeOrchestrator",
+    "HashChainAudit",
+    "InstructionOrigin",
+    "LatchedEmergencyStop",
+    "ObservationDigest",
+    "WorkflowOutcome",
+    "WorkflowPlan",
+    "GetLastInputInfoAdapter",
+    "HumanActivityClassifier",
+    "InputProvenance",
+    "LastInputSample",
     "normalize",
     "denormalize",
     "rescale",
