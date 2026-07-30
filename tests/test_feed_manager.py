@@ -23,11 +23,6 @@ No live desktop interaction, no permanent daemon.
 from __future__ import annotations
 
 import json
-import sys
-import time
-import types
-from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest

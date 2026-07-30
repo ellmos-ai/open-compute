@@ -23,9 +23,8 @@ from __future__ import annotations
 
 import json
 import sys
-import types
 from typing import Any
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -36,7 +35,8 @@ import pytest
 
 def _make_valid_png() -> bytes:
     """Return a valid 1×1 RGB PNG."""
-    import io, struct, zlib
+    import struct
+    import zlib
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         body = tag + data
@@ -154,7 +154,6 @@ class TestRegistry:
     def test_registry_without_uia_excludes_uia(self, monkeypatch):
         """When uiautomation is not importable, UIA feed is absent."""
         # Patch UiaWindowsFeed.available to return False
-        import importlib
         from open_compute.feeds import registry as reg_mod
         import open_compute.feeds.uia_windows as uia_mod
 
@@ -198,7 +197,8 @@ class TestScreenshotFeed:
 
     def test_available_false_on_non_windows(self, monkeypatch):
         monkeypatch.setattr(sys, "platform", "linux")
-        import importlib, open_compute.feeds.screenshot as mod
+        import importlib
+        import open_compute.feeds.screenshot as mod
         importlib.reload(mod)
         sf = mod.ScreenshotFeed()
         assert sf.available() is False

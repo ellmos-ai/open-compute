@@ -22,7 +22,7 @@ All OS / UIA calls are mocked. No real windows are opened or clicked.
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -460,7 +460,6 @@ class TestCliWindowNotFound:
 
     def test_cmd_tree_exits_2_on_window_not_found(self):
         """cmd_tree exits 2 when the specified window does not exist."""
-        from open_compute.feeds.base import FeedObservation
         from open_compute.cli import cmd_tree
 
         with patch("open_compute.cli._load_uia_feed") as mock_load:

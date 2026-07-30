@@ -952,7 +952,6 @@ def cmd_do(args: list[str]) -> None:
     )
     ns = p.parse_args(args)
 
-    from open_compute.actions import Action
     from open_compute.safety import Decision, SafetyPolicy
 
     actions = _parse_actions(ns.action_json)
@@ -1695,7 +1694,7 @@ class _GatedExecutor:
     und muessen wie jede ``oc do``-Aktion gegatet werden.
     """
 
-    def __init__(self, executor, policy: SafetyPolicy):
+    def __init__(self, executor, policy: "SafetyPolicy"):
         self._executor = executor
         self._policy = policy
 

@@ -9,9 +9,7 @@ foreground helper) run on any platform.
 from __future__ import annotations
 
 import json
-import os
 import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -29,7 +27,6 @@ def _make_valid_png() -> bytes:
     hand-assembled PNG whose IDAT bytes had wrong CRCs and could not be decoded
     by Pillow when Pillow was installed.
     """
-    import io
     import struct
     import zlib
 
@@ -78,7 +75,6 @@ class TestSessionPath:
         """OC_SESSION_DIR overrides the default."""
         custom = tmp_path / "my_sessions"
         monkeypatch.setenv("OC_SESSION_DIR", str(custom))
-        from open_compute.cli import _session_dir
         # Reload to pick up the new env
         import importlib
         import open_compute.cli as cli_mod

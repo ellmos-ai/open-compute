@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed / Fixed (Technical Hygiene & Maintenance Check, 2026-07-30)
+
+- Updated `llms.txt` Last-checked header timestamp to 2026-07-30.
+- Synchronized Pytest test badges in `README.md` and `README_de.md` to 476 passed tests (1 skipped, 100% green).
+- Cleaned 35 unused module imports via Ruff linter pass and fixed `SafetyPolicy` string type annotation in `cli.py`.
+- Fixed typo in German README badge (`Gefrüft` -> `Geprüft`).
+
 ### Added (Headless cooperative safety core, 2026-07-28)
 
 - Added a pure/mockable `GetLastInputInfo` single-shot adapter and timestamp-only

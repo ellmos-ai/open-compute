@@ -18,10 +18,8 @@ import json
 import pathlib
 import struct
 import sys
-import types
 import zlib
-from typing import Any
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -132,7 +130,6 @@ class TestWindowRectHelpers:
     @pytest.mark.skipif(sys.platform != "win32", reason="Win32 only")
     def test_find_window_hwnd_found(self) -> None:
         """Mocked EnumWindows → _find_window_hwnd returns matching HWND."""
-        import ctypes
         from open_compute.cli import _find_window_hwnd
 
         def fake_enum_windows(cb, lp):
@@ -160,7 +157,6 @@ class TestWindowRectHelpers:
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Win32 only")
     def test_find_window_hwnd_not_found(self) -> None:
-        import ctypes
         from open_compute.cli import _find_window_hwnd
 
         def fake_enum_windows(cb, lp):
@@ -193,7 +189,6 @@ class TestWindowRectHelpers:
     def test_hwnd_to_mss_region_pure_math(self) -> None:
         """_hwnd_to_mss_region converts RECT to mss region dict correctly."""
         import ctypes
-        import ctypes.wintypes
         from open_compute.cli import _hwnd_to_mss_region
 
         class FakeRECT:
@@ -204,7 +199,6 @@ class TestWindowRectHelpers:
 
         def fake_get_window_rect(hwnd, rect_ptr):
             # Fill the RECT pointed to by rect_ptr
-            import ctypes
             rect = ctypes.cast(rect_ptr, ctypes.POINTER(ctypes.wintypes.RECT)).contents
             rect.left = FakeRECT.left
             rect.top = FakeRECT.top
@@ -261,7 +255,6 @@ class TestCmdDoFullres:
 
     def test_fullres_flag_accepted(self, tmp_path: pathlib.Path) -> None:
         """--fullres produces 'fullres' or 'fullres_annotated' in JSON output."""
-        import os
         png = _make_valid_png()
         mock_exec = self._make_mock_executor(png)
 

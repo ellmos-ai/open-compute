@@ -68,7 +68,7 @@ import os
 import pathlib
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from open_compute.feeds.base import FeedObservation
