@@ -489,6 +489,32 @@ See `SECURITY.md`.
 
 ---
 
+<!-- BEGIN GENERATED ELLMOS BUNDLE DISCOVERY -->
+
+## Bundles and partners
+
+Generated discovery projection for `module:open-compute` from `catalog:v4-bundles` (`a52688938bcad21469beb546acfe6dd79ca40196a2bbaf246e5bd6aaac4bbbd7`).
+Target repository visibility: `public`. Bundle manifests remain the membership authority; this section does not install or activate components.
+Discovery approval: `public` module-registry record, explicit default-deny bundle allowlist.
+
+### `ellmos-media-production-bundle`
+
+- Bundle recipe visibility: `private`; role: `declared-component`; requirement: `recommended`.
+- module partners: `module:ai-media-editor`, `module:report-forge`, `module:web-scraper`.
+- skill partners: `skill:textproduction`, `skill:video-transcriber`.
+
+### `ellmos-software-resource-tools-bundle`
+
+- Bundle recipe visibility: `private`; role: `declared-component`; requirement: `recommended`.
+- module partners: `module:ApiProber`, `module:clirec`, `module:connectors`, `module:software-endpoint-registry`.
+- skill partners: `skill:ai-portable-setup`.
+
+Composition and runtime details are intentionally omitted.
+
+<!-- END GENERATED ELLMOS BUNDLE DISCOVERY -->
+
+---
+
 ## Running tests
 
 ```bash
