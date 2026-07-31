@@ -339,6 +339,13 @@ konfigurierbar
 (`tool_type=`, `beta_header=`), um auf älteren Modellen das Paar
 `computer_20250124` / `computer-use-2025-01-24` anzusprechen.
 
+### Executor-Matrix
+
+| Executor | Voraussetzungen | Plattform | Status |
+|---|---|---|---|
+| `MockExecutor` | keine | beliebig | Vollständig implementiert; wird in Tests und Trockenläufen verwendet |
+| `LocalExecutor` | `mss` (`open-compute[local]`), optionaler WGC-Fallback (`open-compute[wgc]`) | nur Windows | Implementiert; `oc capture` live getestet (368-KB-PNG bei 1920×1080); `oc do mouse_move` live getestet |
+
 ---
 
 ## Status — was ist echt, was ist Stub
