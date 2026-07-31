@@ -9,6 +9,68 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Signal-Config: Farben und Rahmen/Cursor getrennt schaltbar, 2026-07-31)
+
+- Added `SignalConfig` / `SignalModeConfig` (`open_compute/indicator.py`):
+  JSON config for the signal overlay with the built-in palette as defaults.
+  Per mode: `enabled`, `color`, `label`, `border` (screen frame) and
+  `cursor` (cursor ring) — border and cursor toggle independently, e.g. the
+  use case "cursor highlight only while the model drives, and no screen
+  border" is `control: {border: false, cursor: true}`. Atomic writes,
+  `OC_SIGNAL_CONFIG` env or `_state/signal-config.json`.
+- Added `oc signal config --init|--show [--path]` and
+  `oc signal on --config PATH [--no-border] [--no-cursor]`; the abort hotkey
+  can also come from the config file.
+- `OverlayRenderer.show()` gained `border`/`cursor` flags;
+  `WindowsBorderOverlay` renders frames/ring per flag (live-verified:
+  `_session/signal_usecase.png`).
+- Added 9 config tests (`tests/test_signal_config.py`). Full suite:
+  684 passed, 1 skipped.
+
+### Added (Folgeblöcke Signalisierung: Abort-Hotkey, Chat, Push-to-Talk, 2026-07-31)
+
+- Added a global abort hotkey to `WindowsBorderOverlay`:
+  `oc signal on --abort-hotkey [COMBO]` (default `ctrl+alt+esc`) registers a
+  MOD_NOREPEAT hotkey on the overlay thread; on press the topmost Tk reason
+  box opens and the message is printed as a JSON line for the calling agent.
+  `parse_hotkey()` handles `ctrl+alt+esc` / `f9` / `shift+a` style specs.
+- Added `oc chat [--channel console|tk|none] [--shot]`: human-to-model short
+  message about screen content, optionally with a fullscreen screenshot from
+  `_session/`, delivered as a JSON line. No model call inside the command —
+  the agent answers in its own channel.
+- Added `open_compute/talk.py` + `oc talk --key F9`: push-to-talk voice
+  capture — hold key → speak → release — writing WAV to `_session/` via
+  winmm MCI (zero-dependency). STT/TTS deliberately stay model-side; the WAV
+  path goes to the agent as JSON. All side effects injectable (mci sender,
+  key probe, sleep) for headless tests.
+- Added 17 headless tests (`tests/test_talk.py`, `tests/test_signal_hotkey.py`).
+  Full suite: 676 passed, 1 skipped.
+
+### Added (Bildschirm-Signalisierung / screen-usage display, 2026-07-31)
+
+- Added `open_compute/indicator.py`: the renderer side of
+  `cooperative.OwnershipIndicator` (previously protocol + null only).
+  `ScreenSignalIndicator` maps session modes to signal colors — red for
+  CONTROL (model may act), blue for OBSERVE (model only watches), green
+  COMPANION, orange HANDOFF, grey PAUSED — and is a drop-in for
+  `CooperativeOrchestrator(indicator=…)`.
+- Added `WindowsBorderOverlay` (ctypes, Windows-only, lazy): click-through,
+  topmost glowing border around the virtual screen, neon cursor ring and a
+  status strip (agent | mode | scope), on a dedicated message-loop thread.
+  Live-verified on a real desktop (screenshot `_session/signal_smoke.png`).
+- Added abort channel with reason entry: `AbortChannel` protocol,
+  `ConsoleAbortChannel` (stdin) and `TkAbortChannel` (topmost Tk input box).
+  The captured short message is forwarded to `on_abort_message` so the caller
+  can pass it to the model when compute mode is aborted.
+- Added `oc signal on --mode … [--for SECS] [--no-cursor]` and
+  `oc signal abort [--channel console|tk|none]` CLI commands.
+- Wired the previously test-only CLI commands into `cli.py`: `oc session`
+  (companion/request-control/grant/status/pause/release), lease-gated
+  `oc window`, and `oc capture-series` — the three pre-existing red tests
+  now pass.
+- Added 14 headless tests (`tests/test_indicator.py`). Full suite:
+  659 passed, 1 skipped.
+
 ### Changed / Fixed (Technical Hygiene & Maintenance Check, 2026-07-30)
 
 - Updated `llms.txt` Last-checked header timestamp to 2026-07-30.

@@ -1772,6 +1772,286 @@ def cmd_rec(args: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Screen-signal sub-command (Bildschirm-Signalisierung)
+# ---------------------------------------------------------------------------
+
+def _signal_config_path() -> pathlib.Path:
+    """Default signal-config path: OC_SIGNAL_CONFIG env or _state/signal-config.json."""
+    env = os.environ.get("OC_SIGNAL_CONFIG", "")
+    if env.strip():
+        return pathlib.Path(env.strip())
+    return _session_dir().parent / "_state" / "signal-config.json"
+
+
+def cmd_signal(args: list[str]) -> None:
+    """oc signal on --mode MODE [--agent A] [--scope S] [--for SECS]
+                 [--no-cursor] [--no-border] [--abort-hotkey [COMBO]]
+                 [--config PATH]
+       oc signal abort [--channel console|tk|none] [--context TEXT]
+       oc signal config --init [--path PATH] | --show [--path PATH]
+
+    Zeigt die aktive Bildschirmnutzung an: leuchtender Rahmen + Neon-Cursor-
+    Ring in der Modus-Farbe (rot=control, blau=observe, ...). Farben, Labels
+    und Rahmen/Cursor-Schalter je Modus kommen aus der JSON-Config
+    (Default: _state/signal-config.json bzw. OC_SIGNAL_CONFIG); ohne Datei
+    gelten die eingebauten Defaults. ``abort`` sammelt die Abbruch-
+    Kurznachricht des Menschen ein und gibt sie als JSON aus.
+    """
+    import argparse
+    import time as _time_mod
+
+    from .session import SessionMode
+
+    p = argparse.ArgumentParser(
+        prog="oc signal",
+        description="On-screen signal for active screen functions (border overlay).",
+    )
+    sub = p.add_subparsers(dest="action", required=True)
+    on = sub.add_parser("on", help="Show the signal overlay (until Ctrl-C or --for).")
+    on.add_argument("--mode", required=True,
+                    choices=[m.value for m in SessionMode])
+    on.add_argument("--agent", default="agent")
+    on.add_argument("--scope", default="screen")
+    on.add_argument("--for", dest="duration", type=float, default=None,
+                    metavar="SECS")
+    on.add_argument("--no-cursor", action="store_true",
+                    help="Disable the neon cursor ring (overrides config).")
+    on.add_argument("--no-border", action="store_true",
+                    help="Disable the screen border (overrides config).")
+    on.add_argument("--config", default=None, metavar="PATH",
+                    help="Signal config JSON (default: OC_SIGNAL_CONFIG or "
+                         "_state/signal-config.json when present).")
+    on.add_argument("--abort-hotkey", nargs="?", const="ctrl+alt+esc",
+                    default=None, metavar="COMBO",
+                    help=(
+                        "Register a global abort hotkey (default combo: "
+                        "ctrl+alt+esc). On press, a topmost input box asks "
+                        "for the abort reason; the message is printed as "
+                        "JSON for the calling agent (ans Modell)."
+                    ))
+    ab = sub.add_parser("abort", help="Capture an abort message for the model.")
+    ab.add_argument("--channel", default="console",
+                    choices=["console", "tk", "none"])
+    ab.add_argument("--context", default="")
+    cfgp = sub.add_parser("config", help="Write or inspect the signal config.")
+    cfgp.add_argument("--init", action="store_true",
+                      help="Write the default config JSON to the path.")
+    cfgp.add_argument("--show", action="store_true",
+                      help="Print the effective config as JSON.")
+    cfgp.add_argument("--path", default=None,
+                      help="Config file path (default: OC_SIGNAL_CONFIG or "
+                           "_state/signal-config.json).")
+    ns = p.parse_args(args)
+
+    from .indicator import ScreenSignalIndicator, SignalConfig
+
+    if ns.action == "config":
+        path = pathlib.Path(ns.path) if ns.path else _signal_config_path()
+        if ns.init:
+            SignalConfig().save(path)
+            print(json.dumps({"config_path": str(path), "written": True},
+                             ensure_ascii=False))
+            return
+        if ns.show:
+            cfg = SignalConfig.load(path) if path.exists() else SignalConfig()
+            print(json.dumps(cfg.to_dict(), ensure_ascii=False, indent=2))
+            return
+        _die("oc signal config requires --init or --show")
+
+    if ns.action == "on":
+        renderer_cls = globals().get("WindowsBorderOverlay")
+        if renderer_cls is None:
+            from .indicator import WindowsBorderOverlay as renderer_cls
+        from .indicator import signal_for_mode
+
+        cfg: SignalConfig | None = None
+        cfg_path = pathlib.Path(ns.config) if ns.config else _signal_config_path()
+        if ns.config or cfg_path.exists():
+            cfg = SignalConfig.load(cfg_path)
+
+        abort_hotkey = ns.abort_hotkey or (cfg.abort_hotkey if cfg else None)
+        on_abort = None
+        if abort_hotkey:
+            def on_abort() -> None:  # noqa: F811 — closure over indicator
+                from .indicator import TkAbortChannel
+
+                message = TkAbortChannel().prompt_reason(
+                    context=indicator.last_label
+                )
+                print(json.dumps({
+                    "abort_message": message,
+                    "hotkey": abort_hotkey,
+                }, ensure_ascii=False), flush=True)
+
+        indicator = ScreenSignalIndicator(
+            renderer=renderer_cls(
+                thickness=cfg.thickness if cfg else 6,
+                border=not ns.no_border,
+                cursor_ring=not ns.no_cursor,
+                on_abort=on_abort,
+                abort_hotkey=abort_hotkey,
+            ),
+            config=cfg,
+        )
+        mode = SessionMode(ns.mode)
+        indicator.show(agent=ns.agent, scope=ns.scope, mode=mode)
+        _label, color = signal_for_mode(mode)
+        print(json.dumps({
+            "visible": True,
+            "mode": mode.value,
+            "label": indicator.last_label,
+            "color": list(color),
+        }, ensure_ascii=False), flush=True)
+        try:
+            if ns.duration is not None:
+                _time_mod.sleep(ns.duration)
+            else:
+                while True:
+                    _time_mod.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            indicator.clear()
+            print(json.dumps({"visible": False}, ensure_ascii=False))
+        return
+
+    # abort: Kurznachricht des Menschen einsammeln -> ans Modell weiterreichen
+    channel_name = {
+        "console": "ConsoleAbortChannel",
+        "tk": "TkAbortChannel",
+        "none": "NullAbortChannel",
+    }[ns.channel]
+    channel_cls = globals().get(channel_name)
+    if channel_cls is None:
+        from . import indicator as _indicator_mod
+        channel_cls = getattr(_indicator_mod, channel_name)
+    indicator = ScreenSignalIndicator(abort_channel=channel_cls())
+    message = indicator.capture_abort_message(context=ns.context)
+    print(json.dumps({"abort_message": message}, ensure_ascii=False))
+
+
+
+# ---------------------------------------------------------------------------
+# Chat sub-command (Mensch -> Modell Nachricht zum Bildschirminhalt)
+# ---------------------------------------------------------------------------
+
+def _capture_fullscreen_png() -> pathlib.Path:
+    """Fullscreen PNG of the primary monitor into _session/ (tests monkeypatch)."""
+    import mss
+    import mss.tools
+    path = _next_session_path("chat", suffix=".png")
+    with mss.mss() as sct:
+        shot = sct.grab(sct.monitors[1])
+        path.write_bytes(mss.tools.to_png(shot.rgb, shot.size))
+    return path
+
+
+def cmd_chat(args: list[str]) -> None:
+    """oc chat [--channel console|tk|none] [--context TEXT] [--shot]
+
+    Mensch→Modell-Kurznachricht zum Bildschirminhalt. Mit --shot wird ein
+    Vollbild-Screenshot in _session/ gelegt und der Pfad mitgeschickt.
+    Der Aufrufer (Agent) liest die JSON-Zeile und antwortet in seinem
+    eigenen Kanal — dieses Kommando selbst ruft kein Modell auf.
+    """
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="oc chat",
+        description="Human-to-model message about screen content (+ optional screenshot).",
+    )
+    p.add_argument("--channel", default="console",
+                   choices=["console", "tk", "none"])
+    p.add_argument("--context", default="")
+    p.add_argument("--shot", action="store_true",
+                   help="Attach a fullscreen screenshot from _session/.")
+    ns = p.parse_args(args)
+
+    channel_name = {
+        "console": "ConsoleAbortChannel",
+        "tk": "TkAbortChannel",
+        "none": "NullAbortChannel",
+    }[ns.channel]
+    channel_cls = globals().get(channel_name)
+    if channel_cls is None:
+        from . import indicator as _indicator_mod
+        channel_cls = getattr(_indicator_mod, channel_name)
+    message = channel_cls().prompt_reason(
+        context=ns.context or "Nachricht ans Modell"
+    )
+
+    shot_path = None
+    if ns.shot:
+        shot_path = str(_capture_fullscreen_png())
+
+    print(json.dumps({
+        "chat_message": message,
+        "screenshot": shot_path,
+    }, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
+# Push-to-talk sub-command
+# ---------------------------------------------------------------------------
+
+def cmd_talk(args: list[str]) -> None:
+    """oc talk --key F9 [--out PATH] [--max-seconds N] [--wait-timeout N]
+
+    Push-to-Talk: Taste halten → sprechen → loslassen. WAV landet in
+    _session/ (oder --out). STT/TTS bleiben modellseitig; die JSON-Ausgabe
+    liefert den WAV-Pfad an den Agenten.
+    """
+    import argparse
+
+    from .indicator import parse_hotkey
+
+    p = argparse.ArgumentParser(
+        prog="oc talk",
+        description="Push-to-talk voice capture (WAV via winmm MCI).",
+    )
+    p.add_argument("--key", required=True,
+                   help="Hold key, e.g. F9 or space (single key, no modifiers).")
+    p.add_argument("--out", default=None,
+                   help="Default: _session/ptt_<stamp>.wav")
+    p.add_argument("--max-seconds", type=float, default=60.0)
+    p.add_argument("--wait-timeout", type=float, default=None,
+                   help="Abort when the key is never pressed within N seconds.")
+    ns = p.parse_args(args)
+
+    mods, vk = parse_hotkey(ns.key)
+    if mods:
+        _die("--key must be a single key without modifiers (e.g. F9)")
+
+    rpt = globals().get("record_push_to_talk")
+    mci_factory = globals().get("winmm_mci")
+    key_probe = globals().get("async_key_down")
+    if rpt is None or mci_factory is None or key_probe is None:
+        from .talk import async_key_down, record_push_to_talk, winmm_mci
+        rpt = record_push_to_talk
+        mci_factory = winmm_mci
+        key_probe = async_key_down
+
+    out = pathlib.Path(ns.out) if ns.out else _next_session_path("ptt", suffix=".wav")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    print(json.dumps({"listening": True, "key": ns.key},
+                     ensure_ascii=False), flush=True)
+    result = rpt(
+        vk=vk,
+        out_path=str(out),
+        mci=mci_factory(),
+        key_down=key_probe(),
+        max_seconds=ns.max_seconds,
+        wait_timeout=ns.wait_timeout,
+    )
+    print(json.dumps({
+        "recorded": result.recorded,
+        "wav": result.path,
+        "seconds": result.seconds,
+        "reason": result.reason,
+    }, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1794,6 +2074,14 @@ def main() -> None:
               oc invoke "<query>" [--window SUBSTR] [--mode MODE] [--yes]
               oc push --status | --once [--window SUBSTR]
               oc watch-dir <path> [<path>...] [--for SECS] [--once]
+              oc capture-series --window SUBSTR [--max-frames N] [--stable-frames N]
+              oc session companion|request-control|grant|status|pause|release ...
+              oc window <operation> (--hwnd N|--pid N|--title T) [--rect L,T,W,H] [--yes]
+              oc signal on --mode MODE [--agent A] [--scope S] [--for SECS] [--no-cursor]
+                            [--abort-hotkey [COMBO]]
+              oc signal abort [--channel console|tk|none] [--context TEXT]
+              oc chat [--channel console|tk|none] [--context TEXT] [--shot]
+              oc talk --key F9 [--out PATH] [--max-seconds N] [--wait-timeout N]
               oc rec validate <file.clirec> | list [--dir DIR]
               oc rec replay <file.clirec> [--param k=v ...] [--mode MODE] [--yes]
               oc rec start <name>   (Ctrl+C to stop & save)
@@ -1825,13 +2113,25 @@ def main() -> None:
         cmd_push(rest)
     elif cmd == "watch-dir":
         cmd_watch_dir(rest)
+    elif cmd == "capture-series":
+        cmd_capture_series(rest)
+    elif cmd == "session":
+        cmd_session(rest)
+    elif cmd == "window":
+        cmd_window(rest)
+    elif cmd == "signal":
+        cmd_signal(rest)
+    elif cmd == "chat":
+        cmd_chat(rest)
+    elif cmd == "talk":
+        cmd_talk(rest)
     elif cmd == "rec":
         cmd_rec(rest)
     else:
         _die(
             f"unknown command {cmd!r}; expected capture | capture-series | "
             "session | window | do | run | tree | click-name | invoke | push | "
-            "watch-dir | rec"
+            "watch-dir | signal | chat | talk | rec"
         )
 
 

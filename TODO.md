@@ -56,6 +56,58 @@
   weil unklar ist, ob die Skill-Version eigenständig zählt. Einmal festlegen: entweder mit der
   Paketversion mitziehen oder als eigenständige Skill-Version kennzeichnen.
 
+## User-Auftrag 2026-07-31 — Bildschirm-Signalisierung (Compute-Mode-Anzeige)
+
+Befund: Die Anzeige der Bildschirmnutzung war **nicht integriert** —
+`cooperative.OwnershipIndicator` existierte nur als Protocol plus
+`NullOwnershipIndicator` („Interface only. This release intentionally ships no
+renderer."). Dieser Lauf liefert den Renderer.
+
+- [x] **Aktiv-Signalisierung (Kern, umgesetzt):** `open_compute/indicator.py`.
+  Leuchtende Bildschirm-Umrandung (Windows, click-through Overlay) mit
+  Modus-Farben: **rot = CONTROL** (Modell steuert), **blau = OBSERVE** (Modell
+  schaut nur zu / gemeinsam etwas anschauen), grün = COMPANION, orange =
+  HANDOFF, grau = PAUSED. Neon-Ring um den Mauszeiger, Statuszeile mit
+  Agent·Modus·Scope. `ScreenSignalIndicator` ist ein Drop-in für
+  `CooperativeOrchestrator(indicator=…)`. CLI: `oc signal on --mode …`.
+  **Live-Verify 2026-07-31 bestanden:** roter Rahmen + Cursor-Ring + Status-
+  streifen auf echtem Desktop sichtbar (Screenshot `_session/signal_smoke.png`);
+  ctypes-argtypes für 64-bit-Handles nachgezogen.
+- [x] **Abbruch-Kanal mit Grundeingabe (umgesetzt):** `AbortChannel`-Protocol;
+  `ConsoleAbortChannel` (stdin) und `TkAbortChannel` (topmost Eingabe-Overlay).
+  `oc signal abort` sammelt die Kurznachricht des Menschen ein und gibt sie als
+  JSON aus — der aufrufende Agent reicht sie ans Modell weiter.
+- [x] **Signalisierung konfigurierbar (umgesetzt 2026-07-31):** `SignalConfig`
+  (JSON, atomare Writes, `OC_SIGNAL_CONFIG` oder `_state/signal-config.json`).
+  Pro Modus einzeln schaltbar: `enabled`, `color`, `label`, `border` (Rahmen),
+  `cursor` (Mauszeiger-Ring) — Rahmen und Maus sind unabhängig. Usecase
+  „Maus-Hervorhebung nur bei aktiver Steuerung, kein Rahmen" =
+  `control: {border: false, cursor: true}` — **live verifiziert**
+  (Screenshot `_session/signal_usecase.png`: Ring ja, Rahmen nein). Ohne
+  Datei gelten exakt die eingebauten Defaults/Farben. CLI:
+  `oc signal config --init|--show`, `oc signal on --config PATH`,
+  Overrides `--no-border`/`--no-cursor`.
+- [x] **Chat-Anbindung über Bildschirminhalt (v0, umgesetzt 2026-07-31):**
+  `oc chat [--channel console|tk] [--shot]` — Kurznachricht des Menschen zum
+  Bildschirminhalt, optional mit Vollbild-Screenshot aus `_session/`, als
+  JSON-Zeile an den aufrufenden Agenten. Bewusst kein Modell-Aufruf im
+  Kommando: der Agent antwortet in seinem eigenen Kanal. Offen bleibt der
+  Ausbau zur laufenden Dialog-Schleife mit `ellmos-chat`/`companion-for-agy`.
+- [x] **Audio / Live-Sprache — Push-to-Talk v0 (umgesetzt 2026-07-31):**
+  `open_compute/talk.py` + `oc talk --key F9` — Taste halten → sprechen →
+  loslassen, WAV in `_session/` (winmm MCI, zero-dependency). Pfad geht als
+  JSON an den Agenten. **Offen:** STT (Sprache→Text) und TTS (Antwort als
+  Sprache) bleiben modellseitig; Hotkey ist ein Polling-Key (GetAsyncKeyState),
+  kein globaler Hook.
+- [x] **Abort-Overlay mit ESC-Hotkey (umgesetzt 2026-07-31):**
+  `oc signal on --abort-hotkey [COMBO]` (Default `ctrl+alt+esc`) registriert
+  einen globalen Hotkey im Overlay-Thread (MOD_NOREPEAT); bei Druck öffnet
+  sich die topmost Tk-Grundeingabe und die Nachricht geht als JSON-Zeile an
+  den Agenten. Eingabefeld ist ein Tk-Widget, nicht wörtlich in die Rahmen-
+  Fenster gezeichnet — das bleibt als kosmetischer Ausbau offen.
+  **Live-Verify des Hotkey-Drucks: OFFEN** (Headless getestet: Parsing,
+  Callback-Verdrahtung, CLI-Übergabe).
+
 ## Vergleich mit AB498/computer-control-mcp (2026-07-12)
 
 Fremdserver (153 Sterne, PyAutoGUI + RapidOCR) gegen unseren Kern verglichen.
