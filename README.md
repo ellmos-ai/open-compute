@@ -1,7 +1,7 @@
 # open-compute
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ellmos-ai/.github/master/profile/seal-open-compute-mcp.png" alt="open-compute emblem" width="300">
+  <img src="https://raw.githubusercontent.com/ellmos-ai/.github/master/profile/seal-open-compute-mcp.png" alt="open-compute emblem" width="400">
 </p>
 
 **EN** | [DE](README_de.md)
