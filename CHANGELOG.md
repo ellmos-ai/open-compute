@@ -9,6 +9,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (MCP-Tools für Signal/Chat/Talk, 2026-07-31)
+
+- Added six human-in-the-loop tools to the FastMCP server: `signal_show` /
+  `signal_hide` / `signal_status` / `signal_abort` (the signal overlay now
+  persists in the server process across calls — no time-bounded CLI wrapper;
+  abort-hotkey messages are held in server state and consumed via
+  `signal_status`, never printed to the stdio transport), `chat`
+  (human→model message + optional screenshot) and `talk` (push-to-talk WAV).
+  All side effects injectable for headless tests; the overlay is cleared on
+  server shutdown alongside the held-input release.
+- Added i18n tool descriptions (en/de/es/ja/ru/zh) for the new tools and
+  10 MCP tests. Full suite: 524 passed, 1 skipped.
+
 ### Docs / Fixed (README update + test-count correction, 2026-07-31)
 
 - Documented the 2026-07-31 signal work in both READMEs: architecture sketch

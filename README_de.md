@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-515%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-524%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -287,7 +287,12 @@ open-compute-mcp          # stdio-Server (Console-Script)
 
 **Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
 `invoke` (semantisches UIA-Zielen) · `list_windows` · `get_screen_size` ·
-`watch_dir` · `push_status` · `rec_replay`. Koordinaten normiert 0..1;
+`watch_dir` · `push_status` · `rec_replay` ·
+`signal_show` / `signal_hide` / `signal_status` / `signal_abort`
+(Bildschirm-Signal-Overlay mit Abort-Hotkey — bleibt im Server-Prozess
+aufrufübergreifend sichtbar) · `chat` (Mensch→Modell-Nachricht + optionaler
+Screenshot) · `talk` (Push-to-Talk-WAV; STT/TTS modellseitig).
+Koordinaten normiert 0..1;
 `list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
 kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
 

@@ -52,8 +52,10 @@ def _tool_names():
 
 def test_tools_registered():
     assert _tool_names() == [
-        "capture", "click_name", "do", "get_screen_size", "invoke",
-        "list_windows", "push_status", "rec_replay", "tree", "watch_dir",
+        "capture", "chat", "click_name", "do", "get_screen_size", "invoke",
+        "list_windows", "push_status", "rec_replay", "signal_abort",
+        "signal_hide", "signal_show", "signal_status", "talk", "tree",
+        "watch_dir",
     ]
 
 
@@ -173,3 +175,147 @@ def test_per_call_mode_can_tighten(monkeypatch):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, mode="read_only")
     assert r["result"] == "deny"
+
+
+# ---------------------------------------------------------------------------
+# Signal / chat / talk tools (human-in-the-loop)
+# ---------------------------------------------------------------------------
+
+class _FakeOverlay:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.shown = []
+        self.visible = False
+
+    def show(self, *, color, label, border=True, cursor=True):
+        self.shown.append({"color": color, "label": label,
+                           "border": border, "cursor": cursor})
+        self.visible = True
+
+    def hide(self):
+        self.visible = False
+
+    def is_visible(self):
+        return self.visible
+
+
+class _FakePromptChannel:
+    message = "fake message"
+
+    def prompt_reason(self, *, context):
+        return self.message
+
+
+@pytest.fixture
+def _signal_state(monkeypatch):
+    """Reset signal state and inject a fake overlay for every test here."""
+    monkeypatch.setattr(S, "WindowsBorderOverlay", _FakeOverlay, raising=False)
+    S._STATE.signal_indicator = None
+    S._STATE.signal_mode = ""
+    S._STATE.pending_abort_message = None
+    yield
+    S._STATE.signal_indicator = None
+    S._STATE.signal_mode = ""
+    S._STATE.pending_abort_message = None
+
+
+def test_signal_show_and_hide(_signal_state):
+    result = S.signal_show(mode="control", agent="kimi")
+    assert result["visible"] is True
+    assert result["mode"] == "control"
+    assert result["color"] == [255, 40, 60]
+    assert "kimi" in result["label"]
+
+    status = S.signal_status()
+    assert status["visible"] is True
+    assert status["mode"] == "control"
+    assert status["pending_abort_message"] is None
+
+    hidden = S.signal_hide()
+    assert hidden == {"visible": False}
+    assert S.signal_status()["visible"] is False
+
+
+def test_signal_show_rejects_unknown_mode(_signal_state):
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        S.signal_show(mode="not-a-mode")
+
+
+def test_signal_status_consumes_pending_abort(_signal_state):
+    S._STATE.pending_abort_message = "stop, wrong window"
+    first = S.signal_status()
+    assert first["pending_abort_message"] == "stop, wrong window"
+    assert S.signal_status()["pending_abort_message"] is None
+
+
+def test_signal_show_config_toggles(monkeypatch, _signal_state, tmp_path):
+    from open_compute.indicator import SignalConfig
+
+    cfg = SignalConfig.from_dict({
+        "thickness": 9,
+        "modes": {"control": {"border": False, "cursor": True}},
+    })
+    path = tmp_path / "cfg.json"
+    cfg.save(path)
+    result = S.signal_show(mode="control", agent="kimi",
+                           config_path=str(path))
+    assert result["visible"] is True
+    overlay = S._STATE.signal_indicator.renderer
+    assert overlay.kwargs["thickness"] == 9
+    assert overlay.shown[-1]["border"] is False
+    assert overlay.shown[-1]["cursor"] is True
+
+
+def test_signal_abort_uses_channel(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
+    result = S.signal_abort(context="ctx")
+    assert result == {"abort_message": "fake message"}
+
+
+def test_chat_returns_message_and_shot(monkeypatch, _signal_state, tmp_path):
+    monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
+    monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
+    result = S.chat(channel="tk", shot=True)
+    assert result["chat_message"] == "fake message"
+    assert result["screenshot"] is not None
+    assert (tmp_path / result["screenshot"].split(tmp_path.name + "\\")[-1]
+            if "\\" in result["screenshot"] else True)
+    import pathlib
+    assert pathlib.Path(result["screenshot"]).exists()
+
+
+def test_chat_without_shot(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
+    assert S.chat(channel="tk") == {
+        "chat_message": "fake message", "screenshot": None,
+    }
+
+
+def test_talk_uses_injected_recorder(monkeypatch, _signal_state, tmp_path):
+    from open_compute.talk import TalkResult
+
+    seen = {}
+
+    def fake_rpt(*, vk, out_path, mci, key_down, max_seconds, wait_timeout):
+        seen.update(vk=vk, max_seconds=max_seconds)
+        return TalkResult(True, out_path, 2.0, "released")
+
+    monkeypatch.setattr(S, "record_push_to_talk", fake_rpt, raising=False)
+    monkeypatch.setattr(S, "winmm_mci", lambda: (lambda _c: 0), raising=False)
+    monkeypatch.setattr(
+        S, "async_key_down", lambda: (lambda _v: False), raising=False
+    )
+    monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
+
+    result = S.talk(key="F9", max_seconds=5.0)
+    assert result["recorded"] is True
+    assert result["reason"] == "released"
+    assert result["wav"].startswith(str(tmp_path))
+    assert seen == {"vk": 0x78, "max_seconds": 5.0}
+
+
+def test_talk_rejects_modifier_key(_signal_state):
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        S.talk(key="ctrl+a")

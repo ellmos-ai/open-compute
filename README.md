@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-515%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-524%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -282,7 +282,11 @@ open-compute-mcp          # stdio server (console script)
 
 **Tools:** `capture` · `do` (single or batch canonical actions) · `tree` ·
 `click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
-`get_screen_size` · `watch_dir` · `push_status` · `rec_replay`. Coordinates are
+`get_screen_size` · `watch_dir` · `push_status` · `rec_replay` ·
+`signal_show` / `signal_hide` / `signal_status` / `signal_abort` (screen-usage
+signal overlay with abort hotkey — persists in the server process across
+calls) · `chat` (human→model message + optional screenshot) · `talk`
+(push-to-talk WAV; STT/TTS model-side). Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
 

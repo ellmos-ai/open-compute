@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import pathlib
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP, Image
@@ -59,6 +60,10 @@ class _ServerState:
         self._executor: Any = None
         self.dirwatch_baselines: dict[str, dict] = {}
         self._feed_manager: Any = None
+        # Human-in-the-loop signal state (one persistent overlay per server)
+        self.signal_indicator: Any = None
+        self.signal_mode: str = ""
+        self.pending_abort_message: str | None = None
 
     def executor(self) -> Any:
         """Return the resident LocalExecutor, creating it lazily (Windows/mss)."""
@@ -598,6 +603,227 @@ def _jsonable(value: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Human-in-the-loop signal / chat / talk tools
+# ---------------------------------------------------------------------------
+
+def _module_state_dir() -> pathlib.Path:
+    return pathlib.Path(__file__).resolve().parent.parent / "_state"
+
+
+def _module_session_dir() -> pathlib.Path:
+    path = pathlib.Path(__file__).resolve().parent.parent / "_session"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _signal_config_path() -> pathlib.Path | None:
+    env = os.environ.get("OC_SIGNAL_CONFIG", "").strip()
+    if env:
+        return pathlib.Path(env)
+    default = _module_state_dir() / "signal-config.json"
+    return default if default.exists() else None
+
+
+def _prompt_channel(channel: str, context: str) -> str | None:
+    channels = {
+        "console": "ConsoleAbortChannel",
+        "tk": "TkAbortChannel",
+        "none": "NullAbortChannel",
+    }
+    if channel not in channels:
+        raise ValueError(f"channel must be one of {sorted(channels)}")
+    from . import indicator as _indicator_mod
+
+    channel_cls = globals().get(channels[channel]) or getattr(
+        _indicator_mod, channels[channel]
+    )
+    return channel_cls().prompt_reason(context=context)
+
+
+@mcp.tool(description=mcp_i18n.tool_description("signal_show", _LANG))
+def signal_show(
+    mode: str,
+    agent: str = "agent",
+    scope: str = "screen",
+    config_path: str | None = None,
+    no_border: bool = False,
+    no_cursor: bool = False,
+    abort_hotkey: str | None = None,
+) -> dict:
+    """Show the screen-usage signal overlay (border + cursor ring, per mode).
+
+    The overlay lives in this server process, so it stays up across tool calls
+    until ``signal_hide`` — no time-bounded CLI wrapper needed. Colors and the
+    border/cursor toggles come from the signal config (``OC_SIGNAL_CONFIG`` or
+    ``_state/signal-config.json``) unless overridden here. When an abort
+    hotkey is active (argument or config), pressing it opens a reason box and
+    the message is held for ``signal_status`` to collect.
+    """
+
+    from .indicator import ScreenSignalIndicator, SignalConfig, signal_for_mode
+    from .session import SessionMode
+
+    renderer_cls = globals().get("WindowsBorderOverlay")
+    if renderer_cls is None:
+        from .indicator import WindowsBorderOverlay as renderer_cls
+
+    cfg: SignalConfig | None = None
+    path = pathlib.Path(config_path) if config_path else _signal_config_path()
+    if path is not None:
+        cfg = SignalConfig.load(path)
+
+    hotkey = abort_hotkey or (cfg.abort_hotkey if cfg else None)
+
+    if _STATE.signal_indicator is not None:
+        _STATE.signal_indicator.clear()
+
+    def _on_abort() -> None:
+        from .indicator import TkAbortChannel
+
+        indicator = _STATE.signal_indicator
+        message = TkAbortChannel().prompt_reason(
+            context=indicator.last_label if indicator else ""
+        )
+        if message:
+            # No stdout here (stdio transport): hold it for signal_status.
+            _STATE.pending_abort_message = message
+
+    indicator = ScreenSignalIndicator(
+        renderer=renderer_cls(
+            thickness=cfg.thickness if cfg else 6,
+            border=not no_border,
+            cursor_ring=not no_cursor,
+            on_abort=_on_abort if hotkey else None,
+            abort_hotkey=hotkey,
+        ),
+        config=cfg,
+    )
+    session_mode = SessionMode(mode)
+    indicator.show(agent=agent, scope=scope, mode=session_mode)
+    _STATE.signal_indicator = indicator
+    _STATE.signal_mode = session_mode.value
+    _label, color = signal_for_mode(session_mode)
+    return {
+        "visible": True,
+        "mode": session_mode.value,
+        "label": indicator.last_label,
+        "color": list(color),
+    }
+
+
+@mcp.tool(description=mcp_i18n.tool_description("signal_hide", _LANG))
+def signal_hide() -> dict:
+    """Hide the screen-usage signal overlay."""
+
+    if _STATE.signal_indicator is not None:
+        _STATE.signal_indicator.clear()
+        _STATE.signal_indicator = None
+    _STATE.signal_mode = ""
+    return {"visible": False}
+
+
+@mcp.tool(description=mcp_i18n.tool_description("signal_status", _LANG))
+def signal_status() -> dict:
+    """Report overlay state and collect a pending abort message (consumed)."""
+
+    indicator = _STATE.signal_indicator
+    message = _STATE.pending_abort_message
+    _STATE.pending_abort_message = None
+    visible = False
+    if indicator is not None:
+        try:
+            visible = bool(indicator.renderer.is_visible())
+        except Exception:  # renderer state must not break the status call
+            visible = False
+    return {
+        "visible": visible,
+        "mode": _STATE.signal_mode,
+        "label": indicator.last_label if indicator else "",
+        "pending_abort_message": message,
+    }
+
+
+@mcp.tool(description=mcp_i18n.tool_description("signal_abort", _LANG))
+def signal_abort(context: str = "", channel: str = "tk") -> dict:
+    """Ask the human for a short abort reason; the message is for the model."""
+
+    if not context and _STATE.signal_indicator is not None:
+        context = _STATE.signal_indicator.last_label
+    return {"abort_message": _prompt_channel(channel, context)}
+
+
+@mcp.tool(description=mcp_i18n.tool_description("chat", _LANG))
+def chat(channel: str = "tk", context: str = "", shot: bool = False) -> dict:
+    """Human-to-model message about screen content (+ optional screenshot).
+
+    The message comes back as the tool result; this server never calls a
+    model itself — the client (the reasoner) answers in its own channel.
+    """
+
+    message = _prompt_channel(channel, context or "Nachricht ans Modell")
+    shot_path = None
+    if shot:
+        obs = _STATE.executor().screenshot()
+        data = bytes(obs.screenshot)
+        from datetime import datetime, timezone
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        shot_file = _module_session_dir() / f"chat_{stamp}.png"
+        shot_file.write_bytes(data)
+        shot_path = str(shot_file)
+    return {"chat_message": message, "screenshot": shot_path}
+
+
+@mcp.tool(description=mcp_i18n.tool_description("talk", _LANG))
+def talk(
+    key: str = "F9",
+    max_seconds: float = 60.0,
+    wait_timeout: float | None = None,
+) -> dict:
+    """Push-to-talk voice note: hold ``key``, speak, release -> WAV path.
+
+    Zero-dependency capture via winmm MCI (Windows). STT/TTS stay model-side;
+    the WAV path is returned so the client can transcribe it. This tool blocks
+    while waiting for / recording the key hold.
+    """
+
+    from .indicator import parse_hotkey
+
+    mods, vk = parse_hotkey(key)
+    if mods:
+        raise ValueError("key must be a single key without modifiers (e.g. F9)")
+
+    rpt = globals().get("record_push_to_talk")
+    mci_factory = globals().get("winmm_mci")
+    key_probe = globals().get("async_key_down")
+    if rpt is None or mci_factory is None or key_probe is None:
+        from .talk import async_key_down, record_push_to_talk, winmm_mci
+
+        rpt = rpt or record_push_to_talk
+        mci_factory = mci_factory or winmm_mci
+        key_probe = key_probe or async_key_down
+
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    out = _module_session_dir() / f"ptt_{stamp}.wav"
+    result = rpt(
+        vk=vk,
+        out_path=str(out),
+        mci=mci_factory(),
+        key_down=key_probe(),
+        max_seconds=max_seconds,
+        wait_timeout=wait_timeout,
+    )
+    return {
+        "recorded": result.recorded,
+        "wav": result.path,
+        "seconds": result.seconds,
+        "reason": result.reason,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -628,6 +854,11 @@ def main() -> None:
     try:
         mcp.run(transport="stdio")
     finally:
+        if _STATE.signal_indicator is not None:
+            try:  # the overlay must not outlive the server either
+                _STATE.signal_indicator.clear()
+            except Exception:  # pragma: no cover - best effort on the way out
+                pass
         _release_held_input()
 
 
