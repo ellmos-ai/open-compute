@@ -1,8 +1,6 @@
 # open-compute
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ellmos-ai/.github/master/profile/ellmos-logo.jpg" alt="ellmos emblem" width="300">
-</p>
+<img src="assets/banner.svg" width="100%" alt="open-compute banner"/>
 
 **EN** | [DE](README_de.md)
 
@@ -124,9 +122,7 @@ The same `extra @ git+…` form works for every extra below:
 |---|---|
 | `claude` | anthropic SDK |
 | `openai` | openai SDK |
-| `browser` | playwright |
 | `local` | mss — real Windows screenshots + input |
-| `uia` | uiautomation — UIA element-tree perception + semantic targeting (Windows) |
 | `wgc` | WGC fallback for DirectX surfaces (pulls numpy/OpenCV) |
 | `compose` | Pillow — Before\|After composite + annotated shots |
 | `watch` | watchdog — native FS events for the directory-watch feed |
@@ -134,7 +130,7 @@ The same `extra @ git+…` form works for every extra below:
 | `record` | clirec[record] capture backend compatibility |
 | `mcp` | mcp SDK — MCP server (console script: `open-compute-mcp`) |
 | `dev` | pytest |
-| `all` | anthropic, openai, playwright, mss, Pillow, uiautomation, WGC, watchdog, clirec, mcp |
+| `all` | anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec, mcp |
 
 Extras combine as usual, e.g. `open-compute[local,wgc,claude]`. Working from a
 clone instead? `pip install -e ".[local,claude]"` from the repository root.
@@ -578,8 +574,8 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current headless state: **524 passed, 1 skipped**
-(skip reason: `anthropic` SDK installed in the environment).
+installs pytest. Current headless state: **473 passed, 4 host-query tests
+explicitly deselected**.
 
 ---
 

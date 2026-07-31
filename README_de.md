@@ -1,8 +1,6 @@
 # open-compute
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ellmos-ai/.github/master/profile/ellmos-logo.jpg" alt="ellmos emblem" width="300">
-</p>
+<img src="assets/banner.svg" width="100%" alt="open-compute Banner"/>
 
 [EN](README.md) | **DE**
 
@@ -130,9 +128,7 @@ Dieselbe `extra @ git+…`-Form gilt für jedes Extra:
 |---|---|
 | `claude` | anthropic-SDK |
 | `openai` | openai-SDK |
-| `browser` | playwright |
 | `local` | mss — echter Windows-Screenshot + Input |
-| `uia` | uiautomation — UIA-Elementbaum-Perzeption + semantisches Targeting (Windows) |
 | `wgc` | WGC-Fallback für DirectX-Flächen (zieht numpy/OpenCV) |
 | `compose` | Pillow — Vorher\|Nachher-Composite + annotierter Shot |
 | `watch` | watchdog — native FS-Events für den Directory-Watch-Feed |
@@ -140,7 +136,7 @@ Dieselbe `extra @ git+…`-Form gilt für jedes Extra:
 | `record` | clirec[record]-Capture-Backend-Kompatibilität |
 | `mcp` | mcp-SDK — MCP-Server (Console-Script: `open-compute-mcp`) |
 | `dev` | pytest |
-| `all` | anthropic, openai, playwright, mss, Pillow, uiautomation, WGC, watchdog, clirec, mcp |
+| `all` | anthropic, openai, playwright, mss, WGC, Pillow, watchdog, clirec, mcp |
 
 Extras lassen sich kombinieren, z. B. `open-compute[local,wgc,claude]`. Aus
 einem Klon heraus: `pip install -e ".[local,claude]"` im Wurzelverzeichnis.
@@ -599,8 +595,8 @@ python -X utf8 -m pytest -q
 ```
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
-einem Klon installiert pytest. Aktueller Headless-Stand: **524 bestanden,
-1 übersprungen** (Skip-Grund: `anthropic`-SDK ist in der Umgebung installiert).
+einem Klon installiert pytest. Aktueller Headless-Stand: **473 bestanden,
+4 Host-Abfragetests explizit abgewählt**.
 
 ---
 
