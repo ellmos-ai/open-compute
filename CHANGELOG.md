@@ -7,7 +7,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.7.0] - 2026-07-31
+
+Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
 ### Added (MCP-Tools für Signal/Chat/Talk, 2026-07-31)
 

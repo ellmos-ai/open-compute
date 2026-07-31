@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-compute"
-version = "0.6.0"
+version = "0.7.0"
 description = "Model-agnostic computer-use core: one agent loop for Claude, OpenAI CUA, and a mock backend, with normalized coordinates, a canonical action schema, and a central safety gate."
 readme = "README.md"
 license = "MIT"
