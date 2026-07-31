@@ -9,6 +9,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs / Fixed (README update + test-count correction, 2026-07-31)
+
+- Documented the 2026-07-31 signal work in both READMEs: architecture sketch
+  gained the human-in-the-loop signaling layer (`indicator.py` / `talk.py`),
+  quick start gained `oc signal` / `oc chat` / `oc talk` examples (3j–3l),
+  the status section describes the overlay, `SignalConfig`, abort channel,
+  push-to-talk and chat, and the stale "ownership-overlay rendering not
+  implemented" stub note was corrected.
+- Fixed the test badge: it now reads **515 passed**. The 684 figure measured
+  earlier today included 169 duplicate tests from untracked
+  `tests/*-WORKSTATION-LG.py` sync-mirror files that only existed in the
+  OneDrive working tree; the canonical repo collects 515 (+1 skipped).
+
 ### Added (Signal-Config: Farben und Rahmen/Cursor getrennt schaltbar, 2026-07-31)
 
 - Added `SignalConfig` / `SignalModeConfig` (`open_compute/indicator.py`):

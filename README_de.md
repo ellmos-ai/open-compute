@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-476%20headless%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-515%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -64,6 +64,17 @@ bleibt:
                         |  Ziel -> wahrnehmen -> Backend ->       |
                         |  Safety -> ausführen -> neu wahrnehmen  |
                         +-------------------+---------------------+
+                                            |
+              +-----------------------------v------------------------------+
+              |  HUMAN-IN-THE-LOOP-SIGNALISIERUNG (indicator.py/talk.py)   |
+              |  - leuchtender Rahmen + Neon-Cursor-Ring, Farbe je         |
+              |    Sitzungsmodus (control=rot, observe=blau, ...)          |
+              |  - SignalConfig-JSON: enabled/color/label/border/cursor    |
+              |    pro Modus; Rahmen und Cursor getrennt schaltbar         |
+              |  - Abort-Hotkey -> Grundeingabe -> Nachricht ans Modell    |
+              |  - oc signal | oc chat (+Screenshot) | oc talk             |
+              |    (Push-to-Talk-WAV; STT/TTS bleiben modellseitig)        |
+              +-----------------------------+------------------------------+
                                             |
         +-----------------------------------+-----------------------------------+
         |                                   |                                   |
@@ -191,6 +202,18 @@ oc window minimize --hwnd 42 --yes
 
 # 3i. Begrenzte, deduplizierte Fenster-Capture-Serie
 oc capture-series --window "Word" --max-frames 8 --stable-frames 2
+
+# 3j. Dem Menschen zeigen, was das Modell tut (v0.6, Windows)
+oc signal on --mode control --for 30   # leuchtender roter Rahmen + Cursor-Ring
+oc signal on --mode observe            # blau = Modell schaut nur zu (Stop mit Ctrl-C)
+oc signal on --mode control --abort-hotkey   # Strg+Alt+Esc -> Grundeingabe -> JSON an Agenten
+oc signal config --init                # Default-JSON schreiben (Farben/Labels/Rahmen/Cursor je Modus)
+
+# 3k. Mensch -> Modell: Nachricht zum Bildschirminhalt (v0.6)
+oc chat --shot                         # Nachricht + Vollbild-Screenshot-Pfad als JSON
+
+# 3l. Push-to-Talk-Sprachnotiz (v0.6, Windows, zero-dependency winmm)
+oc talk --key F9                       # F9 halten, sprechen, loslassen -> WAV-Pfad als JSON
 
 # 4. Neuen Screenshot aufnehmen, wiederholen bis fertig.
 #    Alternativ: After-Shot direkt aus dem Composite lesen → ein Roundtrip weniger.
@@ -374,8 +397,10 @@ konfigurierbar
   Flächen, wenn mss/GDI-Capture fehlschlägt. Alle Action-Typen implementiert.
   Live-getestet: `oc capture` → PNG 368 KB (1920×1080); `oc do mouse_move` →
   Cursor bewegt.
-- **`oc` CLI** (`oc capture` / `oc do` / `oc run`): Modus A (kein Key, Skill)
-  und Modus B (autonomer AgentLoop mit API-Backend) end-to-end verdrahtet.
+- **`oc` CLI** (`oc capture` / `oc do` / `oc run` / `oc session` / `oc window`
+  / `oc capture-series` / `oc signal` / `oc chat` / `oc talk`): Modus A (kein
+  Key, Skill) und Modus B (autonomer AgentLoop mit API-Backend) end-to-end
+  verdrahtet.
 - **`SKILL.md`**: Loop-Protokoll für den Session-Agenten (Modus A).
 - **Multi-Feed-Abstraktion** (v0.4, `open_compute/feeds/`): `PerceptionFeed`- +
   `Targeter`-Protokolle, `ScreenshotFeed` (Pixel) und eine Laufzeit-Feed-Registry
@@ -415,6 +440,29 @@ konfigurierbar
 - **`LearningManager`** (v0.6, `open_compute/learning.py`): Bandit/Bayes-Gewichtung
   (`BetaPrior`), Use-Case-Profile (JSON, Warmstart via `apply_profile_to_manager()`),
   Cross-Session-LESSONS-LEARNED (JSONL). Zustand in gitignoriertem `_state/`.
+- **Bildschirm-Signalisierung** (2026-07-31, `open_compute/indicator.py`): die
+  Renderer-Seite des kooperativen `OwnershipIndicator`-Protokolls.
+  `WindowsBorderOverlay` (ctypes, click-through, topmost) zeichnet einen
+  leuchtenden Rahmen um den virtuellen Bildschirm, einen Neon-Ring um den
+  Mauszeiger und eine Statuszeile — Farbe je Sitzungsmodus (rot `control`,
+  blau `observe`, grün `companion`, orange `handoff`, grau `paused`).
+  `SignalConfig` (JSON, `OC_SIGNAL_CONFIG` oder `_state/signal-config.json`)
+  konfiguriert `enabled`/`color`/`label`/`border`/`cursor` pro Modus; Rahmen
+  und Cursor sind getrennt schaltbar (z. B. nur Cursor-Hervorhebung bei
+  aktiver Steuerung). Live auf echtem Desktop verifiziert.
+- **Abort-Kanal mit Grundeingabe** (2026-07-31): `AbortChannel`-Protokoll mit
+  Konsolen-/Topmost-Tk-Implementierung; die kurze Abbruchnachricht des
+  Menschen geht an den aufrufenden Agenten (`on_abort_message`, JSON-Zeile).
+  `oc signal on --abort-hotkey [COMBO]` (Default `ctrl+alt+esc`) öffnet die
+  Grundeingabe direkt aus dem Overlay.
+- **Push-to-Talk-Sprachaufnahme** (2026-07-31, `open_compute/talk.py`):
+  `oc talk --key F9` — Taste halten, sprechen, loslassen — schreibt WAV nach
+  `_session/` (winmm MCI, zero-dependency). STT/TTS bleiben bewusst
+  modellseitig; der WAV-Pfad geht als JSON an den Agenten.
+- **Mensch→Modell-Chatnachricht** (2026-07-31): `oc chat [--channel
+  console|tk] [--shot]` — Kurznachricht zum Bildschirminhalt, optional mit
+  Vollbild-Screenshot aus `_session/`, als JSON-Zeile. Kein Modell-Aufruf im
+  Kommando; der Agent antwortet in seinem eigenen Kanal.
 
 **Interface / Stub (ehrlich gekennzeichnet)**
 
@@ -424,10 +472,10 @@ konfigurierbar
   (Set-of-Marks, OCR, Vision-Overlays, DOM) sind **noch nicht implementiert**.
 - `BachInjectorAdapter` ist ein dokumentierter Stub; `LocalFileInjector` ist der funktionierende Standard-Sink.
 - Always-on Push-Daemon (permanente Hintergrundschleife) ist **noch nicht implementiert**.
-- Live-Human-Input-Monitoring, sichtbares Ownership-Overlay, globaler
-  Not-Aus-Hotkey, Voice, virtuelle Display-/Session-Steuerung und jede
-  produktive Verdrahtung des Headless-Kerns sind **nicht implementiert oder
-  aktiviert**.
+- Live-Human-Input-Monitoring, globale Not-Aus-Hotkeys (außer dem Abort-
+  Hotkey des Signal-Overlays), Speech-to-Text / Text-to-Speech, virtuelle
+  Display-/Session-Steuerung und jede produktive Verdrahtung des
+  Headless-Kerns sind **nicht implementiert oder aktiviert**.
 - `oc rec` ist ein **lazy geladener Kompatibilitäts-Shim** für das externe
   Paket [`ellmos-ai/clirec`](https://github.com/ellmos-ai/clirec); `clirec`
   wird nur für Aufnahme-/Replay-Workflows benötigt.
