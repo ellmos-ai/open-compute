@@ -1,5 +1,50 @@
 # TODO
 
+## Feature-Backlog (auch für code-naive Umsetzer geeignet)
+
+- [ ] **Safety-Coverage-Test.** Ein Test, der beweist, dass JEDER
+  zustandsverändernde MCP-Tool-Handler das Safety-Gate durchläuft (schützt vor
+  Gate-Umgehungen wie dem historischen `oc rec replay`-Befund). Wo:
+  `tests/test_mcp_server.py` (Muster vorhanden: `_tool_names()` listet alle
+  Tools). Wie: aus `mcp_server.py` die Handler-Ebene prüfen — z. B. Quelltext-
+  Analyse der registrierten Tool-Funktionen (jede muss `_gate(...)` oder
+  `policy.evaluate(...)` aufrufen) oder Laufzeit-Test mit Spy-Policy.
+  Abnahme: Test schlägt fehl, sobald ein neuer mutierender Tool-Handler ohne
+  Gate-Aufruf registriert wird; bestehende Liste bleibt grün.
+- [ ] **Panic-Hotkey mit Prozess-Teardown.** Globaler Kill-Schalter
+  (z. B. Strg+Alt+K), der sofort alle Eingaben freigibt (`release_all`), das
+  Signal-Overlay ausblendet und den Server kontrolliert beendet — ergänzt den
+  Abort-Hotkey (der einen Grund ans Modell gibt; der Panic-Hotkey stoppt ohne
+  Rückfrage). Wo: `open_compute/mcp_server.py` (Server-Lifetime,
+  `_release_held_input` existiert bereits als Vorlage) und ggf. Wiederverwendung
+  von `parse_hotkey` aus `open_compute/indicator.py`. Abnahme: Unit-Test mit
+  injiziertem Hotkey-Listener zeigt release→hide→stop-Reihenfolge;
+  Doku-Eintrag in README (EN+DE).
+- [ ] **OCR-Feed via Windows.Media.Ocr.** OCR-Wahrnehmung ohne neue
+  Dependency — Windows-eigene OCR-API per PowerShell aufrufen (entspricht dem
+  langjährigen Hinweis „Windows.Media.Ocr ist der dependency-freie Weg" in
+  `ARCHITECTURE.md`). Wo: neuer Feed `open_compute/feeds/ocr_windows.py` nach
+  dem Muster von `feeds/uia_windows.py` (Protocol `PerceptionFeed` in
+  `feeds/base.py`). Output: Text + Bounding-Boxen → Grundlage fürs
+  „Text→Pixel-Mapping" (siehe bestehender TODO-Punkt „Automatisches
+  OCR-Text→Pixel/Ort-Mapping"). Abnahme: Unit-Tests mit injizierter
+  PowerShell-Antwort (kein Live-Call in CI); `available()` False außerhalb
+  Windows; Live-Smoke dokumentiert.
+- [ ] **`capture_when_stable`-Settle.** Hilfsfunktion, die Screenshots pollt,
+  bis das Bild ~250 ms unverändert ist (kleiner Fingerprint +
+  Mean-Diff-Schwelle), statt fester Sleeps nach Aktionen. Wo:
+  `open_compute/adaptive_capture.py` erweitern (bestehende
+  `capture_until_stable` nutzt exakte Frame-Gleichheit — das Settle ergänzt
+  eine tolerante Mean-Diff-Variante). Abnahme: Unit-Tests mit Frame-Generator
+  (ändert sich → wird stabil → Timeout); keine neuen Dependencies.
+- [ ] **Gap-basierte Latenz-Timing-Messung.** Pro Tool-/CLI-Aufruf
+  Phasen-Timings (Capture, UIA-Baum, Gate, Aktion) als JSONL loggen +
+  Auswerteskript — deckt den TODO-Punkt „Timing- und Diagnose-Feld pro Aufruf"
+  (2026-07-25) ab. Wo: optional schaltbar (Env `OC_TIMING=1`), Log nach
+  `_state/timing.jsonl`; Auswertung als `oc timing-report` oder kleines
+  Skript. Abnahme: bei aktiviertem Flag entstehen JSONL-Zeilen mit
+  Phasen-Feldern; ohne Flag null Overhead; Unit-Test prüft Log-Schema.
+
 ## Headless Cooperative-Core-Slice 2026-07-28 [U]
 
 - [x] Mockbare, inhaltfreie Human-Activity-Klassifikation mit bounded
