@@ -1,6 +1,8 @@
 # open-compute
 
-<img src="assets/banner.svg" width="100%" alt="open-compute banner"/>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ellmos-ai/.github/master/profile/seal-open-compute-mcp.png" alt="open-compute emblem" width="300">
+</p>
 
 **EN** | [DE](README_de.md)
 
