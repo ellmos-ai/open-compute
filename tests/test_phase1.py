@@ -669,4 +669,4 @@ class TestVersionBump:
     def test_version_is_040(self):
         """Version bumped to 0.5.0 with dirwatch feed + fullres shot."""
         import open_compute
-        assert open_compute.__version__ == "0.6.0"
+        assert open_compute.__version__ == "0.7.0"

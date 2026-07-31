@@ -905,7 +905,7 @@ class TestImportWithoutExtras:
         import importlib
         import open_compute
         importlib.reload(open_compute)
-        assert open_compute.__version__ == "0.6.0"
+        assert open_compute.__version__ == "0.7.0"
 
     def test_import_feeds_base_no_extras(self):
         """feeds.base is importable without any extras."""
@@ -943,4 +943,4 @@ class TestImportWithoutExtras:
 class TestVersionBump:
     def test_version_is_040(self):
         import open_compute
-        assert open_compute.__version__ == "0.6.0"
+        assert open_compute.__version__ == "0.7.0"
