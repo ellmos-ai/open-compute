@@ -228,83 +228,104 @@
 
   <!-- ==================== THE EMERGING ARM & HAND (WHITE RELIEF GRAFIK) ==================== -->
   <g id="relief-hand">
+    <defs>
+      <!-- High-Contrast Metallic Relief Silver/White Gradient -->
+      <linearGradient id="arm-relief-fill" x1="340" y1="240" x2="650" y2="530" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="35%" stop-color="#f8fafc"/>
+        <stop offset="70%" stop-color="#cbd5e1"/>
+        <stop offset="100%" stop-color="#ffffff"/>
+      </linearGradient>
 
-    <!-- Dark Occlusion Body for Entire Forearm & Hand Structure -->
-    <!-- Forearm from portal (380, 275) to Wrist (535, 430) & Palm/Fingers -->
-    <path d="M 365 260 
-             Q 430 315 500 380
-             Q 530 410 560 425
-             L 645 480
-             Q 662 505 655 530
-             Q 640 545 615 540
-             Q 590 530 575 510
-             Q 540 480 510 445
-             Q 450 375 390 300 Z" fill="#090d16" opacity="0.96"/>
+      <!-- Arm Drop Shadow -->
+      <filter id="arm-drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="3" dy="6" stdDeviation="5" flood-color="#000000" flood-opacity="0.75"/>
+      </filter>
+    </defs>
 
-    <!-- FOREARM: Upper and Lower Edge Relief Stroke Lines -->
-    <path d="M 365 260 Q 430 315 500 380 Q 525 405 545 422" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M 390 300 Q 450 375 510 445" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <g filter="url(#arm-drop-shadow)">
+      <!-- 1. CRT PORTAL EXIT SLEEVE CUFF (Shirt sleeve emerging from screen) -->
+      <g id="sleeve-exit">
+        <!-- Dark Fabric Sleeve Tube -->
+        <path d="M 330 245 C 352 235 382 250 386 278 C 388 296 368 310 342 304 C 325 298 320 272 330 245 Z" 
+              fill="#0f172a" stroke="#ffffff" stroke-width="2.5"/>
+        <!-- Sleeve Cuff Fold Band -->
+        <path d="M 350 240 C 368 255 374 276 366 298" stroke="#ffffff" stroke-width="2.5" fill="none"/>
+        <path d="M 338 255 C 352 256 362 268 364 282" stroke="#cbd5e1" stroke-width="1.5" fill="none"/>
+      </g>
 
-    <!-- Forearm Volumetric Relief Lines (Curved Cross-Hatching mapping 3D arm form) -->
-    <path d="M 385 285 Q 402 298 418 318" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
-    <path d="M 408 305 Q 425 318 440 338" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
-    <path d="M 430 325 Q 447 338 462 358" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
-    <path d="M 452 345 Q 469 358 484 378" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
-    <path d="M 475 365 Q 492 378 506 398" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
-    <path d="M 498 385 Q 512 398 524 418" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.85"/>
+      <!-- 2. UNIFIED SOLID WHITE RELIEF BODY (Forearm + Wrist + Hand + Thumb + All 4 Fingers) -->
+      <path id="arm-hand-unified-mass" 
+            d="M 362 252 
+               C 410 290 460 340 512 395 
+               C 530 408 550 416 572 422 
+               C 590 428 605 438 615 452 
+               C 624 466 626 480 622 494 
+               C 628 496 636 500 644 506 
+               C 652 514 654 522 646 525 
+               C 638 526 628 522 618 514 
+               C 606 506 596 524 584 524 
+               C 574 522 566 512 556 496 
+               C 542 474 526 452 510 435 
+               C 488 424 464 402 436 376 
+               C 390 330 350 282 344 274 
+               Z" 
+            fill="url(#arm-relief-fill)" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
 
-    <!-- Wrist Joints & Carpal Crease -->
-    <path d="M 515 405 Q 528 420 535 440" fill="none" stroke="#ffffff" stroke-width="2"/>
-    <path d="M 505 415 Q 518 430 524 448" fill="none" stroke="#cbd5e1" stroke-width="1" opacity="0.7"/>
+      <!-- 3. FOREARM ETCHINGS & MUSCLE LINES -->
+      <path d="M 368 265 C 414 304 460 350 498 396" stroke="#0f172a" stroke-width="2" fill="none" opacity="0.85"/>
+      <path d="M 380 280 C 422 318 464 360 494 400" stroke="#334155" stroke-width="1.5" fill="none" opacity="0.7"/>
+      <path d="M 352 276 C 394 320 436 364 474 408" stroke="#ffffff" stroke-width="1.5" fill="none"/>
+      <!-- Cross-Hatching Relief Lines on Forearm -->
+      <path d="M 380 276 L 394 290 M 402 292 L 416 308 M 424 310 L 440 328 M 446 330 L 462 348 M 468 350 L 484 368 M 488 372 L 502 390" 
+            stroke="#0f172a" stroke-width="1.5" opacity="0.65"/>
 
-    <!-- PALM & KNUCKLE BASE (Relief Structure) -->
-    <path d="M 545 422 Q 568 432 588 440" fill="none" stroke="#ffffff" stroke-width="2.5"/>
-    <path d="M 524 448 Q 548 458 570 468" fill="none" stroke="#ffffff" stroke-width="1.8"/>
+      <!-- 4. WRIST CREASES -->
+      <path d="M 500 394 C 512 404 520 414 526 426" stroke="#0f172a" stroke-width="2" fill="none"/>
+      <path d="M 506 388 C 516 398 524 408 528 420" stroke="#ffffff" stroke-width="1.8" fill="none"/>
 
-    <!-- THUMB (Reaching down to grasp left side of mouse at 598, 515) -->
-    <path d="M 524 448 Q 550 472 575 496 Q 588 508 596 515" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/>
-    <path d="M 532 455 Q 556 478 578 500 Q 588 510 592 520" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
-    <line x1="562" y1="482" x2="570" y2="492" stroke="#ffffff" stroke-width="1.5"/>
+      <!-- 5. HAND DORSUM TENDONS -->
+      <path d="M 515 398 C 535 408 555 416 575 424" stroke="#0f172a" stroke-width="1.8" fill="none"/>
+      <path d="M 522 406 C 540 414 560 422 580 428" stroke="#0f172a" stroke-width="1.5" fill="none"/>
 
-    <!-- INDEX FINGER (Active finger: extending to touch left mouse button at 620, 493) -->
-    <!-- Phalanx 1 (Knuckle to PIP joint) -->
-    <path d="M 568 430 L 590 454" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
-    <!-- Phalanx 2 (PIP joint to DIP joint) -->
-    <path d="M 590 454 L 608 474" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
-    <!-- Phalanx 3 (DIP joint to Fingertip resting on button) -->
-    <path d="M 608 474 L 620 493" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
-    
-    <!-- Index Finger Underline for 3D depth -->
-    <path d="M 563 438 L 584 460 L 602 480 L 614 497" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+      <!-- 6. FINGER SEAMS & ANATOMICAL ENGRAVING LINES ON SOLID HAND MASS -->
 
-    <!-- Joint Rings on Index Finger -->
-    <circle cx="590" cy="454" r="2.8" fill="#ffffff"/>
-    <circle cx="608" cy="474" r="2.3" fill="#ffffff"/>
+      <!-- THUMB SEAM (Left side of hand wrapping around left mouse flank at x=584, y=524) -->
+      <path d="M 518 424 C 536 446 554 468 568 490 C 576 502 582 514 584 524" stroke="#0f172a" stroke-width="2" fill="none"/>
+      <line x1="550" y1="472" x2="560" y2="480" stroke="#0f172a" stroke-width="1.5"/>
 
-    <!-- MIDDLE FINGER (Resting over right mouse button / scroll wheel at 632, 493) -->
-    <path d="M 576 428 L 598 450 L 618 472 L 632 493" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
-    <path d="M 571 436 L 592 456 L 612 476 L 626 496" fill="none" stroke="#94a3b8" stroke-width="1.2"/>
-    <circle cx="598" cy="450" r="2.2" fill="#ffffff"/>
-    <circle cx="618" cy="472" r="1.8" fill="#ffffff"/>
+      <!-- INDEX FINGER SEAM & CLICKING TIP (Resting on left mouse button at 620, 493) -->
+      <path d="M 572 422 C 586 440 598 460 610 482" stroke="#0f172a" stroke-width="2" fill="none"/>
+      <line x1="576" y1="432" x2="584" y2="436" stroke="#0f172a" stroke-width="1.8"/>
+      <line x1="586" y1="448" x2="594" y2="452" stroke="#0f172a" stroke-width="1.8"/>
+      <line x1="596" y1="466" x2="604" y2="470" stroke="#0f172a" stroke-width="1.8"/>
+      <!-- Index Fingertip & Nail Highlight -->
+      <ellipse cx="620" cy="493" rx="5" ry="4" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+      <path d="M 617 491 Q 620 489 623 491" stroke="#0f172a" stroke-width="1" fill="none"/>
 
-    <!-- RING FINGER (Curving along right flank of mouse at 644, 508) -->
-    <path d="M 583 432 L 605 454 L 626 478 L 644 508" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round"/>
-    <circle cx="605" cy="454" r="1.8" fill="#ffffff"/>
+      <!-- MIDDLE FINGER SEAM (Beside index finger over right button / scroll wheel) -->
+      <path d="M 588 426 C 600 444 610 464 622 488" stroke="#0f172a" stroke-width="2" fill="none"/>
+      <line x1="592" y1="440" x2="600" y2="444" stroke="#0f172a" stroke-width="1.5"/>
+      <line x1="602" y1="458" x2="610" y2="462" stroke="#0f172a" stroke-width="1.5"/>
+      <ellipse cx="628" cy="496" rx="4.5" ry="3.5" fill="#f8fafc" stroke="#0f172a" stroke-width="1.2"/>
 
-    <!-- PINKY FINGER (Tucked along outer lower flank at 652, 524) -->
-    <path d="M 588 438 Q 610 464 630 492 Q 644 512 652 524" fill="none" stroke="#e2e8f0" stroke-width="1.8" stroke-linecap="round"/>
+      <!-- RING FINGER SEAM (Draped over right side of mouse) -->
+      <path d="M 600 432 C 612 450 622 472 632 496" stroke="#0f172a" stroke-width="2" fill="none"/>
+      <line x1="604" y1="448" x2="612" y2="452" stroke="#0f172a" stroke-width="1.5"/>
+      <ellipse cx="638" cy="504" rx="4" ry="3.5" fill="#e2e8f0" stroke="#0f172a" stroke-width="1.2"/>
 
-    <!-- Palm Relief Shading & Muscle Creases -->
-    <path d="M 548 434 Q 562 446 572 460" stroke="#ffffff" stroke-width="1" opacity="0.7"/>
-    <path d="M 538 444 Q 552 456 562 470" stroke="#ffffff" stroke-width="1" opacity="0.7"/>
+      <!-- PINKY FINGER SEAM (Outer flank of hand) -->
+      <path d="M 610 440 C 622 460 630 482 638 508" stroke="#0f172a" stroke-width="1.8" fill="none"/>
+    </g>
 
-    <!-- Touch Point Starburst (Action execution at fingertip 620, 493) -->
+    <!-- Action Touch / Click Glow Burst at fingertip (620, 493) -->
     <g transform="translate(620, 493)">
-      <line x1="-10" y1="0" x2="10" y2="0" stroke="#ffffff" stroke-width="1.8"/>
-      <line x1="0" y1="-10" x2="0" y2="10" stroke="#ffffff" stroke-width="1.8"/>
-      <line x1="-7" y1="-7" x2="7" y2="7" stroke="#ffffff" stroke-width="1.2"/>
-      <line x1="-7" y1="7" x2="7" y2="-7" stroke="#ffffff" stroke-width="1.2"/>
-      <circle cx="0" cy="0" r="3.5" fill="#ffffff"/>
+      <line x1="-12" y1="0" x2="12" y2="0" stroke="#ffffff" stroke-width="2"/>
+      <line x1="0" y1="-12" x2="0" y2="12" stroke="#ffffff" stroke-width="2"/>
+      <line x1="-8" y1="-8" x2="8" y2="8" stroke="#ffffff" stroke-width="1.5"/>
+      <line x1="-8" y1="8" x2="8" y2="-8" stroke="#ffffff" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="4.5" fill="#ffffff"/>
+      <circle cx="0" cy="0" r="9" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="2 2"/>
     </g>
   </g>
 
