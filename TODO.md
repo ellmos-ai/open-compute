@@ -205,7 +205,7 @@ normierte Koordinaten) vorn; drei Dinge konnten sie besser und sind übernommen:
 
 | Category | Status | Notes |
 |---|---|---|
-| Tests | PASS | Headless-gefilterter Lauf aus dem Modulroot — 473 passed, 4 Host-Abfragen explizit deselected (2026-07-28); GitHub Actions führt die Mock-Suite auf Push/PR aus. |
+| Tests | PASS | Vollständiger Lauf aus dem Modulroot — 525 passed (2026-08-01); GitHub Actions führt die Mock-Suite auf Push/PR aus. |
 | Import check | PASS | `python -c "import open_compute; import open_compute.feed_manager; import open_compute.learning"` — OK, zero extras. |
 | Documentation | READY | README (EN + DE), llms.txt, CHANGELOG, SECURITY, ARCHITECTURE present. |
 | Integration | DEVELOPMENT | Usable as a standalone module. Contains marked stubs/interfaces (see below). |

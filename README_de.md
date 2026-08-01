@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-476%20headless%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-525%20bestanden-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -542,8 +542,8 @@ python -X utf8 -m pytest -q
 ```
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
-einem Klon installiert pytest. Aktueller Headless-Stand: **473 bestanden,
-4 Host-Abfragetests explizit abgewählt**.
+einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
+**525 bestanden** (2026-08-01).
 
 ---
 

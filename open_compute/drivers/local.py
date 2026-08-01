@@ -336,6 +336,7 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
 
     user32 = ctypes.windll.user32
     foreground_hwnd = user32.GetForegroundWindow()
+    foreground_value = int(foreground_hwnd) if foreground_hwnd is not None else 0
     vl, vt, vw, vh = _get_virtual_desktop()
     windows: list[dict[str, Any]] = []
 
@@ -378,7 +379,7 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
                     "y": round(_clamp01((cy - vt) / vh) if vh > 0 else 0.0, 4),
                 },
                 "minimized": bool(user32.IsIconic(hwnd)),
-                "foreground": int(hwnd) == int(foreground_hwnd),
+                "foreground": int(hwnd) == foreground_value,
             }
         )
         return True

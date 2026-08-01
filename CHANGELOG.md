@@ -11,6 +11,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Fixed (Maintainer verification, 2026-08-01)
+
+- Made Win32 foreground-window detection robust when the host returns no
+  foreground handle.
+- Refreshed the README and TODO test status to the verified full-suite result:
+  525 passed.
+
 ### Added (MCP-Tools für Signal/Chat/Talk, 2026-07-31)
 
 - Added six human-in-the-loop tools to the FastMCP server: `signal_show` /
