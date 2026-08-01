@@ -1,15 +1,13 @@
 # open-compute
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ellmos-ai/open-compute/master/assets/wappen.jpg" alt="open-compute emblem" width="400">
-</p>
+<img src="assets/banner_bw.svg" width="100%" alt="open-compute banner"/>
 
 **EN** | [DE](README_de.md)
 
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-524%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-476%20headless%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -62,17 +60,6 @@ you write the loop once and swap the reasoning model freely behind one
                         |  goal -> perceive -> backend -> safety  |
                         |        -> execute -> re-perceive        |
                         +-------------------+---------------------+
-                                            |
-              +-----------------------------v------------------------------+
-              |  HUMAN-IN-THE-LOOP SIGNALING (indicator.py / talk.py)      |
-              |  - glowing border overlay + neon cursor ring, colored      |
-              |    per session mode (control=red, observe=blue, ...)       |
-              |  - SignalConfig JSON: enabled/color/label/border/cursor    |
-              |    per mode; border and cursor toggle independently        |
-              |  - abort hotkey -> reason box -> message back to the model |
-              |  - oc signal | oc chat (+screenshot) | oc talk             |
-              |    (push-to-talk WAV; STT/TTS stay model-side)             |
-              +-----------------------------+------------------------------+
                                             |
         +-----------------------------------+-----------------------------------+
         |                                   |                                   |
@@ -199,18 +186,6 @@ oc window minimize --hwnd 42 --yes
 # 3i. Bounded, deduplicated window capture (full screen needs explicit opt-in)
 oc capture-series --window "Word" --max-frames 8 --stable-frames 2
 
-# 3j. Show the human what the model is doing (v0.6, Windows)
-oc signal on --mode control --for 30   # glowing red border + cursor ring
-oc signal on --mode observe            # blue = model only watches (Ctrl-C to stop)
-oc signal on --mode control --abort-hotkey   # Ctrl+Alt+Esc -> reason box -> JSON to agent
-oc signal config --init                # write default JSON (colors/labels/border/cursor per mode)
-
-# 3k. Human -> model message about screen content (v0.6)
-oc chat --shot                         # message + fullscreen screenshot path as JSON
-
-# 3l. Push-to-talk voice note (v0.6, Windows, zero-dependency winmm)
-oc talk --key F9                       # hold F9, speak, release -> WAV path as JSON
-
 # 4. Recapture and repeat until done (or read the "composite" After-shot directly).
 ```
 
@@ -284,11 +259,7 @@ open-compute-mcp          # stdio server (console script)
 
 **Tools:** `capture` · `do` (single or batch canonical actions) · `tree` ·
 `click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
-`get_screen_size` · `watch_dir` · `push_status` · `rec_replay` ·
-`signal_show` / `signal_hide` / `signal_status` / `signal_abort` (screen-usage
-signal overlay with abort hotkey — persists in the server process across
-calls) · `chat` (human→model message + optional screenshot) · `talk`
-(push-to-talk WAV; STT/TTS model-side). Coordinates are
+`get_screen_size` · `watch_dir` · `push_status` · `rec_replay`. Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
 
@@ -392,10 +363,8 @@ is configurable on the backend
   DirectX / hardware-composited surfaces when mss/GDI capture fails. Action
   dispatch for all action types. Live-tested: `oc capture` → PNG 368 KB
   (1920×1080); `oc do mouse_move` → cursor moved.
-- **`oc` CLI** (`oc capture` / `oc do` / `oc run` / `oc session` / `oc window`
-  / `oc capture-series` / `oc signal` / `oc chat` / `oc talk`): Mode A (no-key
-  skill loop) and Mode B (autonomous AgentLoop with API backend) wired
-  end-to-end.
+- **`oc` CLI** (`oc capture` / `oc do` / `oc run`): Mode A (no-key skill loop)
+  and Mode B (autonomous AgentLoop with API backend) wired end-to-end.
   - v0.3: `oc capture` defaults to `_session/` (never loose in CWD/Desktop).
   - v0.3: `oc do` accepts JSON arrays (batch/macro) and `--label` for
     automatic Before|After composite screenshots.
@@ -442,28 +411,6 @@ is configurable on the backend
 - **`LearningManager`** (v0.6, `open_compute/learning.py`): Bandit/Bayes weighting
   (`BetaPrior`), use-case profiles (JSON, warmstart via `apply_profile_to_manager()`),
   and cross-session LESSONS-LEARNED (JSONL). All state in gitignored `_state/`.
-- **Screen-usage signaling** (2026-07-31, `open_compute/indicator.py`): the renderer
-  side of the cooperative `OwnershipIndicator` protocol. `WindowsBorderOverlay`
-  (ctypes, click-through, topmost) draws a glowing border around the virtual
-  screen, a neon ring around the cursor, and a status strip — colored per
-  session mode (red `control`, blue `observe`, green `companion`,
-  orange `handoff`, grey `paused`). `SignalConfig` (JSON, `OC_SIGNAL_CONFIG` or
-  `_state/signal-config.json`) configures `enabled`/`color`/`label`/`border`/
-  `cursor` per mode; border and cursor toggle independently (e.g. cursor-only
-  highlight while controlling). Live-verified on a real desktop.
-- **Abort channel with reason entry** (2026-07-31): `AbortChannel` protocol with
-  console / topmost-Tk implementations; the human's short abort message is
-  forwarded to the calling agent (`on_abort_message`, JSON line).
-  `oc signal on --abort-hotkey [COMBO]` (default `ctrl+alt+esc`) opens the
-  reason box straight from the overlay.
-- **Push-to-talk voice capture** (2026-07-31, `open_compute/talk.py`):
-  `oc talk --key F9` — hold key, speak, release — writes WAV to `_session/`
-  via winmm MCI (zero-dependency). STT/TTS deliberately stay model-side; the
-  WAV path goes to the agent as JSON.
-- **Human→model chat message** (2026-07-31): `oc chat [--channel console|tk]
-  [--shot]` — short message about screen content, optionally with a fullscreen
-  screenshot from `_session/`, delivered as a JSON line. No model call inside
-  the command; the agent answers in its own channel.
 
 **Interface / stub (honest)**
 
@@ -473,10 +420,9 @@ is configurable on the backend
   (Set-of-Marks, OCR, vision overlays, DOM) are **not yet implemented**.
 - `BachInjectorAdapter` is a documented stub; `LocalFileInjector` is the working default sink.
 - Always-on push daemon (permanent background loop) is **not yet implemented**.
-- Live human-input monitoring, global emergency hotkeys (other than the signal
-  overlay's abort hotkey), speech-to-text / text-to-speech, virtual-display/
-  session control, and any productive wiring of the headless cooperative core
-  are **not implemented or activated**.
+- Live human-input monitoring, ownership-overlay rendering, global emergency
+  hotkeys, voice, virtual-display/session control, and any productive wiring of
+  the headless cooperative core are **not implemented or activated**.
 - `oc rec` is a **lazy compatibility shim** for the external
   [`ellmos-ai/clirec`](https://github.com/ellmos-ai/clirec) package; install
   `clirec` only when recording/replay workflows are needed.
