@@ -451,23 +451,32 @@ def do(
             blocked["executed_before"] = executed
             if is_batch:
                 blocked["action_index"] = i
+            if executed > 0:
+                auto_err = _ensure_auto_signal()
+                if auto_err:
+                    blocked.update(auto_err)
             return blocked
         final_obs = executor.execute(act)
         executed += 1
 
+    auto_err = _ensure_auto_signal()
     if is_batch:
-        return {
+        result = {
             "result": "batch",
             "count": executed,
             "width": final_obs.width if final_obs else 0,
             "height": final_obs.height if final_obs else 0,
         }
-    return {
-        "result": "executed",
-        "action": parsed[0].type.value,
-        "width": final_obs.width if final_obs else 0,
-        "height": final_obs.height if final_obs else 0,
-    }
+    else:
+        result = {
+            "result": "executed",
+            "action": parsed[0].type.value,
+            "width": final_obs.width if final_obs else 0,
+            "height": final_obs.height if final_obs else 0,
+        }
+    if auto_err:
+        result.update(auto_err)
+    return result
 
 
 @mcp.tool(description=mcp_i18n.tool_description("click_name", _LANG))
@@ -496,7 +505,7 @@ def click_name(query: str, window: str | None = None, mode: str | None = None) -
         return blocked
 
     obs = _STATE.executor().execute(act)
-    return {
+    result = {
         "result": "executed",
         "action": "left_click",
         "target": target.name,
@@ -506,6 +515,10 @@ def click_name(query: str, window: str | None = None, mode: str | None = None) -
         "width": obs.width,
         "height": obs.height,
     }
+    auto_err = _ensure_auto_signal()
+    if auto_err:
+        result.update(auto_err)
+    return result
 
 
 @mcp.tool(description=mcp_i18n.tool_description("invoke", _LANG))
@@ -535,13 +548,19 @@ def invoke(query: str, window: str | None = None, mode: str | None = None) -> di
         return blocked
 
     ok = feed.invoke(query, window=window)
-    return {
+    result = {
         "result": "invoked" if ok else "invoke_failed",
         "target": target.name,
         "role": target.role,
         "center_norm": list(target.center_norm),
         "rect_px": list(target.rect_px),
     }
+    # Gate passed => a real actuation was attempted, regardless of whether the
+    # UIA invoke itself reports success — that is enough to signal "active".
+    auto_err = _ensure_auto_signal()
+    if auto_err:
+        result.update(auto_err)
+    return result
 
 
 @mcp.tool(description=mcp_i18n.tool_description("rec_replay", _LANG))
@@ -565,7 +584,11 @@ def rec_replay(path: str, params: dict | None = None, mode: str | None = None) -
         result = cli._run_replay(path, params or {}, _STATE.executor(), policy=policy)
     except PermissionError as exc:
         return {"result": "deny", "reason": str(exc)}
-    return {"result": "replayed", "path": path, "detail": _jsonable(result)}
+    out = {"result": "replayed", "path": path, "detail": _jsonable(result)}
+    auto_err = _ensure_auto_signal()
+    if auto_err:
+        out.update(auto_err)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -640,8 +663,8 @@ def _prompt_channel(channel: str, context: str) -> str | None:
     return channel_cls().prompt_reason(context=context)
 
 
-@mcp.tool(description=mcp_i18n.tool_description("signal_show", _LANG))
-def signal_show(
+def _show_signal_indicator(
+    *,
     mode: str,
     agent: str = "agent",
     scope: str = "screen",
@@ -650,14 +673,11 @@ def signal_show(
     no_cursor: bool = False,
     abort_hotkey: str | None = None,
 ) -> dict:
-    """Show the screen-usage signal overlay (border + cursor ring, per mode).
+    """Core of ``signal_show`` — shared by the tool itself and auto-signal.
 
-    The overlay lives in this server process, so it stays up across tool calls
-    until ``signal_hide`` — no time-bounded CLI wrapper needed. Colors and the
-    border/cursor toggles come from the signal config (``OC_SIGNAL_CONFIG`` or
-    ``_state/signal-config.json``) unless overridden here. When an abort
-    hotkey is active (argument or config), pressing it opens a reason box and
-    the message is held for ``signal_status`` to collect.
+    Raises ``ValueError`` for an unknown ``mode`` (via ``SessionMode``), same
+    as the public tool always did; callers that must not crash validate the
+    mode themselves before calling this (see ``_ensure_auto_signal``).
     """
 
     from .indicator import ScreenSignalIndicator, SignalConfig, signal_for_mode
@@ -709,6 +729,87 @@ def signal_show(
         "label": indicator.last_label,
         "color": list(color),
     }
+
+
+@mcp.tool(description=mcp_i18n.tool_description("signal_show", _LANG))
+def signal_show(
+    mode: str,
+    agent: str = "agent",
+    scope: str = "screen",
+    config_path: str | None = None,
+    no_border: bool = False,
+    no_cursor: bool = False,
+    abort_hotkey: str | None = None,
+) -> dict:
+    """Show the screen-usage signal overlay (border + cursor ring, per mode).
+
+    The overlay lives in this server process, so it stays up across tool calls
+    until ``signal_hide`` — no time-bounded CLI wrapper needed. Colors and the
+    border/cursor toggles come from the signal config (``OC_SIGNAL_CONFIG`` or
+    ``_state/signal-config.json``) unless overridden here. When an abort
+    hotkey is active (argument or config), pressing it opens a reason box and
+    the message is held for ``signal_status`` to collect.
+    """
+
+    return _show_signal_indicator(
+        mode=mode,
+        agent=agent,
+        scope=scope,
+        config_path=config_path,
+        no_border=no_border,
+        no_cursor=no_cursor,
+        abort_hotkey=abort_hotkey,
+    )
+
+
+def _auto_signal_mode() -> str | None:
+    """Read ``OC_SIGNAL_AUTO`` fresh on every call (no caching — tests and
+
+    operators can flip it without a server restart). Empty / unset / ``off``
+    (any case) means the feature is disabled, which is the default.
+    """
+
+    raw = os.environ.get("OC_SIGNAL_AUTO", "").strip()
+    if not raw or raw.casefold() == "off":
+        return None
+    return raw
+
+
+def _ensure_auto_signal() -> dict | None:
+    """Auto-show the signal overlay after a state-changing tool actually acted.
+
+    Called from ``do``/``click_name``/``invoke``/``rec_replay`` once the
+    safety gate has been passed (the action really ran) — never from
+    read-only tools. A no-op when the feature is off (``OC_SIGNAL_AUTO``
+    unset) or when a signal is already visible (manual ``signal_show`` in any
+    mode is never overridden). Returns ``None`` on no-op/success, or an
+    ``{"auto_signal_error": ...}`` dict the caller merges into its own tool
+    result — an invalid/failing auto-signal must never fail or mask the
+    action it is attached to.
+    """
+
+    auto_mode = _auto_signal_mode()
+    if auto_mode is None or _STATE.signal_indicator is not None:
+        return None
+
+    from .session import SessionMode
+
+    try:
+        SessionMode(auto_mode)
+    except ValueError:
+        valid = ", ".join(m.value for m in SessionMode)
+        return {
+            "auto_signal_error": (
+                f"OC_SIGNAL_AUTO={auto_mode!r} is not a valid session mode "
+                f"(expected one of: {valid})"
+            )
+        }
+
+    try:
+        _show_signal_indicator(mode=auto_mode, agent="auto", scope="screen")
+    except Exception as exc:  # pragma: no cover - defensive, never break the action
+        return {"auto_signal_error": f"{type(exc).__name__}: {exc}"}
+    return None
 
 
 @mcp.tool(description=mcp_i18n.tool_description("signal_hide", _LANG))

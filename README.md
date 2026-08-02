@@ -259,7 +259,9 @@ open-compute-mcp          # stdio server (console script)
 
 **Tools:** `capture` · `do` (single or batch canonical actions) · `tree` ·
 `click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
-`get_screen_size` · `watch_dir` · `push_status` · `rec_replay`. Coordinates are
+`get_screen_size` · `watch_dir` · `push_status` · `rec_replay` · `signal_show` /
+`signal_hide` / `signal_status` / `signal_abort` (human-in-the-loop screen
+signal) · `chat` · `talk` (push-to-talk). Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
 
@@ -281,6 +283,17 @@ so a prompt-injected agent cannot escape a `read_only`/`confirm` server via
 For interactive use, run the server with `OC_SAFETY_MODE=allow_all` **in an isolated
 VM** and let the client's tool-permission dialog be the human-in-the-loop. Optional
 `OC_DENY` (comma-separated action types) is a hard deny list.
+
+**Auto-signal (`OC_SIGNAL_AUTO`).** Set it to a `SessionMode` name (e.g.
+`control`) to auto-show the screen-usage overlay the first time a
+state-changing tool (`do` / `click_name` / `invoke` / `rec_replay`) actually
+passes the safety gate — no separate `signal_show` call to remember before
+the model starts steering. It never overrides an already-visible signal
+(manual or auto, any mode) and never fires from a gate-blocked call or a
+read-only tool. Unset or `off` (the default) disables it; an invalid mode
+name surfaces as `auto_signal_error` in the tool result instead of failing
+the call. See `signal_show`/`signal_hide`/`signal_status` below for the
+manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
 
 **Troubleshooting: `do`/`click_name` only ever return `needs_confirmation` and never
 act.** That is the `confirm` ceiling working as designed under stdio MCP — there is

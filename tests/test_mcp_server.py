@@ -319,3 +319,144 @@ def test_talk_rejects_modifier_key(_signal_state):
     import pytest as _pt
     with _pt.raises(ValueError):
         S.talk(key="ctrl+a")
+
+
+# ---------------------------------------------------------------------------
+# OC_SIGNAL_AUTO — auto-show the overlay once a state-changing tool acts
+# ---------------------------------------------------------------------------
+
+class _FakeTarget:
+    """Stand-in for feeds.base.Target, enough for click_name/invoke."""
+
+    name = "Einfuegen"
+    role = "Button"
+    rect_px = (10, 10, 40, 20)
+    center_norm = (0.5, 0.3)
+
+
+class _FakeUiaFeed:
+    def __init__(self, target=None, invoke_result=True):
+        self.target = target or _FakeTarget()
+        self.invoke_result = invoke_result
+        self.invoked = []
+
+    def resolve(self, query, window=None):
+        return self.target
+
+    def invoke(self, query, window=None):
+        self.invoked.append((query, window))
+        return self.invoke_result
+
+
+@pytest.fixture(autouse=True)
+def _clean_signal_auto_env(monkeypatch):
+    """OC_SIGNAL_AUTO must not leak in from (or out to) the real environment."""
+    monkeypatch.delenv("OC_SIGNAL_AUTO", raising=False)
+    yield
+
+
+def test_auto_signal_off_by_default(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"
+    assert "auto_signal_error" not in r
+    assert S._STATE.signal_indicator is None
+
+
+def test_auto_signal_off_value_disables(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "off")
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert S._STATE.signal_indicator is None
+
+
+def test_auto_signal_shows_after_executed_action(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"
+    assert "auto_signal_error" not in r
+    assert S._STATE.signal_indicator is not None
+    assert S._STATE.signal_mode == "control"
+
+
+def test_auto_signal_does_not_fire_when_action_is_gated(monkeypatch, _signal_state):
+    # default confirm mode: the click is gated, nothing actually ran
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "needs_confirmation"
+    assert S._STATE.signal_indicator is None
+
+
+def test_auto_signal_read_only_tool_never_triggers(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    S.capture()
+    assert S._STATE.signal_indicator is None
+
+
+def test_auto_signal_does_not_override_existing_manual_signal(monkeypatch, _signal_state):
+    S.signal_show(mode="observe", agent="human")
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    # a manually shown signal (any mode) is never overridden by auto-signal
+    assert S._STATE.signal_mode == "observe"
+
+
+def test_auto_signal_invalid_mode_reports_error_without_crashing(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "not-a-mode")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    # the action itself must still succeed — a bad auto-signal config must
+    # never crash or block the tool it is attached to
+    assert r["result"] == "executed"
+    assert "not-a-mode" in r["auto_signal_error"]
+    assert S._STATE.signal_indicator is None
+
+
+def test_auto_signal_fires_once_for_a_batch(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    r = S.do(actions=[
+        {"type": "mouse_move", "x": 0.1, "y": 0.1},
+        {"type": "left_click", "x": 0.2, "y": 0.2},
+    ])
+    assert r["result"] == "batch"
+    assert S._STATE.signal_mode == "control"
+    # only one overlay call — the second gate pass sees signal already visible
+    assert len(S._STATE.signal_indicator.renderer.shown) == 1
+
+
+def test_auto_signal_click_name(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    r = S.click_name("Einfuegen")
+    assert r["result"] == "executed"
+    assert S._STATE.signal_mode == "control"
+
+
+def test_auto_signal_invoke(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    r = S.invoke("Einfuegen")
+    assert r["result"] == "invoked"
+    assert S._STATE.signal_mode == "control"
+
+
+def test_auto_signal_rec_replay(monkeypatch, _signal_state):
+    # rec_replay() does `from . import cli` *inside* the function body, so
+    # faking it means patching the real open_compute.cli module attribute,
+    # not anything on the mcp_server module (S.cli does not exist).
+    import open_compute.cli as oc_cli
+
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    monkeypatch.setattr(
+        oc_cli, "_run_replay",
+        lambda path, params, executor, policy=None: {"steps": 1},
+    )
+    r = S.rec_replay("dummy.clirec")
+    assert r["result"] == "replayed"
+    assert S._STATE.signal_mode == "control"

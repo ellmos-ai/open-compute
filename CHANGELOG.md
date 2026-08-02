@@ -11,6 +11,22 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Added (Auto-Signal: `OC_SIGNAL_AUTO`, 2026-08-02)
+
+- Added `OC_SIGNAL_AUTO` (MCP server env var, value = a `SessionMode` name
+  like `control`): once set, the first state-changing tool call that
+  actually passes the safety gate (`do` / `click_name` / `invoke` /
+  `rec_replay`) auto-shows the screen-usage signal overlay in that mode —
+  no more forgetting to call `signal_show` before steering the desktop. A
+  signal already visible (shown manually, in any mode) is never overridden;
+  read-only tools (`capture`, `tree`, `list_windows`, ...) never trigger it;
+  an action blocked by the gate (denied / needs confirmation) never
+  triggers it either. An invalid `OC_SIGNAL_AUTO` value reports
+  `auto_signal_error` in the tool result instead of crashing or blocking
+  the action it is attached to. `OC_SIGNAL_AUTO=off` (or unset, the
+  default) disables the feature. Shared logic factored out of `signal_show`
+  into `_show_signal_indicator()`; 12 new tests in `tests/test_mcp_server.py`.
+
 ### Fixed (Maintainer verification, 2026-08-01)
 
 - Made Win32 foreground-window detection robust when the host returns no

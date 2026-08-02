@@ -264,7 +264,9 @@ open-compute-mcp          # stdio-Server (Console-Script)
 
 **Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
 `invoke` (semantisches UIA-Zielen) · `list_windows` · `get_screen_size` ·
-`watch_dir` · `push_status` · `rec_replay`. Koordinaten normiert 0..1;
+`watch_dir` · `push_status` · `rec_replay` · `signal_show` / `signal_hide` /
+`signal_status` / `signal_abort` (Human-in-the-Loop-Bildschirmsignal) · `chat` ·
+`talk` (Push-to-Talk). Koordinaten normiert 0..1;
 `list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
 kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
 
@@ -288,6 +290,18 @@ zurück. Für interaktiven Betrieb den Server mit `OC_SAFETY_MODE=allow_all` **i
 isolierten VM** starten und den Tool-Berechtigungsdialog des Clients als
 Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) eine
 harte Deny-Liste.
+
+**Auto-Signal (`OC_SIGNAL_AUTO`).** Auf einen `SessionMode`-Namen setzen (z. B.
+`control`), um das Bildschirm-Signal-Overlay automatisch zu zeigen, sobald ein
+zustandsänderndes Tool (`do` / `click_name` / `invoke` / `rec_replay`) das erste
+Mal tatsächlich das Safety-Gate passiert — kein separater `signal_show`-Aufruf
+mehr nötig, bevor das Modell die Steuerung übernimmt. Ein bereits sichtbares
+Signal (manuell oder automatisch gesetzt, egal in welchem Modus) wird nie
+überschrieben; ein vom Gate geblockter Aufruf oder ein read-only-Tool löst nie
+aus. Unset oder `off` (Standard) deaktiviert das Feature; ein ungültiger
+Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt den Call
+scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status` für die
+manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
 
 **Troubleshooting: `do`/`click_name` liefern nur `needs_confirmation` und handeln
 nie.** Das ist die `confirm`-Obergrenze, die unter stdio-MCP designgemäß so wirkt —
