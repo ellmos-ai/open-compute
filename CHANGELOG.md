@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Changed (Discoverability audit, 2026-08-03)
+
+- Linked the verified Glama directory listing for the published `open-compute-mcp` launcher from both README landing pages, refreshed the machine-readable `llms.txt` verification date, and synchronized the current full-suite status (535 passed, 1 skipped).
+
 ### Added (Auto-Signal: `OC_SIGNAL_AUTO`, 2026-08-02)
 
 - Added `OC_SIGNAL_AUTO` (MCP server env var, value = a `SessionMode` name

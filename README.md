@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-525%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-535%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -316,7 +316,8 @@ The snippet above starts in the safe `confirm` ceiling — the server *reports*
 actions but does not perform them. To let it act, add
 `"env": {"OC_SAFETY_MODE": "allow_all"}` (isolated VM), gated by the client dialog.
 An npm launcher (`npx open-compute-mcp`) is also published for parity with Node MCP
-servers. The MCP server is the ideal shape for short, inline tasks; for long,
+servers and is listed in the [Glama MCP directory](https://glama.ai/mcp/servers/ellmos-ai/open-compute-mcp).
+The MCP server is the ideal shape for short, inline tasks; for long,
 context-heavy runs, still delegate to a self-spawned subagent (see the usage
 pattern below) and call these tools inside it.
 
@@ -535,7 +536,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **525 passed** (2026-08-01).
+installs pytest. Current full-suite state: **535 passed, 1 skipped** (2026-08-03).
 
 ---
 
