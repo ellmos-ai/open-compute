@@ -155,6 +155,7 @@ pip install "open-compute[local] @ git+https://github.com/ellmos-ai/open-compute
 # 2. Screenshot aufnehmen — landet automatisch in _session/ (nie lose auf dem Desktop)
 oc capture
 # -> {"path": ".../_session/0001_20260620_143200.png", "width": 1920, "height": 1080}
+# Dann: Lies das PNG mit deinem Read-Tool, um den Bildschirm zu sehen.
 
 # 3a. Einzelne Aktion ausführen (Safety-Gate: confirm als Default)
 oc do '{"type":"mouse_move","x":0.5,"y":0.5}' --mode allow_all
@@ -245,6 +246,8 @@ from open_compute import AgentLoop, Config
 loop = AgentLoop(Config(backend="mock", safety_mode="allow_all"))
 result = loop.run("Öffne die Einstellungen und aktiviere den Dunkelmodus")
 print(result.done, result.steps)
+for trace in result.traces:
+    print(trace.index, trace.backend_message, [a.type.value for a in trace.executed])
 ```
 
 ---
