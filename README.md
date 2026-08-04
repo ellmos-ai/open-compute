@@ -507,7 +507,7 @@ See `SECURITY.md`.
 
 ## Bundles and partners
 
-Generated discovery projection for `module:open-compute` from `catalog:v4-bundles` (`7f6121371fd05d85d32c2e75f8fbdb682aa76ebdf879dd40d36ceefb4aae18d3`).
+Generated discovery projection for `module:open-compute` from `catalog:v4-bundles` (`546290dafbaafd810df1d59ef5a3d7183738472b48cd5a8a81f1e8f2b64d852e`).
 Target repository visibility: `public`. Bundle manifests remain the membership authority; this section does not install or activate components.
 Discovery approval: `public` module-registry record, explicit default-deny bundle allowlist.
 

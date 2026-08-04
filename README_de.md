@@ -525,7 +525,7 @@ Siehe `SECURITY.md`.
 
 Geprüfte Discovery-Projektion für `module:open-compute` aus
 `catalog:v4-bundles`
-(`7f6121371fd05d85d32c2e75f8fbdb682aa76ebdf879dd40d36ceefb4aae18d3`).
+(`546290dafbaafd810df1d59ef5a3d7183738472b48cd5a8a81f1e8f2b64d852e`).
 Das Ziel-Repository ist `public`. Die Bundle-Manifeste bleiben die Autorität
 für Mitgliedschaften; dieser Abschnitt installiert oder aktiviert keine
 Komponenten. Die Freigabe beruht auf einem öffentlichen Modul-Registry-Eintrag
