@@ -18,6 +18,12 @@ Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hot
   `invoke` / `rec_replay`) re-arms an idle countdown; when it expires with
   no further action, the overlay is hidden — no more red CONTROL border
   left standing after a run, waiting for a manual `signal_hide`.
+
+### Changed (README banner, 2026-08-06)
+
+- New README banner `assets/banner.png` (generated glassmorphic
+  capture-reason-act motif with typographic overlay); the previous
+  SVG banners (`banner-relief.svg`, `banner_bw.svg`) were removed.
   `OC_SIGNAL_IDLE_HIDE` sets the window in **seconds (default 60)**; `0`,
   empty, or `off` disables it and keeps the previous behavior. Only an
   auto-shown overlay is ever swept away: a manual `signal_show` is never

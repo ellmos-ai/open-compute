@@ -432,7 +432,7 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
 
 - [ ] Live smoke test against a real Claude key in an isolated VM.
 - [x] GitHub Actions CI: run mock-only tests on push.
-- [ ] Banner / logo asset for README.
+- [x] Banner / logo asset for README. (2026-08-06: neues `assets/banner.png` — generiertes Glassmorphic-Motiv + Typo-Overlay; alte SVG-Banner entfernt)
 - [ ] OpenAI backend: add injected-client test + verify Responses-API shape.
 - [ ] macOS / Linux executor: port `LocalExecutor` to Quartz / X11 / xdotool.
 

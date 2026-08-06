@@ -1,6 +1,6 @@
 # open-compute
 
-<img src="assets/banner-relief.svg" width="100%" alt="open-compute banner"/>
+<img src="assets/banner.png" width="100%" alt="open-compute banner"/>
 
 **EN** | [DE](README_de.md)
 
