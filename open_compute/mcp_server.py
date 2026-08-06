@@ -36,6 +36,7 @@ from __future__ import annotations
 import atexit
 import os
 import pathlib
+import threading
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP, Image
@@ -60,10 +61,19 @@ class _ServerState:
         self._executor: Any = None
         self.dirwatch_baselines: dict[str, dict] = {}
         self._feed_manager: Any = None
-        # Human-in-the-loop signal state (one persistent overlay per server)
+        # Human-in-the-loop signal state (one persistent overlay per server).
+        # Touched from the tool thread *and* from the idle-hide timer thread,
+        # so every mutation goes through `signal_lock` (reentrant: the arm
+        # helpers are called from inside already-locked sections).
+        self.signal_lock = threading.RLock()
         self.signal_indicator: Any = None
         self.signal_mode: str = ""
         self.pending_abort_message: str | None = None
+        # True only while the *visible* overlay was put up by auto-signal.
+        # A manual `signal_show` clears it, so the idle timer never sweeps
+        # away an overlay a human asked for.
+        self.signal_auto_shown: bool = False
+        self.signal_idle_timer: threading.Timer | None = None
 
     def executor(self) -> Any:
         """Return the resident LocalExecutor, creating it lazily (Windows/mss)."""
@@ -751,15 +761,112 @@ def signal_show(
     the message is held for ``signal_status`` to collect.
     """
 
-    return _show_signal_indicator(
-        mode=mode,
-        agent=agent,
-        scope=scope,
-        config_path=config_path,
-        no_border=no_border,
-        no_cursor=no_cursor,
-        abort_hotkey=abort_hotkey,
-    )
+    with _STATE.signal_lock:
+        # A manually requested overlay is the human's, not auto-signal's: drop
+        # any pending idle-hide so it cannot sweep this one away.
+        _cancel_idle_hide()
+        result = _show_signal_indicator(
+            mode=mode,
+            agent=agent,
+            scope=scope,
+            config_path=config_path,
+            no_border=no_border,
+            no_cursor=no_cursor,
+            abort_hotkey=abort_hotkey,
+        )
+        _STATE.signal_auto_shown = False
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Idle auto-hide — take the auto-shown overlay down when steering stops
+# ---------------------------------------------------------------------------
+
+_IDLE_HIDE_DEFAULT_SECONDS = 60.0
+
+
+def _idle_hide_seconds() -> tuple[float | None, str | None]:
+    """Resolve ``OC_SIGNAL_IDLE_HIDE`` into ``(seconds, error)``.
+
+    Read fresh on every call, like ``OC_SIGNAL_AUTO``. ``seconds is None``
+    means "no auto-hide": explicitly empty, ``0``, ``off``, or an unusable
+    value (which also yields an error string the caller surfaces). *Unset* is
+    not the same as empty — it takes the 60 s default, so auto-shown overlays
+    clean themselves up unless the operator opts out.
+    """
+
+    raw = os.environ.get("OC_SIGNAL_IDLE_HIDE")
+    if raw is None:
+        return _IDLE_HIDE_DEFAULT_SECONDS, None
+    raw = raw.strip()
+    if not raw or raw.casefold() == "off":
+        return None, None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return None, (
+            f"OC_SIGNAL_IDLE_HIDE={raw!r} is not a number of seconds "
+            "(expected e.g. 60, or 0/off to disable)"
+        )
+    if seconds <= 0:
+        return None, None
+    return seconds, None
+
+
+def _cancel_idle_hide() -> None:
+    """Stop a pending idle-hide. Safe to call when none is armed."""
+
+    with _STATE.signal_lock:
+        timer = _STATE.signal_idle_timer
+        _STATE.signal_idle_timer = None
+    if timer is not None:
+        timer.cancel()
+
+
+def _idle_hide_fire() -> None:
+    """Timer callback (own thread): hide the overlay auto-signal put up.
+
+    Re-checks ownership under the lock — between the timer firing and this
+    running, a tool call may have hidden the overlay or replaced it with a
+    manual one, and neither is ours to touch.
+    """
+
+    with _STATE.signal_lock:
+        _STATE.signal_idle_timer = None
+        if not _STATE.signal_auto_shown:
+            return
+        indicator = _STATE.signal_indicator
+        _STATE.signal_indicator = None
+        _STATE.signal_mode = ""
+        _STATE.signal_auto_shown = False
+    if indicator is not None:
+        try:
+            indicator.clear()
+        except Exception:  # pragma: no cover - a stuck renderer must not raise here
+            pass
+
+
+def _arm_idle_hide() -> str | None:
+    """(Re-)arm the idle-hide countdown for an auto-shown overlay.
+
+    Called after every state-changing tool call that reached the overlay, so
+    the window slides forward while the model keeps steering and only expires
+    once it stops. Returns an error string for an unusable env value, else
+    ``None``.
+    """
+
+    _cancel_idle_hide()
+    with _STATE.signal_lock:
+        if not _STATE.signal_auto_shown or _STATE.signal_indicator is None:
+            return None
+        seconds, error = _idle_hide_seconds()
+        if seconds is None:
+            return error
+        timer = threading.Timer(seconds, _idle_hide_fire)
+        timer.daemon = True  # never hold the server open on shutdown
+        _STATE.signal_idle_timer = timer
+        timer.start()
+    return None
 
 
 def _auto_signal_mode() -> str | None:
@@ -786,40 +893,59 @@ def _ensure_auto_signal() -> dict | None:
     ``{"auto_signal_error": ...}`` dict the caller merges into its own tool
     result — an invalid/failing auto-signal must never fail or mask the
     action it is attached to.
+
+    Doubles as the heartbeat of the idle auto-hide: every call re-arms the
+    countdown, so an auto-shown overlay survives a run of actions and only
+    disappears once they stop (see ``_arm_idle_hide``).
     """
 
-    auto_mode = _auto_signal_mode()
-    if auto_mode is None or _STATE.signal_indicator is not None:
-        return None
+    with _STATE.signal_lock:
+        auto_mode = _auto_signal_mode()
+        if auto_mode is None:
+            return None
 
-    from .session import SessionMode
+        if _STATE.signal_indicator is not None:
+            # Already visible — keep it, but push the idle window forward.
+            return _idle_error_result(_arm_idle_hide())
 
-    try:
-        SessionMode(auto_mode)
-    except ValueError:
-        valid = ", ".join(m.value for m in SessionMode)
-        return {
-            "auto_signal_error": (
-                f"OC_SIGNAL_AUTO={auto_mode!r} is not a valid session mode "
-                f"(expected one of: {valid})"
-            )
-        }
+        from .session import SessionMode
 
-    try:
-        _show_signal_indicator(mode=auto_mode, agent="auto", scope="screen")
-    except Exception as exc:  # pragma: no cover - defensive, never break the action
-        return {"auto_signal_error": f"{type(exc).__name__}: {exc}"}
-    return None
+        try:
+            SessionMode(auto_mode)
+        except ValueError:
+            valid = ", ".join(m.value for m in SessionMode)
+            return {
+                "auto_signal_error": (
+                    f"OC_SIGNAL_AUTO={auto_mode!r} is not a valid session mode "
+                    f"(expected one of: {valid})"
+                )
+            }
+
+        try:
+            _show_signal_indicator(mode=auto_mode, agent="auto", scope="screen")
+        except Exception as exc:  # pragma: no cover - defensive, never break the action
+            return {"auto_signal_error": f"{type(exc).__name__}: {exc}"}
+        _STATE.signal_auto_shown = True
+        return _idle_error_result(_arm_idle_hide())
+
+
+def _idle_error_result(error: str | None) -> dict | None:
+    """Wrap an idle-hide config error like auto-signal wraps its own."""
+
+    return {"signal_idle_hide_error": error} if error else None
 
 
 @mcp.tool(description=mcp_i18n.tool_description("signal_hide", _LANG))
 def signal_hide() -> dict:
     """Hide the screen-usage signal overlay."""
 
-    if _STATE.signal_indicator is not None:
-        _STATE.signal_indicator.clear()
-        _STATE.signal_indicator = None
-    _STATE.signal_mode = ""
+    _cancel_idle_hide()
+    with _STATE.signal_lock:
+        if _STATE.signal_indicator is not None:
+            _STATE.signal_indicator.clear()
+            _STATE.signal_indicator = None
+        _STATE.signal_mode = ""
+        _STATE.signal_auto_shown = False
     return {"visible": False}
 
 
@@ -841,6 +967,10 @@ def signal_status() -> dict:
         "mode": _STATE.signal_mode,
         "label": indicator.last_label if indicator else "",
         "pending_abort_message": message,
+        # Who owns the overlay, and whether it is on an idle-hide countdown —
+        # answers "why did the overlay disappear / why does it linger".
+        "auto_shown": _STATE.signal_auto_shown,
+        "idle_hide_armed": _STATE.signal_idle_timer is not None,
     }
 
 
@@ -955,6 +1085,7 @@ def main() -> None:
     try:
         mcp.run(transport="stdio")
     finally:
+        _cancel_idle_hide()
         if _STATE.signal_indicator is not None:
             try:  # the overlay must not outlive the server either
                 _STATE.signal_indicator.clear()

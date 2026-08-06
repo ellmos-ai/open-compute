@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-535%20bestanden-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-551%20bestanden-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -306,6 +306,19 @@ Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt den Call
 scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status` für die
 manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
 
+**Auto-Hide (`OC_SIGNAL_IDLE_HIDE`).** Ein automatisch gezeigtes Overlay
+verschwindet von allein, sobald nicht mehr gesteuert wird: Jeder
+zustandsändernde Tool-Aufruf armiert einen Idle-Countdown neu; läuft er ohne
+weitere Aktion ab, wird das Overlay verborgen. Der Wert sind **Sekunden,
+Standard 60**; `0`, ein leerer Wert oder `off` schaltet das Auto-Hide ab und
+lässt das Overlay wie bisher bis zum `signal_hide` stehen. Weggeräumt wird nur,
+was `OC_SIGNAL_AUTO` selbst gezeigt hat — ein per `signal_show` angefordertes
+Overlay bleibt, bis du es verbirgst, und ein manuelles `signal_show` über einem
+automatischen übernimmt die Hoheit und bricht den Countdown ab. `signal_status`
+meldet beides (`auto_shown`, `idle_hide_armed`); ein unbrauchbarer Wert
+erscheint als `signal_idle_hide_error` im Tool-Ergebnis, statt die Aktion
+scheitern zu lassen.
+
 **Troubleshooting: `do`/`click_name` liefern nur `needs_confirmation` und handeln
 nie.** Das ist die `confirm`-Obergrenze, die unter stdio-MCP designgemäß so wirkt —
 es gibt keinen Confirm-Callback, der Server meldet statt zu handeln. Fix für
@@ -561,7 +574,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**535 bestanden, 1 übersprungen** (2026-08-03).
+**551 bestanden, 1 übersprungen** (2026-08-06).
 
 ---
 

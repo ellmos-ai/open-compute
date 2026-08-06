@@ -6,6 +6,7 @@ SDK is an optional extra, so the module is import-or-skipped.
 """
 
 import asyncio
+import time
 
 import pytest
 
@@ -206,17 +207,21 @@ class _FakePromptChannel:
         return self.message
 
 
+def _reset_signal_state():
+    S._cancel_idle_hide()  # never let a live timer leak into the next test
+    S._STATE.signal_indicator = None
+    S._STATE.signal_mode = ""
+    S._STATE.pending_abort_message = None
+    S._STATE.signal_auto_shown = False
+
+
 @pytest.fixture
 def _signal_state(monkeypatch):
     """Reset signal state and inject a fake overlay for every test here."""
     monkeypatch.setattr(S, "WindowsBorderOverlay", _FakeOverlay, raising=False)
-    S._STATE.signal_indicator = None
-    S._STATE.signal_mode = ""
-    S._STATE.pending_abort_message = None
+    _reset_signal_state()
     yield
-    S._STATE.signal_indicator = None
-    S._STATE.signal_mode = ""
-    S._STATE.pending_abort_message = None
+    _reset_signal_state()
 
 
 def test_signal_show_and_hide(_signal_state):
@@ -352,6 +357,7 @@ class _FakeUiaFeed:
 def _clean_signal_auto_env(monkeypatch):
     """OC_SIGNAL_AUTO must not leak in from (or out to) the real environment."""
     monkeypatch.delenv("OC_SIGNAL_AUTO", raising=False)
+    monkeypatch.delenv("OC_SIGNAL_IDLE_HIDE", raising=False)
     yield
 
 
@@ -460,3 +466,184 @@ def test_auto_signal_rec_replay(monkeypatch, _signal_state):
     r = S.rec_replay("dummy.clirec")
     assert r["result"] == "replayed"
     assert S._STATE.signal_mode == "control"
+
+
+# ---------------------------------------------------------------------------
+# OC_SIGNAL_IDLE_HIDE — take the auto-shown overlay down once steering stops
+# ---------------------------------------------------------------------------
+
+def _click(**_kw):
+    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+
+
+def _await_idle_hide(timer, timeout=5.0):
+    """Block until the armed idle timer has run (no polling loop)."""
+    assert timer is not None, "expected an armed idle-hide timer"
+    timer.join(timeout)
+    assert not timer.is_alive(), "idle-hide timer did not fire in time"
+
+
+@pytest.fixture
+def _auto_signal_on(monkeypatch):
+    """Auto-signal armed and the safety gate open — the steering case."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+
+
+def test_idle_hide_arms_by_default_after_auto_show(_signal_state, _auto_signal_on):
+    # OC_SIGNAL_IDLE_HIDE unset => the 60 s default, not "off"
+    _click()
+    assert S._STATE.signal_auto_shown is True
+    timer = S._STATE.signal_idle_timer
+    assert timer is not None
+    assert timer.interval == 60.0
+
+
+def test_idle_hide_hides_the_auto_overlay_when_it_fires(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "0.05")
+    _click()
+    indicator = S._STATE.signal_indicator
+    assert indicator is not None
+    _await_idle_hide(S._STATE.signal_idle_timer)
+
+    assert S._STATE.signal_indicator is None
+    assert S._STATE.signal_mode == ""
+    assert S._STATE.signal_auto_shown is False
+    assert S._STATE.signal_idle_timer is None
+    assert indicator.renderer.is_visible() is False
+
+
+def test_idle_hide_rearms_on_every_action(monkeypatch, _signal_state, _auto_signal_on):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "30")
+    _click()
+    first = S._STATE.signal_idle_timer
+    _click()
+    second = S._STATE.signal_idle_timer
+
+    # a fresh countdown per action, and the stale one really stopped
+    assert second is not None and second is not first
+    first.join(0.5)
+    assert not first.is_alive()
+    assert S._STATE.signal_indicator is not None  # nothing hidden in between
+
+
+def test_idle_hide_rearms_via_click_name_and_invoke(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "30")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    _click()
+    after_do = S._STATE.signal_idle_timer
+
+    S.click_name("Einfuegen")
+    after_click = S._STATE.signal_idle_timer
+    assert after_click is not None and after_click is not after_do
+
+    S.invoke("Einfuegen")
+    after_invoke = S._STATE.signal_idle_timer
+    assert after_invoke is not None and after_invoke is not after_click
+
+
+@pytest.mark.parametrize("value", ["0", "", "off", "OFF", "-5"])
+def test_idle_hide_disabled_values_keep_todays_behaviour(
+    monkeypatch, _signal_state, _auto_signal_on, value
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", value)
+    r = _click()
+    assert r["result"] == "executed"
+    assert "signal_idle_hide_error" not in r
+    assert S._STATE.signal_indicator is not None  # overlay stays up, as before
+    assert S._STATE.signal_idle_timer is None
+
+
+def test_idle_hide_env_sets_the_countdown(monkeypatch, _signal_state, _auto_signal_on):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "12.5")
+    _click()
+    assert S._STATE.signal_idle_timer.interval == 12.5
+
+
+def test_idle_hide_invalid_value_reports_error_without_breaking_the_action(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "soon")
+    r = _click()
+    assert r["result"] == "executed"  # the action must never suffer for it
+    assert "soon" in r["signal_idle_hide_error"]
+    assert S._STATE.signal_indicator is not None
+    assert S._STATE.signal_idle_timer is None
+
+
+def test_manual_signal_show_is_never_swept_away(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "0.05")
+    S.signal_show(mode="observe", agent="human")
+    _click()  # auto-signal sees a visible overlay and leaves it alone
+
+    assert S._STATE.signal_auto_shown is False
+    assert S._STATE.signal_idle_timer is None
+    time.sleep(0.2)  # well past the idle window
+    assert S._STATE.signal_indicator is not None
+    assert S._STATE.signal_mode == "observe"
+
+
+def test_manual_show_takes_over_an_auto_shown_overlay(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "0.05")
+    _click()
+    armed = S._STATE.signal_idle_timer
+    assert armed is not None
+
+    S.signal_show(mode="observe", agent="human")  # human takes ownership
+    assert S._STATE.signal_auto_shown is False
+    assert S._STATE.signal_idle_timer is None
+    armed.join(0.5)
+    assert not armed.is_alive()
+
+    time.sleep(0.2)
+    assert S._STATE.signal_indicator is not None
+    assert S._STATE.signal_mode == "observe"
+
+
+def test_signal_hide_cancels_a_pending_idle_timer(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "30")
+    _click()
+    armed = S._STATE.signal_idle_timer
+
+    assert S.signal_hide() == {"visible": False}  # contract unchanged
+    assert S._STATE.signal_idle_timer is None
+    assert S._STATE.signal_auto_shown is False
+    armed.join(0.5)
+    assert not armed.is_alive()
+
+
+def test_idle_hide_fire_is_a_noop_once_the_overlay_is_gone(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    """The timer thread may win the race with signal_hide — it must no-op."""
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "30")
+    _click()
+    S.signal_hide()
+    S._idle_hide_fire()  # must not raise, must not touch anything
+    assert S._STATE.signal_indicator is None
+    assert S._STATE.signal_auto_shown is False
+
+
+def test_signal_status_reports_ownership_and_countdown(
+    monkeypatch, _signal_state, _auto_signal_on
+):
+    monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "30")
+    _click()
+    status = S.signal_status()
+    assert status["auto_shown"] is True
+    assert status["idle_hide_armed"] is True
+
+    S.signal_show(mode="observe", agent="human")
+    manual = S.signal_status()
+    assert manual["auto_shown"] is False
+    assert manual["idle_hide_armed"] is False

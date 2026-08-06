@@ -11,6 +11,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Added (Signal auto-hide: `OC_SIGNAL_IDLE_HIDE`, 2026-08-06)
+
+- An overlay put up by `OC_SIGNAL_AUTO` now takes itself down once the
+  steering stops. Every state-changing tool call (`do` / `click_name` /
+  `invoke` / `rec_replay`) re-arms an idle countdown; when it expires with
+  no further action, the overlay is hidden — no more red CONTROL border
+  left standing after a run, waiting for a manual `signal_hide`.
+  `OC_SIGNAL_IDLE_HIDE` sets the window in **seconds (default 60)**; `0`,
+  empty, or `off` disables it and keeps the previous behavior. Only an
+  auto-shown overlay is ever swept away: a manual `signal_show` is never
+  touched, and showing one manually over an auto overlay takes ownership
+  and cancels the countdown. The timer is a daemon `threading.Timer`
+  guarded by a reentrant lock (no polling), cancelled on `signal_hide` and
+  at server shutdown, and it re-checks ownership when it fires so it cannot
+  hide an overlay that changed hands in the meantime. `signal_status` gained
+  `auto_shown` and `idle_hide_armed`; an unusable env value reports
+  `signal_idle_hide_error` in the tool result instead of failing the action.
+  16 new tests in `tests/test_mcp_server.py` (suite: 551 passed, 1 skipped).
+
 ### Changed (Discoverability audit, 2026-08-03)
 
 - Linked the verified Glama directory listing for the published `open-compute-mcp` launcher from both README landing pages, refreshed the machine-readable `llms.txt` verification date, and synchronized the current full-suite status (535 passed, 1 skipped).

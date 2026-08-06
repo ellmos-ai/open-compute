@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-535%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-551%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
@@ -295,6 +295,17 @@ name surfaces as `auto_signal_error` in the tool result instead of failing
 the call. See `signal_show`/`signal_hide`/`signal_status` below for the
 manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
 
+**Auto-hide (`OC_SIGNAL_IDLE_HIDE`).** An auto-shown overlay takes itself down
+once the steering stops: every state-changing tool call re-arms an idle
+countdown, and when it expires with no further action the overlay is hidden.
+The value is **seconds, default 60**; `0`, an empty value, or `off` disables the
+auto-hide and keeps the overlay up until `signal_hide` (the pre-0.7 behavior).
+Only an overlay that `OC_SIGNAL_AUTO` put up is ever swept away — one you asked
+for with `signal_show` stays until you hide it, and a manual `signal_show` over
+an auto-shown overlay takes ownership and cancels the countdown. `signal_status`
+reports both (`auto_shown`, `idle_hide_armed`); an unusable value surfaces as
+`signal_idle_hide_error` in the tool result instead of failing the action.
+
 **Troubleshooting: `do`/`click_name` only ever return `needs_confirmation` and never
 act.** That is the `confirm` ceiling working as designed under stdio MCP — there is
 no confirm callback, so the server reports instead of acting. Fix for interactive
@@ -536,7 +547,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **535 passed, 1 skipped** (2026-08-03).
+installs pytest. Current full-suite state: **551 passed, 1 skipped** (2026-08-06).
 
 ---
 

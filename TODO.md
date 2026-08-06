@@ -441,3 +441,14 @@ speisen ein gemeinsames „Weltbild", das der Agent liest — statt reinem Pixel
 `clirec` ist jetzt ein eigenes Repo/Paket: https://github.com/ellmos-ai/clirec.
 `open-compute` behält nur den lazy geladenen `oc rec`-Shim und alte Import-Wrapper.
 Neue Recorder-/Ringpuffer-/Pause-Hotkey-/Replay-Arbeit gehört in das `clirec`-Repo.
+
+- [x] Signal-Overlay automatisch verbergen, wenn kein Lauf mehr steuert (Auto-Hide).
+  Kontext (2026-08-06, CALL-E-Session): Nach zwei per MCP gefahrenen Worker-Läufen blieb
+  das rote CONTROL-Overlay aktiv, bis der Operator manuell signal_hide rief — der Nutzer
+  erwartet, dass das von allein passiert. OC_SIGNAL_AUTO=control zeigt das Overlay beim
+  Steuern, räumt es aber nicht zuverlässig ab (MCP-Server lebt sessionlang weiter).
+  Erledigt 2026-08-06: Idle-Timeout `OC_SIGNAL_IDLE_HIDE` (Sekunden, Default 60; `0`/leer/
+  `off` = aus). Jeder zustandsändernde Tool-Aufruf armiert den Timer neu, beim Ablauf wird
+  nur ein per `OC_SIGNAL_AUTO` gezeigtes Overlay verborgen — ein manuelles `signal_show`
+  bleibt unangetastet. Dokumentiert in README.md/README_de.md, `signal_status` meldet
+  `auto_shown`/`idle_hide_armed`. Wirksam erst nach Neustart des MCP-Serverprozesses.
