@@ -284,6 +284,25 @@ bekanntermaßen WGC brauchen. WGC liefert nur ein Bild, wenn das Fenster **neu
 zeichnet**: ein untätiges oder nicht erfassbares Fenster scheitert schnell
 (zeitlich begrenzt), statt zu hängen.
 
+**Aufnahme-Budget (Token-Kosten).** Ein Vision-Modell rechnet pro Pixel ab — eine
+Full-HD-`capture` ist damit das mit Abstand teuerste, was dieser Server zurückgibt.
+Und jedes Bild bleibt im Gesprächsverlauf, wird also bei jeder weiteren Anfrage
+erneut bezahlt. Da hier alle Koordinaten normalisiert sind (0..1), kostet das
+Verkleinern **nichts an Steuergenauigkeit**; nur die Lesbarkeit sinkt. Drei Schalter:
+
+| Variable | Wirkung | Kosten einer 1920×1080-Aufnahme |
+|---|---|---|
+| *(nicht gesetzt)* | volle Auflösung | ~1600 Token |
+| `OC_CAPTURE_SCALE=0.5` | beide Kanten halbieren | ~690 Token |
+| `OC_CAPTURE_MAX_DIM=768` | längste Kante deckeln | ~440 Token |
+| `OC_CAPTURE_GRAYSCALE=1` | Farbe weglassen | nur Dateigröße — **keine** Token-Ersparnis, die hängt allein an der Pixelzahl |
+
+`OC_CAPTURE_SCALE=0.5` ist der Richtwert für GUI-Arbeit: Schaltflächen und
+Feldränder bleiben klar erkennbar, nur kleiner Fließtext wird schwer lesbar. Beide
+Größen-Schalter greifen nacheinander (erst Skalierung, dann Deckelung), und ein
+fehlgeschlagenes Verkleinern lässt die Aufnahme nie scheitern — dann kommt das
+Originalbild zurück.
+
 **Sicherheit.** `OC_SAFETY_MODE` ist eine Operator-**Obergrenze** (`confirm` Standard
 · `read_only` · `allow_all`); ein per-Call-`mode` kann sie nur *verschärfen*, nie
 lockern — ein prompt-injizierter Agent kann einen `read_only`/`confirm`-Server nicht

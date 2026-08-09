@@ -213,6 +213,76 @@ def _wgc_forced(title: str) -> bool:
     return any(tok.strip().lower() in lowered for tok in raw.split(",") if tok.strip())
 
 
+def _capture_budget() -> tuple[float, int, bool]:
+    """Read the capture-size knobs: (scale, max_dim, grayscale).
+
+    A vision model is billed per pixel, so a full-HD grab is the single most
+    expensive thing this server returns. Shrinking it costs nothing in control
+    accuracy because every coordinate here is normalized 0..1 — only legibility
+    goes down, so the caller picks the trade-off:
+
+    ``OC_CAPTURE_SCALE``      0.05..1.0 factor (default 1.0 = off)
+    ``OC_CAPTURE_MAX_DIM``    cap the longest edge in pixels (default 0 = off)
+    ``OC_CAPTURE_GRAYSCALE``  drop colour — shrinks the payload, *not* the token
+                              count, which follows pixel count alone
+    """
+    try:
+        scale = float(os.environ.get("OC_CAPTURE_SCALE", "1") or "1")
+    except ValueError:
+        scale = 1.0
+    if not 0.05 <= scale <= 1.0:
+        scale = 1.0
+    try:
+        max_dim = int(os.environ.get("OC_CAPTURE_MAX_DIM", "0") or "0")
+    except ValueError:
+        max_dim = 0
+    grayscale = os.environ.get("OC_CAPTURE_GRAYSCALE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    return scale, max(0, max_dim), grayscale
+
+
+def _shrink_png(png: bytes) -> bytes:
+    """Apply the capture budget to a PNG, returning it unchanged when off.
+
+    Never raises: a cosmetic size reduction must not be able to fail a capture.
+    """
+    scale, max_dim, grayscale = _capture_budget()
+    if scale >= 1.0 and max_dim <= 0 and not grayscale:
+        return png
+    try:
+        import io
+
+        from PIL import Image as _PILImage
+    except ImportError:
+        return png
+    try:
+        with _PILImage.open(io.BytesIO(png)) as img:
+            width, height = img.size
+            target_w, target_h = width, height
+            if scale < 1.0:
+                target_w = max(1, round(width * scale))
+                target_h = max(1, round(height * scale))
+            longest = max(target_w, target_h)
+            if max_dim and longest > max_dim:
+                shrink = max_dim / longest
+                target_w = max(1, round(target_w * shrink))
+                target_h = max(1, round(target_h * shrink))
+            out = img
+            if (target_w, target_h) != (width, height):
+                out = img.resize((target_w, target_h), _PILImage.LANCZOS)
+            if grayscale:
+                out = out.convert("L")
+            buf = io.BytesIO()
+            out.save(buf, format="PNG", optimize=True)
+            return buf.getvalue()
+    except Exception:
+        return png
+
+
 def _capture_window_png(window: str) -> bytes:
     """Capture a single window, falling back to WGC when GDI yields a black frame.
 
@@ -285,10 +355,10 @@ def capture(window: str | None = None) -> Image:
             desktop (recommended; matches `do`'s coordinate frame).
     """
     if window is not None:
-        return Image(data=_capture_window_png(window), format="png")
+        return Image(data=_shrink_png(_capture_window_png(window)), format="png")
 
     obs = _STATE.executor().screenshot()
-    return Image(data=obs.screenshot, format="png")
+    return Image(data=_shrink_png(obs.screenshot), format="png")
 
 
 @mcp.tool(description=mcp_i18n.tool_description("list_windows", _LANG))

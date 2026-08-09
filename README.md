@@ -275,6 +275,24 @@ substrings) skips the GDI attempt outright for windows known to need WGC.
 Note that WGC only produces a frame when the window *redraws*: an idle or
 non-capturable window fails fast (bounded, a few seconds) instead of hanging.
 
+**Capture budget (token cost).** A vision model is billed per pixel, so a full-HD
+`capture` is by far the most expensive thing this server returns — and every frame
+stays in the conversation, so the cost is paid again on each following request.
+Because all coordinates here are normalized 0..1, shrinking the image costs
+**nothing in control accuracy**; only legibility drops. Three knobs:
+
+| Variable | Effect | Cost of a 1920×1080 grab |
+|---|---|---|
+| *(unset)* | full resolution | ~1600 tokens |
+| `OC_CAPTURE_SCALE=0.5` | halve both edges | ~690 tokens |
+| `OC_CAPTURE_MAX_DIM=768` | cap the longest edge | ~440 tokens |
+| `OC_CAPTURE_GRAYSCALE=1` | drop colour | payload only — **not** tokens, which follow pixel count alone |
+
+`OC_CAPTURE_SCALE=0.5` is the sweet spot for GUI work: buttons and field borders
+stay clearly identifiable, only small body text gets hard to read. Both size knobs
+compose (scale first, then the cap), and a failure to shrink never fails the
+capture — the original frame is returned instead.
+
 **Safety.** `OC_SAFETY_MODE` is an operator **ceiling** (`confirm` default ·
 `read_only` · `allow_all`); a per-call `mode` can only *tighten* it, never loosen it,
 so a prompt-injected agent cannot escape a `read_only`/`confirm` server via
