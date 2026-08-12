@@ -6,9 +6,10 @@ import io
 
 import pytest
 
-from open_compute import mcp_server
-
+pytest.importorskip("mcp", reason="server needs the optional open-compute[mcp] extra")
 PIL = pytest.importorskip("PIL")
+
+from open_compute import mcp_server  # noqa: E402
 from PIL import Image as PILImage  # noqa: E402
 
 
