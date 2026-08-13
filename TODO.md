@@ -452,3 +452,28 @@ Neue Recorder-/Ringpuffer-/Pause-Hotkey-/Replay-Arbeit gehört in das `clirec`-R
   nur ein per `OC_SIGNAL_AUTO` gezeigtes Overlay verborgen — ein manuelles `signal_show`
   bleibt unangetastet. Dokumentiert in README.md/README_de.md, `signal_status` meldet
   `auto_shown`/`idle_hide_armed`. Wirksam erst nach Neustart des MCP-Serverprozesses.
+
+- [ ] Tighten-only-Sicherheitsdeckel aus dem MCP-Adapter in den Kern verlagern.
+  Kontext (2026-08-13, Launcher-Verifikation, Befund 2 in
+  `.TOPICS/.AI/.MCP/_reports/OPEN-COMPUTE-LAUNCHER-VERIFIKATION_2026-08-13.md`):
+  `_make_policy`/`_MODE_RANK` in `mcp_server.py` (Z. 136-152) stellen sicher, dass ein
+  Aufrufer mit `mode="allow_all"` einen `read_only`-/`confirm`-Server nicht öffnen kann —
+  diese Regel existiert NUR im Adapter. `safety.py` kennt keine Modus-Kombination, die CLI
+  liest `OC_SAFETY_MODE` nur als argparse-Default. Ein zweiter Adapter müsste die Regel
+  nachbauen (echte Duplikation). Nächster Schritt: Kombinationslogik nach `safety.py`
+  (z. B. `SafetyPolicy.combine(cap, requested)`), Adapter + CLI darauf umstellen.
+
+- [ ] GDI→WGC-Fallback-Kette der Fenster-Aufnahme in `drivers` hochziehen.
+  Kontext (2026-08-13, Befund 3 ebd.): `_capture_window_png` im MCP-Server hat
+  Schwarzbild-Erkennung (`wgc.is_blank_png`) + Zeitbudgets; der CLI-Pfad
+  `_capture_window_bytes` (cli.py 632-646) ist reines mss ohne Fallback → CLI liefert bei
+  hardware-komponierten Fenstern (Roblox Studio, Blender, GPU-Browser) Schwarzbilder, der
+  MCP nicht. Nächster Schritt: Kette als `drivers.capture_window_robust` zentralisieren,
+  beide Pfade darauf umstellen.
+
+- [ ] Safety-Vokabular um Aufnahme/Dialoge erweitern — `talk`/`chat`/`signal_*` gaten.
+  Kontext (2026-08-13, Befund 4 ebd.): `signal_show`/`signal_hide`, `chat` (Tk-Dialog +
+  PNG) und `talk` (Mikrofonaufnahme + WAV) rufen weder `_make_policy` noch `_gate` —
+  unter `OC_SAFETY_MODE=read_only` nimmt `talk` weiterhin Ton auf. Ursache: das
+  `ActionType`-Vokabular der `SafetyPolicy` kennt nur Eingabesynthese. Nächster Schritt:
+  ActionTypes `record_audio`, `show_dialog`, `overlay` ergänzen und die vier Tools gaten.
