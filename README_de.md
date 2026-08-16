@@ -7,10 +7,10 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-551%20bestanden-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-564%20bestanden-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
-[![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--07--30-blue)](CHANGELOG.md)
+[![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--08--16-blue)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
 
 **Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop, jedes Reasoning-Modell hinter einer einzigen Schnittstelle.**
@@ -593,7 +593,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**551 bestanden, 1 übersprungen** (2026-08-06).
+**564 bestanden, 1 übersprungen** (2026-08-16).
 
 ---
 

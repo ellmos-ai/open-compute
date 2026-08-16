@@ -11,6 +11,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Changed (Discoverability verification, 2026-08-16)
+
+- Refreshed the EN/DE README test and hygiene badges plus the machine-readable
+  `llms.txt` check date after a clean full suite run (564 passed, 1 skipped).
+
 ### Added (Signal auto-hide: `OC_SIGNAL_IDLE_HIDE`, 2026-08-06)
 
 - An overlay put up by `OC_SIGNAL_AUTO` now takes itself down once the
