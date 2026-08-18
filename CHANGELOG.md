@@ -11,6 +11,53 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Added (Not-Aus / kill switch, pre-action grace period, 2026-08-18)
+
+Ticket T-20260818-895473048: an incident where a screenshot briefly captured
+private mail content while the user was actively working made the planned
+"abort button" feature priority. Every gate-relevant tool
+(`do`/`click_name`/`invoke`/`rec_replay`/`capture`) now honors a server-side
+kill switch:
+
+- **Always-visible abort button** drawn top-right on the signal overlay — the
+  one popup that is NOT click-through, independent of whether an abort
+  hotkey is also configured. **Panic hotkey** (`signal.abort_hotkey`)
+  triggers the exact same hard stop, not just a reason box as before.
+- **Immediate + total stop:** the kill switch latches synchronously (before
+  any reason dialog even opens), stops a `do` batch mid-flight (checked
+  before every queued step) and a running `rec_replay` (checked before
+  every replayed action via `cli._GatedExecutor`'s new `abort_check`), and
+  denies every further gate-relevant call — even under
+  `OC_SAFETY_MODE=allow_all` — until a fresh `signal_show(...)` re-arms the
+  session.
+- **Abort with reason:** free text or 1-click from a configurable list
+  (`signal.abort_reasons`); delivered as `abort_reason` directly on the
+  result of the blocked/next tool call, not only via `signal_status`
+  (which still reports `aborted`/`abort_reason`, non-consuming).
+- **Pre-action grace countdown:** an explicit `signal_show(...)` call arms
+  `signal.pre_action_grace_seconds` (default 20s, override via
+  `OC_SIGNAL_GRACE_SECONDS`); the first state-changing action *and* the
+  first `capture()` after that block server-side until the countdown
+  elapses or the kill switch fires, with the overlay label showing
+  "Uebernahme in Ns" meanwhile. Deliberately NOT armed by `OC_SIGNAL_AUTO`'s
+  reactive auto-show (which only appears *after* an action already ran) —
+  arming it there would stall the agent's very next step instead of
+  protecting the first one.
+- **User-activity watch (opt-in, `OC_HUMAN_ACTIVITY_WATCH=on`):** wired the
+  existing (previously unused) `human_activity` module into
+  `do`/`click_name`/`invoke` — genuine, non-agent-issued recent mouse/
+  keyboard input now auto-pauses the session (same kill-switch state,
+  fresh `signal_show` needed to resume). Off by default: a shared
+  workstation's `GetLastInputInfo` reflects whatever the operator is doing
+  *right now*, including issuing the tool call itself, so an unconditional
+  default risks false-positive pauses. Not yet wired into `rec_replay`
+  (documented follow-up).
+- `open_compute/indicator.py`: `SignalConfig` gained `pre_action_grace_seconds`
+  and `abort_reasons`; `TkAbortChannel` gained a `reasons` quick-pick row
+  above the free-text field; `WindowsBorderOverlay` gained the abort button,
+  a debounced `_fire_abort` (one human gesture, one dialog), and the
+  countdown label update.
+
 ### Changed (Discoverability verification, 2026-08-16)
 
 - Refreshed the EN/DE README test and hygiene badges plus the machine-readable

@@ -26,6 +26,7 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
+import time
 from typing import Callable, Protocol
 
 from .session import SessionMode
@@ -138,6 +139,13 @@ class SignalConfig:
     modes: dict[SessionMode, SignalModeConfig] = field(default_factory=dict)
     thickness: int = 6
     abort_hotkey: str | None = None
+    # Karenzzeit vor der ersten zustandsaendernden Aktion / dem ersten Screenshot
+    # einer Sitzung (Not-Aus-Feature, Ticket T-20260818-895473048). 0 = sofort,
+    # kein Countdown.
+    pre_action_grace_seconds: float = 20.0
+    # Freitext ODER 1-Klick: die Vorschlagsliste fuer den Abbruch-Dialog
+    # (TkAbortChannel). Leer = nur Freitext, wie bisher.
+    abort_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         merged = self.default_modes()
@@ -147,6 +155,11 @@ class SignalConfig:
             raise ValueError("thickness must be in 2..40")
         if self.abort_hotkey is not None:
             parse_hotkey(self.abort_hotkey)  # validate eagerly
+        if self.pre_action_grace_seconds < 0:
+            raise ValueError("pre_action_grace_seconds must be >= 0")
+        self.abort_reasons = tuple(
+            str(reason).strip() for reason in self.abort_reasons if str(reason).strip()
+        )
 
     @staticmethod
     def default_modes() -> dict[SessionMode, SignalModeConfig]:
@@ -181,6 +194,8 @@ class SignalConfig:
             modes=modes,
             thickness=int(data.get("thickness", 6)),
             abort_hotkey=str(hotkey) if hotkey else None,
+            pre_action_grace_seconds=float(data.get("pre_action_grace_seconds", 20.0)),
+            abort_reasons=tuple(str(r) for r in data.get("abort_reasons", ())),
         )
 
     @classmethod
@@ -192,6 +207,8 @@ class SignalConfig:
         return {
             "thickness": self.thickness,
             "abort_hotkey": self.abort_hotkey,
+            "pre_action_grace_seconds": self.pre_action_grace_seconds,
+            "abort_reasons": list(self.abort_reasons),
             "modes": {
                 mode.value: {
                     "enabled": cfg.enabled,
@@ -306,9 +323,16 @@ class TkAbortChannel:
     tkinter is stdlib; the import is lazy so the module stays import-safe
     where Tk is missing. Returns the entered text, or ``None`` on cancel,
     empty input, or timeout.
+
+    ``reasons`` renders one 1-click button per configured quick reason
+    (:attr:`SignalConfig.abort_reasons`) above the free-text entry — either
+    picks the abort message, matching "Freitext ODER 1-Klick aus
+    konfigurierbarer Liste" (Ticket T-20260818-895473048). Empty (default)
+    keeps the original free-text-only dialog.
     """
 
     timeout_seconds: float = 60.0
+    reasons: tuple[str, ...] = ()
 
     def prompt_reason(self, *, context: str) -> str | None:
         import tkinter as tk
@@ -322,9 +346,24 @@ class TkAbortChannel:
             tk.Label(root, text=context, anchor="w").pack(
                 fill="x", padx=10, pady=(10, 0)
             )
+        if self.reasons:
+            tk.Label(root, text="Schnellauswahl (1 Klick):", anchor="w").pack(
+                fill="x", padx=10, pady=(10, 0)
+            )
+            quick = tk.Frame(root)
+            quick.pack(fill="x", padx=10, pady=(2, 0))
+
+            def _pick(value: str) -> None:
+                result["text"] = value
+                root.destroy()
+
+            for reason in self.reasons:
+                tk.Button(
+                    quick, text=reason, command=lambda value=reason: _pick(value)
+                ).pack(side="left", padx=(0, 4), pady=2)
         tk.Label(
             root,
-            text="Kurzer Grund fuers Modell (wird mitgesendet):",
+            text="...oder eigener Grund fuers Modell (wird mitgesendet):",
             anchor="w",
         ).pack(fill="x", padx=10, pady=(10, 0))
         entry = tk.Entry(root, width=50)
@@ -417,6 +456,37 @@ class ScreenSignalIndicator:
 _BORDER_ALPHA = 235
 _GLOW_ALPHA = 90
 _CURSOR_RING = 48
+_ABORT_DEBOUNCE_SECONDS = 0.5
+
+# Abort button (Ticket T-20260818-895473048, "immer sichtbares, klickbares
+# Abort-Element"): a small opaque, NON-click-through popup drawn top-right of
+# the virtual desktop, independent of the abort hotkey.
+_ABORT_BUTTON_W = 132
+_ABORT_BUTTON_H = 34
+_ABORT_BUTTON_MARGIN = 10
+_ABORT_BUTTON_COLOR = (222, 32, 42)
+_ABORT_BUTTON_LABEL = "✖ ABBRUCH"
+
+
+def _abort_button_rect(
+    vx: int,
+    vy: int,
+    vw: int,
+    vh: int,
+    glow: int,
+    *,
+    width: int = _ABORT_BUTTON_W,
+    height: int = _ABORT_BUTTON_H,
+    margin: int = _ABORT_BUTTON_MARGIN,
+) -> tuple[int, int, int, int]:
+    """Placement for the abort button: top-right, clear of the glow frame.
+
+    Pure arithmetic (no Win32 call) so it is unit-testable on any platform.
+    """
+
+    x = vx + vw - width - margin - glow
+    y = vy + glow + margin
+    return x, y, width, height
 
 
 class WindowsBorderOverlay:
@@ -437,21 +507,32 @@ class WindowsBorderOverlay:
         cursor_ring: bool = True,
         on_abort: Callable[[], None] | None = None,
         abort_hotkey: str | None = None,
+        grace_seconds: float = 0.0,
     ) -> None:
         if sys.platform != "win32":
             raise RuntimeError("WindowsBorderOverlay is Windows-only")
         if not 2 <= thickness <= 40:
             raise ValueError("thickness must be in 2..40")
+        if grace_seconds < 0:
+            raise ValueError("grace_seconds must be >= 0")
         self._thickness = thickness
         self._border = border
         self._cursor_ring = cursor_ring
         self._on_abort = on_abort
         # Parsed eagerly so a bad spec fails at construction, not in the thread.
         self._abort_hotkey = parse_hotkey(abort_hotkey) if abort_hotkey else None
+        # Karenzzeit vor der ersten Aktion — nur eine Anzeige-/Timing-Angabe,
+        # das eigentliche Blockieren macht der Aufrufer (mcp_server); die
+        # Ueberlagerung zeigt hier nur "Uebernahme in Ns" im Label an.
+        self._grace_seconds = float(grace_seconds)
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._visible = False
         self.error: BaseException | None = None
+        # Debounce a rapid double-fire (double-click on the abort button, or
+        # a hotkey held slightly too long despite MOD_NOREPEAT) so the human
+        # never sees the reason dialog pop up twice for one intent.
+        self._last_abort_fire: float | None = None
 
     # -- public seam -----------------------------------------------------
 
@@ -488,8 +569,21 @@ class WindowsBorderOverlay:
         return self._visible and self.error is None
 
     def _fire_abort(self) -> None:
-        """Invoke the abort callback; failures surface via ``self.error``."""
+        """Invoke the abort callback; failures surface via ``self.error``.
 
+        Debounced: a second trigger (button double-click, hotkey bounce)
+        within :data:`_ABORT_DEBOUNCE_SECONDS` of the last one is dropped —
+        one human abort gesture must not fire the kill switch / reason
+        dialog twice.
+        """
+
+        now = time.monotonic()
+        if (
+            self._last_abort_fire is not None
+            and now - self._last_abort_fire < _ABORT_DEBOUNCE_SECONDS
+        ):
+            return
+        self._last_abort_fire = now
         try:
             if self._on_abort is not None:
                 self._on_abort()
@@ -559,6 +653,7 @@ class WindowsBorderOverlay:
             wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT,
         ]
         user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
         gdi32.CreateSolidBrush.restype = wintypes.HBRUSH
         gdi32.CreatePen.restype = wintypes.HANDLE
         gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HANDLE]
@@ -603,12 +698,17 @@ class WindowsBorderOverlay:
         glow_brush = gdi32.CreateSolidBrush(colorref)
         ring_pen = gdi32.CreatePen(0, 4, colorref)
         glow_pen = gdi32.CreatePen(0, 10, colorref)
+        abort_brush = gdi32.CreateSolidBrush(_colorref(_ABORT_BUTTON_COLOR))
         created: dict[str, list] = {"hwnds": []}
         hotkey_id: int | None = None
 
         WM_PAINT = 0x000F
         WM_DESTROY = 0x0002
         WM_ERASEBKGND = 0x0014
+        WM_LBUTTONDOWN = 0x0201
+        _ROLE_RING = 1
+        _ROLE_LABEL = 2
+        _ROLE_ABORT_BUTTON = 3
 
         def _paint_ring(hwnd: int) -> None:
             hdc = user32.GetDC(hwnd)
@@ -641,9 +741,30 @@ class WindowsBorderOverlay:
             finally:
                 user32.ReleaseDC(hwnd, hdc)
 
+        def _paint_abort_button(hwnd: int) -> None:
+            hdc = user32.GetDC(hwnd)
+            try:
+                rect = wintypes.RECT()
+                user32.GetClientRect(hwnd, ctypes.byref(rect))
+                gdi32.SetBkMode(hdc, 1)  # TRANSPARENT (rect is already red)
+                gdi32.SetTextColor(hdc, _colorref((255, 255, 255)))
+                gdi32.SelectObject(hdc, gdi32.GetStockObject(17))  # DEFAULT_GUI_FONT
+                user32.DrawTextW(
+                    hdc, _ABORT_BUTTON_LABEL, -1, ctypes.byref(rect), 0x0024
+                )
+            finally:
+                user32.ReleaseDC(hwnd, hdc)
+
         def _wnd_proc(hwnd, msg, wparam, lparam):
             if msg == WM_ERASEBKGND:
                 role = user32.GetWindowLongPtrW(hwnd, -21)  # GWLP_USERDATA
+                if role == _ROLE_ABORT_BUTTON:
+                    # opaque button, always the same bright red — recognizable
+                    # regardless of the active mode color.
+                    rect = wintypes.RECT()
+                    user32.GetClientRect(hwnd, ctypes.byref(rect))
+                    user32.FillRect(wparam, ctypes.byref(rect), abort_brush)
+                    return 1
                 if role:
                     # ring/label windows need a black backdrop so the color
                     # key makes everything but the drawing transparent
@@ -658,11 +779,25 @@ class WindowsBorderOverlay:
                 hdc = user32.BeginPaint(hwnd, ps)
                 user32.EndPaint(hwnd, ps)
                 role = user32.GetWindowLongPtrW(hwnd, -21)  # GWLP_USERDATA
-                if role == 1:
+                if role == _ROLE_RING:
                     _paint_ring(hwnd)
-                elif role == 2:
+                elif role == _ROLE_LABEL:
                     _paint_label(hwnd)
+                elif role == _ROLE_ABORT_BUTTON:
+                    _paint_abort_button(hwnd)
                 return 0
+            if msg == WM_LBUTTONDOWN:
+                role = user32.GetWindowLongPtrW(hwnd, -21)  # GWLP_USERDATA
+                if role == _ROLE_ABORT_BUTTON:
+                    # Fire on a side thread, same as the hotkey: a modal Tk
+                    # reason dialog must not stall the overlay's message pump.
+                    threading.Thread(
+                        target=self._fire_abort,
+                        name="oc-abort-button",
+                        daemon=True,
+                    ).start()
+                    return 0
+                return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
             if msg == WM_DESTROY:
                 user32.PostQuitMessage(0)
                 return 0
@@ -688,11 +823,17 @@ class WindowsBorderOverlay:
             | 0x00000008  # WS_EX_TOPMOST
             | 0x08000000  # WS_EX_NOACTIVATE
         )
+        # Same window, minus WS_EX_TRANSPARENT — the one popup on this
+        # overlay that must actually receive a mouse click (the abort
+        # button). WS_EX_NOACTIVATE is kept so clicking it never steals
+        # foreground focus from whatever the human is working in.
+        ex_style_clickable = ex_style & ~0x00000020
         WS_POPUP = 0x80000000
 
-        def _create(x, y, w, h, role=0, alpha=_BORDER_ALPHA, colorkey=None):
+        def _create(x, y, w, h, role=0, alpha=_BORDER_ALPHA, colorkey=None, clickable=False):
             hwnd = user32.CreateWindowExW(
-                ex_style, class_name, "", WS_POPUP, x, y, w, h,
+                ex_style_clickable if clickable else ex_style,
+                class_name, "", WS_POPUP, x, y, w, h,
                 None, None, instance, None,
             )
             if not hwnd:
@@ -728,11 +869,23 @@ class WindowsBorderOverlay:
                 cursor_hwnd = _create(
                     0, 0, _CURSOR_RING, _CURSOR_RING, role=1, colorkey=0
                 )
+            label_hwnd = None
             if label:
                 label_w = min(720, vw - 40)
-                _create(
+                label_hwnd = _create(
                     vx + (vw - label_w) // 2, vy + glow + 4, label_w, 26,
                     role=2, alpha=210, colorkey=None,
+                )
+
+            # Abort button: always drawn whenever an abort path is wired
+            # (independent of whether a hotkey is ALSO configured) — "immer
+            # sichtbares, klickbares Abort-Element" (Ticket T-20260818-895473048).
+            abort_hwnd = None
+            if self._on_abort is not None:
+                bx, by, bw, bh = _abort_button_rect(vx, vy, vw, vh, glow)
+                abort_hwnd = _create(
+                    bx, by, bw, bh, role=_ROLE_ABORT_BUTTON, alpha=248,
+                    clickable=True,
                 )
 
             hotkey_id = None
@@ -741,6 +894,17 @@ class WindowsBorderOverlay:
                 # 0x4000 = MOD_NOREPEAT: one fire per press, not a stream
                 if user32.RegisterHotKey(None, 1, mods | 0x4000, vk):
                     hotkey_id = 1
+
+            # Grace countdown — display-only (the actual blocking-before-first
+            # -action wait lives server-side in mcp_server._await_grace_period);
+            # this just updates the label text once a second while it runs so
+            # the human sees "Uebernahme in Ns" and knows the button still works.
+            grace_deadline = (
+                time.monotonic() + self._grace_seconds
+                if label_hwnd and self._grace_seconds > 0 and self._on_abort is not None
+                else None
+            )
+            last_shown_seconds: int | None = None
 
             msg = wintypes.MSG()
             point = wintypes.POINT()
@@ -766,6 +930,20 @@ class WindowsBorderOverlay:
                         0, 0,
                         0x0001 | 0x0004 | 0x0010,  # NOSIZE|NOACTIVATE|NOZORDER? keep topmost via ex style
                     )
+                if grace_deadline is not None:
+                    remaining = grace_deadline - time.monotonic()
+                    if remaining <= 0:
+                        user32.SetWindowTextW(label_hwnd, label)
+                        grace_deadline = None
+                    else:
+                        seconds_left = int(remaining) + 1
+                        if seconds_left != last_shown_seconds:
+                            last_shown_seconds = seconds_left
+                            user32.SetWindowTextW(
+                                label_hwnd,
+                                f"{label}  |  Uebernahme in {seconds_left}s "
+                                "— Klick auf ABBRUCH stoppt sofort",
+                            )
                 self._stop.wait(0.033)
         except BaseException as exc:  # surface overlay failures, never crash caller
             self.error = exc
@@ -775,5 +953,5 @@ class WindowsBorderOverlay:
             for hwnd in created["hwnds"]:
                 user32.DestroyWindow(hwnd)
             user32.UnregisterClassW(class_name, instance)
-            for obj in (brush, black_brush, glow_brush, ring_pen, glow_pen):
+            for obj in (brush, black_brush, glow_brush, ring_pen, glow_pen, abort_brush):
                 gdi32.DeleteObject(obj)

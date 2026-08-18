@@ -1692,17 +1692,29 @@ class _GatedExecutor:
     LocalExecutor aus — ohne Confirm, Deny-Liste oder Audit-Trail
     (Modul-Review 2026-07-04). Replay-Aktionen sind echte SendInput-Events
     und muessen wie jede ``oc do``-Aktion gegatet werden.
+
+    ``abort_check`` (Ticket T-20260818-895473048): optional, called before
+    every step. A non-empty return value latches the Not-Aus for the whole
+    replay — checked *before* the safety policy so an aborted session can
+    never be waved through by ``--mode allow_all``.
     """
 
-    def __init__(self, executor, policy: "SafetyPolicy"):
+    def __init__(self, executor, policy: "SafetyPolicy",
+                 abort_check: "Callable[[], str | None] | None" = None):
         self._executor = executor
         self._policy = policy
+        self._abort_check = abort_check
 
     def __getattr__(self, name):
         return getattr(self._executor, name)
 
     def execute(self, action):
         from .safety import Decision  # lazy — cli.py bleibt stdlib-only beim Import
+
+        if self._abort_check is not None:
+            reason = self._abort_check()
+            if reason:
+                raise PermissionError(f"aborted: {reason}")
 
         result = self._policy.evaluate(action)
         if result.decision is not Decision.ALLOW:
@@ -1725,9 +1737,11 @@ def _clirec_executor_factory(policy: "SafetyPolicy | None" = None):
 
 
 def _run_replay(path: str, params: dict, executor,
-                policy: "SafetyPolicy | None" = None):
+                policy: "SafetyPolicy | None" = None,
+                abort_check: "Callable[[], str | None] | None" = None):
     """Testable seam: load a .clirec and replay it against an open-compute
-    executor. Every replayed action passes the safety gate."""
+    executor. Every replayed action passes the safety gate (and, if given,
+    the Not-Aus ``abort_check`` — see :class:`_GatedExecutor`)."""
     from .safety import SafetyPolicy
     try:
         from clirec.cli import _run_replay as clirec_run_replay
@@ -1737,7 +1751,10 @@ def _run_replay(path: str, params: dict, executor,
     if policy is None:
         policy = SafetyPolicy(mode="confirm")
     return clirec_run_replay(
-        path, params, OpenComputeExecutorAdapter(_GatedExecutor(executor, policy))
+        path, params,
+        OpenComputeExecutorAdapter(
+            _GatedExecutor(executor, policy, abort_check=abort_check)
+        ),
     )
 
 

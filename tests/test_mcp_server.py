@@ -6,6 +6,7 @@ SDK is an optional extra, so the module is import-or-skipped.
 """
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -213,6 +214,14 @@ def _reset_signal_state():
     S._STATE.signal_mode = ""
     S._STATE.pending_abort_message = None
     S._STATE.signal_auto_shown = False
+    # Not-Aus / grace state (Ticket T-20260818-895473048) — a leaked armed
+    # grace_deadline would silently block the *next* test's do()/capture()
+    # call for real wall-clock seconds, so this reset is not optional.
+    S._STATE.abort_triggered = False
+    S._STATE.abort_reason = None
+    S._STATE.grace_deadline = None
+    S._STATE.activity_classifier = None
+    S._STATE.activity_adapter = None
 
 
 @pytest.fixture
@@ -358,6 +367,8 @@ def _clean_signal_auto_env(monkeypatch):
     """OC_SIGNAL_AUTO must not leak in from (or out to) the real environment."""
     monkeypatch.delenv("OC_SIGNAL_AUTO", raising=False)
     monkeypatch.delenv("OC_SIGNAL_IDLE_HIDE", raising=False)
+    monkeypatch.delenv("OC_SIGNAL_GRACE_SECONDS", raising=False)
+    monkeypatch.delenv("OC_HUMAN_ACTIVITY_WATCH", raising=False)
     yield
 
 
@@ -401,6 +412,7 @@ def test_auto_signal_read_only_tool_never_triggers(monkeypatch, _signal_state):
 
 
 def test_auto_signal_does_not_override_existing_manual_signal(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")  # not under test here
     S.signal_show(mode="observe", agent="human")
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
@@ -461,7 +473,7 @@ def test_auto_signal_rec_replay(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
     monkeypatch.setattr(
         oc_cli, "_run_replay",
-        lambda path, params, executor, policy=None: {"steps": 1},
+        lambda path, params, executor, policy=None, abort_check=None: {"steps": 1},
     )
     r = S.rec_replay("dummy.clirec")
     assert r["result"] == "replayed"
@@ -579,6 +591,7 @@ def test_manual_signal_show_is_never_swept_away(
     monkeypatch, _signal_state, _auto_signal_on
 ):
     monkeypatch.setenv("OC_SIGNAL_IDLE_HIDE", "0.05")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")  # not under test here
     S.signal_show(mode="observe", agent="human")
     _click()  # auto-signal sees a visible overlay and leaves it alone
 
@@ -647,3 +660,365 @@ def test_signal_status_reports_ownership_and_countdown(
     manual = S.signal_status()
     assert manual["auto_shown"] is False
     assert manual["idle_hide_armed"] is False
+
+
+# ---------------------------------------------------------------------------
+# Not-Aus / kill switch + pre-action grace period (Ticket T-20260818-895473048)
+# ---------------------------------------------------------------------------
+
+class _FakeReasonChannel:
+    """Reason-dialog stand-in — accepts the ``reasons`` kwarg like TkAbortChannel."""
+
+    answer: str | None = "Ich arbeite gerade selbst"
+
+    def __init__(self, reasons=()):
+        self.reasons = reasons
+
+    def prompt_reason(self, *, context):
+        return self.answer
+
+
+def test_kill_switch_denies_do_even_under_allow_all(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    S._trigger_kill_switch("test reason")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "aborted"
+    assert r["abort_reason"] == "test reason"
+    assert r["reason"] == "test reason"
+
+
+def test_kill_switch_denies_click_name_and_invoke(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    S._trigger_kill_switch("stop")
+    assert S.click_name("Einfuegen")["result"] == "aborted"
+    assert S.invoke("Einfuegen")["result"] == "aborted"
+
+
+def test_kill_switch_flushes_a_running_batch_mid_flight(monkeypatch, _signal_state):
+    """SOFORT: a batch already mid-flight must not run its remaining queued
+    steps once the human hits abort — even though the whole batch is one
+    Python call, the loop notices on its very next iteration."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+
+    class _AbortingExec(_FakeExec):
+        def execute(self, action):
+            obs = super().execute(action)
+            if len(self.executed) == 1:  # abort right after the 1st action ran
+                S._trigger_kill_switch("mid-batch stop")
+            return obs
+
+    S._STATE.set_executor(_AbortingExec())
+    r = S.do(actions=[
+        {"type": "mouse_move", "x": 0.1, "y": 0.1},
+        {"type": "mouse_move", "x": 0.2, "y": 0.2},
+        {"type": "mouse_move", "x": 0.3, "y": 0.3},
+    ])
+    assert r["result"] == "aborted"
+    assert r["executed_before"] == 1
+    assert r["action_index"] == 1
+
+
+def test_kill_switch_default_reason_when_none_given(_signal_state):
+    S._trigger_kill_switch()
+    r = S.do(action={"type": "mouse_move", "x": 0.1, "y": 0.1})
+    assert r["result"] == "aborted"
+    assert r["abort_reason"] == S._DEFAULT_ABORT_REASON
+
+
+def test_capture_raises_when_kill_switch_latched(_signal_state):
+    S._trigger_kill_switch("no screenshots now")
+    with pytest.raises(PermissionError, match="no screenshots now"):
+        S.capture()
+
+
+def test_signal_show_resets_a_latched_kill_switch(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    S._trigger_kill_switch("stopped")
+    assert S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})["result"] == "aborted"
+
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    S.signal_show(mode="control", agent="kimi")  # fresh take-over re-arms it
+
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"
+
+
+def test_signal_status_reports_aborted_state(_signal_state):
+    S._trigger_kill_switch("stop please")
+    status = S.signal_status()
+    assert status["aborted"] is True
+    assert status["abort_reason"] == "stop please"
+
+
+def test_on_abort_latches_kill_switch_before_the_reason_dialog_resolves(
+    monkeypatch, _signal_state
+):
+    """SOFORT means SOFORT: the switch must already be latched *while* the
+    (potentially slow) reason dialog is still being answered."""
+    seen: dict = {}
+
+    class _ProbingChannel:
+        def __init__(self, reasons=()):
+            self.reasons = reasons
+
+        def prompt_reason(self, *, context):
+            seen["triggered_during_dialog"] = S._STATE.abort_triggered
+            return "Ich arbeite gerade selbst"
+
+    monkeypatch.setattr(S, "TkAbortChannel", _ProbingChannel, raising=False)
+    S.signal_show(mode="control", agent="kimi")
+    on_abort = S._STATE.signal_indicator.renderer.kwargs["on_abort"]
+
+    on_abort()
+
+    assert seen["triggered_during_dialog"] is True
+    assert S._STATE.abort_reason == "Ich arbeite gerade selbst"
+
+
+def test_on_abort_passes_configured_quick_reasons_to_the_channel(
+    monkeypatch, _signal_state, tmp_path
+):
+    from open_compute.indicator import SignalConfig
+
+    captured: dict = {}
+
+    class _CapturingChannel:
+        def __init__(self, reasons=()):
+            captured["reasons"] = reasons
+
+        def prompt_reason(self, *, context):
+            return None
+
+    monkeypatch.setattr(S, "TkAbortChannel", _CapturingChannel, raising=False)
+    cfg = SignalConfig.from_dict({"abort_reasons": ["Falsches Fenster", "Spaeter erneut"]})
+    path = tmp_path / "cfg.json"
+    cfg.save(path)
+
+    S.signal_show(mode="control", agent="kimi", config_path=str(path))
+    on_abort = S._STATE.signal_indicator.renderer.kwargs["on_abort"]
+    on_abort()
+
+    assert captured["reasons"] == ("Falsches Fenster", "Spaeter erneut")
+
+
+def test_rec_replay_reports_abort_reason(monkeypatch, _signal_state):
+    """Simulates the real sequence: the grace/kill-switch check at the top of
+    `rec_replay` passes (nothing latched yet), the replay starts, and only
+    THEN — mid-replay — does the human hit abort; `_GatedExecutor` notices on
+    the next step and raises, which `rec_replay` must translate back into
+    `abort_reason` for the caller."""
+    import open_compute.cli as oc_cli
+
+    def _raising_run_replay(path, params, executor, policy=None, abort_check=None):
+        S._trigger_kill_switch("stop it")  # the abort happens mid-replay
+        raise PermissionError("aborted: stop it")
+
+    monkeypatch.setattr(oc_cli, "_run_replay", _raising_run_replay)
+    r = S.rec_replay("dummy.clirec")
+    assert r["result"] == "deny"
+    assert r["abort_reason"] == "stop it"
+
+
+def test_rec_replay_plain_deny_has_no_abort_reason(monkeypatch, _signal_state):
+    """A regular safety-gate deny (no abort involved) must not gain the new field."""
+    import open_compute.cli as oc_cli
+
+    def _raising_run_replay(path, params, executor, policy=None, abort_check=None):
+        raise PermissionError("safety gate: deny for replay action 'type'")
+
+    monkeypatch.setattr(oc_cli, "_run_replay", _raising_run_replay)
+    r = S.rec_replay("dummy.clirec")
+    assert r["result"] == "deny"
+    assert "abort_reason" not in r
+
+
+def test_gated_executor_checks_abort_before_the_safety_policy():
+    """cli._GatedExecutor: an abort_check hit must pre-empt even allow_all —
+    the Not-Aus is not just another safety-policy rule an operator can loosen."""
+    from open_compute.actions import Action, ActionType
+    from open_compute.cli import _GatedExecutor
+    from open_compute.safety import SafetyPolicy
+
+    gated = _GatedExecutor(
+        _FakeExec(), SafetyPolicy(mode="allow_all"),
+        abort_check=lambda: "human said stop",
+    )
+    with pytest.raises(PermissionError, match="aborted: human said stop"):
+        gated.execute(Action(type=ActionType.LEFT_CLICK, x=0.1, y=0.1))
+
+
+def test_gated_executor_without_abort_check_behaves_as_before():
+    from open_compute.actions import Action, ActionType
+    from open_compute.cli import _GatedExecutor
+    from open_compute.safety import SafetyPolicy
+
+    fake = _FakeExec()
+    gated = _GatedExecutor(fake, SafetyPolicy(mode="allow_all"))
+    gated.execute(Action(type=ActionType.LEFT_CLICK, x=0.1, y=0.1))
+    assert len(fake.executed) == 1
+
+
+# --- pre-action grace period --------------------------------------------
+
+def test_grace_period_blocks_the_first_action_until_it_elapses(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.15")
+    S.signal_show(mode="control", agent="kimi")
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "executed"
+    assert elapsed >= 0.15
+
+
+def test_grace_period_zero_means_no_wait(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    S.signal_show(mode="control", agent="kimi")
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "executed"
+    assert elapsed < 1.0
+
+
+def test_grace_period_short_circuits_if_already_aborted(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "10")
+    S.signal_show(mode="control", agent="kimi")
+    S._trigger_kill_switch("already stopped")
+
+    start = time.monotonic()
+    r = S.do(action={"type": "mouse_move", "x": 0.1, "y": 0.1})
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "aborted"
+    assert elapsed < 1.0  # must not wait out the 10 s grace first
+
+
+def test_grace_period_aborts_mid_wait_without_waiting_out_the_window(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "5")
+    S.signal_show(mode="control", agent="kimi")
+
+    def _abort_soon() -> None:
+        time.sleep(0.1)
+        S._trigger_kill_switch("aborted mid countdown")
+
+    threading.Thread(target=_abort_soon, daemon=True).start()
+    start = time.monotonic()
+    r = S.do(action={"type": "mouse_move", "x": 0.1, "y": 0.1})
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "aborted"
+    assert elapsed < 5.0 - 1.0  # nowhere near the full 5 s window
+
+
+def test_capture_blocks_during_grace_then_succeeds(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.1")
+    S.signal_show(mode="control", agent="kimi")
+
+    start = time.monotonic()
+    img = S.capture()
+    elapsed = time.monotonic() - start
+
+    assert isinstance(img, Image)
+    assert elapsed >= 0.1
+
+
+def test_auto_signal_does_not_arm_a_grace_period(monkeypatch, _signal_state):
+    """Ticket-implied: auto-signal shows the overlay *after* an action already
+    ran (reactive) — arming a fresh grace wait there would instead stall
+    whatever the agent does next, the opposite of the intended effect."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert S._STATE.signal_indicator is not None
+    assert S._STATE.grace_deadline is None
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    elapsed = time.monotonic() - start
+    assert r["result"] == "executed"
+    assert elapsed < 1.0
+
+
+# --- User-Aktivitaets-Wache (opt-in, OC_HUMAN_ACTIVITY_WATCH) -----------
+
+def _fake_activity(*, recent: bool, provenance: str) -> None:
+    """Inject a deterministic human_activity classifier/adapter pair."""
+    from open_compute import human_activity as ha
+
+    class _FixedAdapter:
+        def sample(self):
+            return ha.LastInputSample(observed_tick_ms=1000, last_input_tick_ms=1000)
+
+    class _FixedClassifier:
+        def assess(self, sample):
+            return ha.ActivityAssessment(
+                recent=recent,
+                provenance=ha.InputProvenance(provenance),
+                age_ms=0,
+                device="unknown",
+            )
+
+    S._STATE.activity_classifier = _FixedClassifier()
+    S._STATE.activity_adapter = _FixedAdapter()
+
+
+def test_activity_watch_off_by_default_ignores_real_human_input(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    _fake_activity(recent=True, provenance="human")
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"  # opt-in feature, unset env => no-op
+
+
+def test_activity_watch_pauses_on_real_recent_human_input(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_HUMAN_ACTIVITY_WATCH", "on")
+    monkeypatch.setattr(S, "_activity_watch_active", lambda: True)
+    _fake_activity(recent=True, provenance="human")
+
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "aborted"
+    assert "Nutzer-Eingabe" in r["abort_reason"]
+    # latched, not one-shot — every further action needs a fresh signal_show
+    assert S._STATE.abort_triggered is True
+
+
+def test_activity_watch_lets_agent_owned_input_through(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_HUMAN_ACTIVITY_WATCH", "on")
+    monkeypatch.setattr(S, "_activity_watch_active", lambda: True)
+    _fake_activity(recent=True, provenance="agent")
+
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"
+
+
+def test_activity_watch_lets_stale_input_through(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_HUMAN_ACTIVITY_WATCH", "on")
+    monkeypatch.setattr(S, "_activity_watch_active", lambda: True)
+    _fake_activity(recent=False, provenance="unknown")
+
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    assert r["result"] == "executed"
+
+
+def test_activity_watch_enabled_env_values(monkeypatch):
+    for value in ("1", "true", "TRUE", "on", "yes"):
+        monkeypatch.setenv("OC_HUMAN_ACTIVITY_WATCH", value)
+        assert S._activity_watch_enabled() is True
+    for value in ("", "0", "false", "off"):
+        monkeypatch.setenv("OC_HUMAN_ACTIVITY_WATCH", value)
+        assert S._activity_watch_enabled() is False

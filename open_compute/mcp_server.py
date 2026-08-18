@@ -37,6 +37,7 @@ import atexit
 import os
 import pathlib
 import threading
+import time
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP, Image
@@ -74,6 +75,21 @@ class _ServerState:
         # away an overlay a human asked for.
         self.signal_auto_shown: bool = False
         self.signal_idle_timer: threading.Timer | None = None
+        # --- Not-Aus / kill switch (Ticket T-20260818-895473048) -----------
+        # Latched by the overlay's abort button or hotkey. While True, every
+        # gate-relevant tool (do/click_name/invoke/rec_replay/capture) denies
+        # outright — even under OC_SAFETY_MODE=allow_all — until a fresh
+        # `signal_show` re-arms the session (see `_show_signal_indicator`).
+        self.abort_triggered: bool = False
+        self.abort_reason: str | None = None
+        # Pre-action grace countdown: set to a monotonic deadline whenever
+        # the overlay (re-)appears; the first gate-relevant tool call after
+        # that blocks until the deadline passes or the kill switch fires.
+        self.grace_deadline: float | None = None
+        # Human-activity watch (opt-in, OC_HUMAN_ACTIVITY_WATCH): lazily
+        # built so platforms without ctypes/win32 never touch it.
+        self.activity_classifier: Any = None
+        self.activity_adapter: Any = None
 
     def executor(self) -> Any:
         """Return the resident LocalExecutor, creating it lazily (Windows/mss)."""
@@ -104,6 +120,172 @@ class _ServerState:
 
 
 _STATE = _ServerState()
+
+
+# ---------------------------------------------------------------------------
+# Not-Aus / kill switch + pre-action grace period
+# (Ticket T-20260818-895473048 — the abort button/hotkey in the overlay,
+# an auto-pause on real human input, and a countdown before the very first
+# state-changing action or screenshot of a session.)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_ABORT_REASON = "Vom Nutzer abgebrochen (Grund folgt)"
+_GRACE_POLL_SECONDS = 0.25
+
+
+def _kill_switch_blocked() -> dict | None:
+    """``None`` if the kill switch is not latched, else the deny result."""
+    with _STATE.signal_lock:
+        if not _STATE.abort_triggered:
+            return None
+        reason = _STATE.abort_reason or _DEFAULT_ABORT_REASON
+    return {"result": "aborted", "reason": reason, "abort_reason": reason}
+
+
+def _trigger_kill_switch(initial_reason: str | None = None) -> None:
+    """Latch the kill switch immediately (called off the overlay's UI thread).
+
+    Sets ``abort_triggered`` synchronously so any in-flight grace wait or
+    batch loop notices it on its very next poll — before a reason dialog
+    even has a chance to open, let alone be answered.
+    """
+    with _STATE.signal_lock:
+        _STATE.abort_triggered = True
+        _STATE.abort_reason = initial_reason or _DEFAULT_ABORT_REASON
+        _STATE.grace_deadline = None  # nothing left to wait out — it already stopped
+
+
+def _reset_kill_switch() -> None:
+    """Re-arm: only an explicit fresh `signal_show` calls this (see below)."""
+    with _STATE.signal_lock:
+        _STATE.abort_triggered = False
+        _STATE.abort_reason = None
+
+
+def _start_grace_period(seconds: float) -> None:
+    with _STATE.signal_lock:
+        _STATE.grace_deadline = time.monotonic() + seconds if seconds > 0 else None
+
+
+def _await_grace_period() -> dict | None:
+    """Block out any armed pre-action grace window; the kill switch wins.
+
+    Returns the abort result dict if the kill switch fires (before or
+    during the wait), else ``None`` once it is safe to proceed — grace
+    elapsed, or never armed (the overlay was never shown / OC config keeps
+    the classic zero-delay behaviour). Never blocks at all unless a
+    `signal_show` (manual or auto) actually armed a deadline, so every
+    existing caller that never touches signal_show is unaffected.
+    """
+    blocked = _kill_switch_blocked()
+    if blocked is not None:
+        return blocked
+    while True:
+        with _STATE.signal_lock:
+            deadline = _STATE.grace_deadline
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            with _STATE.signal_lock:
+                if _STATE.grace_deadline == deadline:
+                    _STATE.grace_deadline = None
+            return None
+        time.sleep(min(_GRACE_POLL_SECONDS, remaining))
+        blocked = _kill_switch_blocked()
+        if blocked is not None:
+            return blocked
+
+
+# ---------------------------------------------------------------------------
+# User-Aktivitaets-Wache (opt-in, OC_HUMAN_ACTIVITY_WATCH) — pauses on real
+# recent mouse/keyboard input instead of executing over it. Built on the
+# existing headless `human_activity` module (GetLastInputInfo timestamp only,
+# never a key/button/text hook); off by default because a real desktop's
+# last-input time reflects whatever the operator is doing *right now*,
+# including running this very tool call from a terminal — an unconditional
+# default risks false-positive pauses on a workstation the human actively
+# shares with the agent. Wired into `do`/`click_name`/`invoke`; `rec_replay`
+# is not yet covered (documented follow-up, see SKILL.md / final report).
+# ---------------------------------------------------------------------------
+
+def _activity_watch_enabled() -> bool:
+    raw = os.environ.get("OC_HUMAN_ACTIVITY_WATCH", "").strip().casefold()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _activity_watch_active() -> bool:
+    """Enabled AND on a platform where the ctypes tick clock exists."""
+    if not _activity_watch_enabled():
+        return False
+    import sys
+    return sys.platform == "win32"
+
+
+def _now_tick_ms() -> int:
+    """GetTickCount64, DWORD-wrapped — the same clock human_activity expects."""
+    import ctypes
+    return int(ctypes.windll.kernel32.GetTickCount64()) % (2**32)
+
+
+def _human_activity_blocked() -> dict | None:
+    """``None`` if clear to proceed, else the same shape as `_kill_switch_blocked`.
+
+    A positive detection also LATCHES the kill switch (not just this one
+    call) — "pausiert automatisch und verlangt erneute Freigabe" (Ticket
+    T-20260818-895473048): the human is demonstrably at the keyboard, so
+    every further action needs a fresh `signal_show`, not just this one.
+    """
+    if not _activity_watch_enabled():
+        return None
+    import sys
+    if sys.platform != "win32":
+        return None
+    try:
+        from .human_activity import (
+            GetLastInputInfoAdapter,
+            HumanActivityClassifier,
+            InputProvenance,
+        )
+    except Exception:  # pragma: no cover - defensive, must never break the action
+        return None
+    with _STATE.signal_lock:
+        if _STATE.activity_classifier is None:
+            _STATE.activity_classifier = HumanActivityClassifier()
+        if _STATE.activity_adapter is None:
+            _STATE.activity_adapter = GetLastInputInfoAdapter()
+        classifier = _STATE.activity_classifier
+        adapter = _STATE.activity_adapter
+    try:
+        assessment = classifier.assess(adapter.sample())
+    except Exception:  # pragma: no cover - a probe failure must not block acting
+        return None
+    if assessment.recent and assessment.provenance is InputProvenance.HUMAN:
+        _trigger_kill_switch(
+            "Echte Nutzer-Eingabe erkannt (Maus/Tastatur) waehrend einer "
+            "Agent-Aktion — automatisch pausiert, erneute Freigabe per "
+            "signal_show noetig."
+        )
+        return _kill_switch_blocked()
+    return None
+
+
+def _record_agent_action(action_id: str, started_tick_ms: int) -> None:
+    """Tell the classifier "that recent input was us", not the human.
+
+    Only meaningful while the watch is enabled; a no-op otherwise so it never
+    touches ctypes on a platform/process where the classifier was never built.
+    """
+    if not _activity_watch_enabled() or _STATE.activity_classifier is None:
+        return
+    try:
+        ended = _now_tick_ms()
+        with _STATE.signal_lock:
+            _STATE.activity_classifier.record_agent_input(
+                action_id, started_tick_ms, ended
+            )
+    except Exception:  # pragma: no cover - bookkeeping must never break the action
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +535,17 @@ def capture(window: str | None = None) -> Image:
             Windows.Graphics.Capture when the window is hardware-composited and
             a plain grab would come back black. Omit for the full virtual
             desktop (recommended; matches `do`'s coordinate frame).
+
+    Raises:
+        PermissionError: the kill switch is latched, or a pre-action grace
+            countdown is running and the human aborted during it — "vor den
+            ersten Screenshots/Bildern" (Ticket T-20260818-895473048): a
+            capture is content, not metadata, so it is gated exactly like a
+            state-changing action.
     """
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        raise PermissionError(grace_blocked["reason"])
     if window is not None:
         return Image(data=_shrink_png(_capture_window_png(window)), format="png")
 
@@ -518,6 +710,11 @@ def do(
     if not items:
         raise ValueError("`actions` must be a non-empty list")
     parsed = [_parse_action(a) for a in items]
+
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        return grace_blocked
+
     policy = _make_policy(mode)
 
     executor = _STATE.executor()
@@ -526,6 +723,16 @@ def do(
     is_batch = actions is not None
 
     for i, act in enumerate(parsed):
+        # Not-Aus: stop SOFORT — a batch already mid-flight must not run its
+        # remaining queued steps once the human hit abort (Ticket
+        # T-20260818-895473048, "stoppt SOFORT alle laufenden und
+        # gequeueten Aktionen").
+        aborted = _kill_switch_blocked()
+        if aborted is not None:
+            aborted["executed_before"] = executed
+            if is_batch:
+                aborted["action_index"] = i
+            return aborted
         blocked = _gate(act, policy)
         if blocked is not None:
             blocked["executed_before"] = executed
@@ -536,7 +743,16 @@ def do(
                 if auto_err:
                     blocked.update(auto_err)
             return blocked
+        paused = _human_activity_blocked()
+        if paused is not None:
+            paused["executed_before"] = executed
+            if is_batch:
+                paused["action_index"] = i
+            return paused
+        started_tick = _now_tick_ms() if _activity_watch_active() else None
         final_obs = executor.execute(act)
+        if started_tick is not None:
+            _record_agent_action(f"do:{i}:{act.type.value}", started_tick)
         executed += 1
 
     auto_err = _ensure_auto_signal()
@@ -570,6 +786,10 @@ def click_name(query: str, window: str | None = None, mode: str | None = None) -
         window: Target window-title substring. Omit for the foreground window.
         mode: Override safety mode (confirm|allow_all|read_only).
     """
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        return grace_blocked
+
     feed = _load_uia_feed()
     target = feed.resolve(query, window=window)
     if target is None:
@@ -583,8 +803,16 @@ def click_name(query: str, window: str | None = None, mode: str | None = None) -
         blocked["target"] = target.name
         blocked["center_norm"] = list(target.center_norm)
         return blocked
+    paused = _human_activity_blocked()
+    if paused is not None:
+        paused["target"] = target.name
+        paused["center_norm"] = list(target.center_norm)
+        return paused
 
+    started_tick = _now_tick_ms() if _activity_watch_active() else None
     obs = _STATE.executor().execute(act)
+    if started_tick is not None:
+        _record_agent_action(f"click_name:{query}", started_tick)
     result = {
         "result": "executed",
         "action": "left_click",
@@ -613,6 +841,10 @@ def invoke(query: str, window: str | None = None, mode: str | None = None) -> di
         window: Target window-title substring.
         mode: Override safety mode (confirm|allow_all|read_only).
     """
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        return grace_blocked
+
     feed = _load_uia_feed()
     target = feed.resolve(query, window=window)
     if target is None:
@@ -626,8 +858,16 @@ def invoke(query: str, window: str | None = None, mode: str | None = None) -> di
         blocked["target"] = target.name
         blocked["center_norm"] = list(target.center_norm)
         return blocked
+    paused = _human_activity_blocked()
+    if paused is not None:
+        paused["target"] = target.name
+        paused["center_norm"] = list(target.center_norm)
+        return paused
 
+    started_tick = _now_tick_ms() if _activity_watch_active() else None
     ok = feed.invoke(query, window=window)
+    if started_tick is not None:
+        _record_agent_action(f"invoke:{query}", started_tick)
     result = {
         "result": "invoked" if ok else "invoke_failed",
         "target": target.name,
@@ -655,15 +895,33 @@ def rec_replay(path: str, params: dict | None = None, mode: str | None = None) -
         params: Optional parameter substitutions for the recording.
         mode: Safety mode (confirm|allow_all|read_only). Default confirm.
     """
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        return grace_blocked
+
     policy = _make_policy(mode)  # respects the OC_SAFETY_MODE ceiling (tighten-only)
     try:
         from . import cli
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(f"cli helpers unavailable: {exc}") from exc
+
+    def _abort_check() -> str | None:
+        # Per-step Not-Aus during a running replay: a macro can be many
+        # steps, so this is checked before each one (see cli._GatedExecutor).
+        blocked = _kill_switch_blocked()
+        return blocked["abort_reason"] if blocked is not None else None
+
     try:
-        result = cli._run_replay(path, params or {}, _STATE.executor(), policy=policy)
+        result = cli._run_replay(
+            path, params or {}, _STATE.executor(), policy=policy,
+            abort_check=_abort_check,
+        )
     except PermissionError as exc:
-        return {"result": "deny", "reason": str(exc)}
+        out = {"result": "deny", "reason": str(exc)}
+        aborted = _kill_switch_blocked()
+        if aborted is not None:
+            out["abort_reason"] = aborted["abort_reason"]
+        return out
     out = {"result": "replayed", "path": path, "detail": _jsonable(result)}
     auto_err = _ensure_auto_signal()
     if auto_err:
@@ -752,12 +1010,22 @@ def _show_signal_indicator(
     no_border: bool = False,
     no_cursor: bool = False,
     abort_hotkey: str | None = None,
+    arm_grace: bool = True,
 ) -> dict:
     """Core of ``signal_show`` — shared by the tool itself and auto-signal.
 
     Raises ``ValueError`` for an unknown ``mode`` (via ``SessionMode``), same
     as the public tool always did; callers that must not crash validate the
     mode themselves before calling this (see ``_ensure_auto_signal``).
+
+    ``arm_grace`` gates the pre-action countdown (Ticket T-20260818-895473048):
+    True for the explicit ``signal_show`` tool — "sobald das Farbsignal
+    erscheint" describes a deliberate take-over gesture, so THAT is what
+    gets the grace window. ``_ensure_auto_signal`` passes False: it shows
+    the overlay only *after* an action already ran (reactive, existing
+    behaviour), so there is no "before the first action" moment left to
+    protect, and arming a fresh 20 s wait there would instead stall
+    whatever the agent does next — the opposite of the intended effect.
     """
 
     from .indicator import ScreenSignalIndicator, SignalConfig, signal_for_mode
@@ -773,28 +1041,62 @@ def _show_signal_indicator(
         cfg = SignalConfig.load(path)
 
     hotkey = abort_hotkey or (cfg.abort_hotkey if cfg else None)
+    grace_seconds = cfg.pre_action_grace_seconds if cfg else SignalConfig().pre_action_grace_seconds
+    # OC_SIGNAL_GRACE_SECONDS is the highest-precedence override, same escape
+    # hatch as OC_SIGNAL_IDLE_HIDE — operators (and tests) can dial the
+    # countdown to 0 without hand-writing a signal-config.json.
+    env_grace = os.environ.get("OC_SIGNAL_GRACE_SECONDS", "").strip()
+    if env_grace:
+        try:
+            grace_seconds = max(0.0, float(env_grace))
+        except ValueError:
+            pass  # an unusable override must not break the overlay
+    abort_reasons = tuple(cfg.abort_reasons) if cfg else ()
 
     if _STATE.signal_indicator is not None:
         _STATE.signal_indicator.clear()
 
+    # Clearing a latched kill switch here is safe unconditionally (not just
+    # when arm_grace=True): a state-changing tool can only reach the
+    # `_ensure_auto_signal` call site (which passes arm_grace=False) once it
+    # already cleared the kill switch's own gate to execute in the first
+    # place — so this can never silently wave through an action mid-abort.
+    _reset_kill_switch()
+    if arm_grace:
+        _start_grace_period(grace_seconds)
+
     def _on_abort() -> None:
-        from .indicator import TkAbortChannel
+        # SOFORT: latch the kill switch before anything else — a batch loop
+        # or grace wait polling in another thread must see this the instant
+        # the button/hotkey fires, independent of how long the reason dialog
+        # below takes to resolve.
+        _trigger_kill_switch()
+        # Same globals()-first lookup as `_prompt_channel` below, so tests
+        # can fake the dialog the same way they already do for signal_abort.
+        channel_cls = globals().get("TkAbortChannel")
+        if channel_cls is None:
+            from .indicator import TkAbortChannel as channel_cls
 
         indicator = _STATE.signal_indicator
-        message = TkAbortChannel().prompt_reason(
+        message = channel_cls(reasons=abort_reasons).prompt_reason(
             context=indicator.last_label if indicator else ""
         )
-        if message:
+        with _STATE.signal_lock:
             # No stdout here (stdio transport): hold it for signal_status.
             _STATE.pending_abort_message = message
+            if message:
+                _STATE.abort_reason = message
 
     indicator = ScreenSignalIndicator(
         renderer=renderer_cls(
             thickness=cfg.thickness if cfg else 6,
             border=not no_border,
             cursor_ring=not no_cursor,
-            on_abort=_on_abort if hotkey else None,
+            # Always wired (not just when a hotkey is set): the on-screen
+            # abort button needs no hotkey to work.
+            on_abort=_on_abort,
             abort_hotkey=hotkey,
+            grace_seconds=grace_seconds,
         ),
         config=cfg,
     )
@@ -808,6 +1110,7 @@ def _show_signal_indicator(
         "mode": session_mode.value,
         "label": indicator.last_label,
         "color": list(color),
+        "pre_action_grace_seconds": grace_seconds,
     }
 
 
@@ -992,7 +1295,9 @@ def _ensure_auto_signal() -> dict | None:
             }
 
         try:
-            _show_signal_indicator(mode=auto_mode, agent="auto", scope="screen")
+            _show_signal_indicator(
+                mode=auto_mode, agent="auto", scope="screen", arm_grace=False,
+            )
         except Exception as exc:  # pragma: no cover - defensive, never break the action
             return {"auto_signal_error": f"{type(exc).__name__}: {exc}"}
         _STATE.signal_auto_shown = True
@@ -1032,6 +1337,11 @@ def signal_status() -> dict:
             visible = bool(indicator.renderer.is_visible())
         except Exception:  # renderer state must not break the status call
             visible = False
+    with _STATE.signal_lock:
+        aborted = _STATE.abort_triggered
+        abort_reason = _STATE.abort_reason
+        deadline = _STATE.grace_deadline
+    grace_remaining = max(0.0, deadline - time.monotonic()) if deadline else 0.0
     return {
         "visible": visible,
         "mode": _STATE.signal_mode,
@@ -1041,6 +1351,12 @@ def signal_status() -> dict:
         # answers "why did the overlay disappear / why does it linger".
         "auto_shown": _STATE.signal_auto_shown,
         "idle_hide_armed": _STATE.signal_idle_timer is not None,
+        # Not-Aus: NOT consumed (unlike pending_abort_message) — stays true
+        # until a fresh signal_show re-arms the session, so a poll always
+        # sees why every tool call keeps getting denied.
+        "aborted": aborted,
+        "abort_reason": abort_reason,
+        "grace_remaining_seconds": round(grace_remaining, 1),
     }
 
 

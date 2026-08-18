@@ -7,7 +7,85 @@ import sys
 
 import pytest
 
-from open_compute.indicator import WindowsBorderOverlay
+from open_compute import indicator as indicator_module
+from open_compute.indicator import (
+    TkAbortChannel,
+    WindowsBorderOverlay,
+    _abort_button_rect,
+)
+
+
+# --- Abort button (Ticket T-20260818-895473048) ------------------------------
+
+def test_abort_button_rect_is_top_right_and_clear_of_the_glow() -> None:
+    x, y, w, h = _abort_button_rect(0, 0, 1920, 1080, glow=12, width=132, height=34)
+    assert x == 1920 - 132 - 10 - 12  # right-aligned, margin + glow clearance
+    assert y == 12 + 10  # below the top glow frame, plus margin
+    assert w == 132 and h == 34
+    # stays fully inside the virtual desktop
+    assert 0 <= x and x + w <= 1920
+    assert 0 <= y
+
+
+def test_abort_button_rect_follows_a_non_zero_virtual_origin() -> None:
+    """Multi-monitor setups can have a negative/offset virtual desktop origin."""
+    x, y, w, h = _abort_button_rect(-1920, -100, 3840, 1080, glow=12)
+    assert x + w <= -1920 + 3840
+    assert x >= -1920
+
+
+def test_overlay_accepts_grace_seconds() -> None:
+    if sys.platform != "win32":
+        pytest.skip("Windows-only overlay")
+    overlay = WindowsBorderOverlay(grace_seconds=20.0)
+    assert overlay._grace_seconds == 20.0
+
+
+def test_overlay_rejects_negative_grace_seconds() -> None:
+    if sys.platform != "win32":
+        pytest.skip("Windows-only overlay")
+    with pytest.raises(ValueError, match="grace_seconds"):
+        WindowsBorderOverlay(grace_seconds=-1)
+
+
+def test_overlay_on_abort_is_independent_of_abort_hotkey() -> None:
+    """The abort button must work even with no hotkey configured at all."""
+    if sys.platform != "win32":
+        pytest.skip("Windows-only overlay")
+    fired: list[str] = []
+    overlay = WindowsBorderOverlay(on_abort=lambda: fired.append("x"))
+    assert overlay._abort_hotkey is None
+    overlay._fire_abort()
+    assert fired == ["x"]
+
+
+def test_fire_abort_debounces_a_rapid_double_trigger(monkeypatch) -> None:
+    """One human gesture (double-click, hotkey bounce) must not fire twice."""
+    if sys.platform != "win32":
+        pytest.skip("Windows-only overlay")
+    fired: list[str] = []
+    overlay = WindowsBorderOverlay(on_abort=lambda: fired.append("x"))
+
+    clock = {"t": 100.0}
+    monkeypatch.setattr(indicator_module.time, "monotonic", lambda: clock["t"])
+
+    overlay._fire_abort()
+    clock["t"] += 0.1  # well inside the debounce window
+    overlay._fire_abort()
+    assert fired == ["x"]  # second trigger dropped
+
+    clock["t"] += 1.0  # well past the debounce window
+    overlay._fire_abort()
+    assert fired == ["x", "x"]  # a later, distinct press fires again
+
+
+def test_tk_abort_channel_accepts_a_quick_reason_list() -> None:
+    channel = TkAbortChannel(reasons=("Ich arbeite gerade selbst", "Falsches Fenster"))
+    assert channel.reasons == ("Ich arbeite gerade selbst", "Falsches Fenster")
+
+
+def test_tk_abort_channel_reasons_default_to_empty() -> None:
+    assert TkAbortChannel().reasons == ()
 
 
 def test_overlay_parses_abort_hotkey_at_construction() -> None:
