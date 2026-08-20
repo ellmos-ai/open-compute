@@ -520,6 +520,12 @@ class LocalExecutor:
         assert self._capture_rect is not None
         return self._capture_rect[3]
 
+    @property
+    def coordinate_frame(self) -> tuple[int, int, int, int]:
+        """Physical ``(left, top, width, height)`` for normalized actions."""
+        assert self._capture_rect is not None
+        return self._capture_rect
+
     # ------------------------------------------------------------------
     # Executor protocol
     # ------------------------------------------------------------------

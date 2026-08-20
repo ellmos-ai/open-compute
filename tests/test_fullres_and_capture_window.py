@@ -251,14 +251,35 @@ class TestCmdDoFullres:
         mock_exec.screenshot.return_value = obs
         mock_exec.width = w
         mock_exec.height = h
+        mock_exec.coordinate_frame = (0, 0, w, h)
         return mock_exec
+
+    def _click_json(self, x: float, y: float, w: int = 10, h: int = 10) -> str:
+        return json.dumps({
+            "type": "left_click",
+            "x": x,
+            "y": y,
+            "meta": {
+                "expected_window": {
+                    "hwnd": 42, "pid": 7001, "title": "Target - Editor"
+                },
+                "coordinate_frame": {
+                    "left": 0, "top": 0, "width": w, "height": h
+                },
+            },
+        })
 
     def test_fullres_flag_accepted(self, tmp_path: pathlib.Path) -> None:
         """--fullres produces 'fullres' or 'fullres_annotated' in JSON output."""
         png = _make_valid_png()
         mock_exec = self._make_mock_executor(png)
+        action_json = self._click_json(0.5, 0.5)
 
         with patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch.dict("sys.modules", {"PIL": None, "PIL.Image": None, "PIL.ImageDraw": None}), \
              patch("sys.argv", ["oc", "do", '{"type":"left_click","x":0.5,"y":0.5}',
@@ -266,7 +287,7 @@ class TestCmdDoFullres:
             captured = io.StringIO()
             with patch("sys.stdout", captured):
                 from open_compute.cli import cmd_do
-                cmd_do(['{"type":"left_click","x":0.5,"y":0.5}', "--yes", "--fullres"])
+                cmd_do([action_json, "--yes", "--fullres"])
 
         output = captured.getvalue().strip()
         data = json.loads(output)
@@ -275,14 +296,19 @@ class TestCmdDoFullres:
     def test_fullres_path_is_string(self, tmp_path: pathlib.Path) -> None:
         png = _make_valid_png()
         mock_exec = self._make_mock_executor(png)
+        action_json = self._click_json(0.3, 0.7)
 
         captured = io.StringIO()
         with patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch.dict("sys.modules", {"PIL": None}), \
              patch("sys.stdout", captured):
             from open_compute.cli import cmd_do
-            cmd_do(['{"type":"left_click","x":0.3,"y":0.7}', "--yes", "--fullres"])
+            cmd_do([action_json, "--yes", "--fullres"])
 
         data = json.loads(captured.getvalue().strip())
         key = "fullres_annotated" if "fullres_annotated" in data else "fullres"
@@ -292,13 +318,18 @@ class TestCmdDoFullres:
         """Without --fullres, neither 'fullres' nor 'fullres_annotated' in response."""
         png = _make_valid_png()
         mock_exec = self._make_mock_executor(png)
+        action_json = self._click_json(0.3, 0.7)
 
         captured = io.StringIO()
         with patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch("sys.stdout", captured):
             from open_compute.cli import cmd_do
-            cmd_do(['{"type":"left_click","x":0.3,"y":0.7}', "--yes"])
+            cmd_do([action_json, "--yes"])
 
         data = json.loads(captured.getvalue().strip())
         assert "fullres" not in data
@@ -348,12 +379,23 @@ class TestCmdClickNameFullres:
         target = self._make_target()
         mock_exec = MagicMock()
         mock_exec.execute.return_value = self._make_obs(png)
+        mock_exec.width = 10
+        mock_exec.height = 10
+        mock_exec.coordinate_frame = (0, 0, 10, 10)
         mock_feed = MagicMock()
         mock_feed.resolve.return_value = target
 
         captured = io.StringIO()
         with patch("open_compute.cli._load_uia_feed", return_value=mock_feed), \
              patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.cli.expected_identity_for_window",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch.dict("sys.modules", {"PIL": None}), \
              patch("sys.stdout", captured):
@@ -370,12 +412,23 @@ class TestCmdClickNameFullres:
         target = self._make_target(0.5, 0.5)
         mock_exec = MagicMock()
         mock_exec.execute.return_value = self._make_obs(png, 50, 50)
+        mock_exec.width = 50
+        mock_exec.height = 50
+        mock_exec.coordinate_frame = (0, 0, 50, 50)
         mock_feed = MagicMock()
         mock_feed.resolve.return_value = target
 
         captured = io.StringIO()
         with patch("open_compute.cli._load_uia_feed", return_value=mock_feed), \
              patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.cli.expected_identity_for_window",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch("sys.stdout", captured):
             from open_compute.cli import cmd_click_name
@@ -389,12 +442,23 @@ class TestCmdClickNameFullres:
         target = self._make_target()
         mock_exec = MagicMock()
         mock_exec.execute.return_value = self._make_obs(png)
+        mock_exec.width = 10
+        mock_exec.height = 10
+        mock_exec.coordinate_frame = (0, 0, 10, 10)
         mock_feed = MagicMock()
         mock_feed.resolve.return_value = target
 
         captured = io.StringIO()
         with patch("open_compute.cli._load_uia_feed", return_value=mock_feed), \
              patch("open_compute.cli._load_local_executor", return_value=mock_exec), \
+             patch(
+                 "open_compute.cli.expected_identity_for_window",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "Target - Editor"},
+             ), \
              patch("open_compute.cli._session_dir", return_value=tmp_path), \
              patch("sys.stdout", captured):
             from open_compute.cli import cmd_click_name
@@ -453,6 +517,10 @@ class TestCaptureWindow:
         captured = io.StringIO()
         with patch("open_compute.cli._find_window_hwnd", return_value=mock_hwnd), \
              patch("open_compute.cli._hwnd_to_mss_region", return_value=mock_region), \
+             patch(
+                 "open_compute.cli.window_identity_from_hwnd",
+                 return_value={"hwnd": 42, "pid": 7001, "title": "MyApp"},
+             ), \
              patch("mss.mss", return_value=mock_sct), \
              patch("mss.tools.to_png", return_value=png), \
              patch("sys.stdout", captured):
@@ -464,6 +532,8 @@ class TestCaptureWindow:
         assert "path" in data
         assert "window" in data
         assert "region" in data
+        assert data["window_identity"]["hwnd"] == 42
+        assert data["coordinate_frame"] == mock_region
         assert data["width"] == 800
         assert data["height"] == 500
 

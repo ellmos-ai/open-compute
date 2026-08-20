@@ -112,11 +112,22 @@ CAPTURE → SEE → REASON → [BATCH-DO mit --label] → REPEAT
 
 4. **SAFETY + EXECUTE** — Aktion ausführen:
 
-   **Einzelne Aktion (Legacy, kein Label):**
+   **Semantisches Ziel (Standard für Klicks):**
    ```
-   python -m open_compute.cli do '<action-json>' [--yes]
+   python -m open_compute.cli click-name "Speichern" --window "Word" --yes
    ```
-   Antwort: `{"result": "executed", "action": "...", "width": W, "height": H}`
+   `click-name` löst das Ziel über UIA auf und bindet seinen
+   Koordinaten-Fallback automatisch an das Top-Level-Fenster. Wenn möglich,
+   zuerst `invoke` nutzen; das aktiviert das Element ganz ohne Mausklick.
+
+   **Roher Koordinatenklick (nur Fallback):**
+   ```
+   python -m open_compute.cli do '<action-json>' --yes \
+     --expected-window '<hwnd-pid-title-json>' \
+     --coordinate-frame '<left-top-width-height-json>'
+   ```
+   Beide JSON-Objekte sind Pflicht. Ohne sie lautet die strukturierte Antwort
+   `preclick_verification_failed`, und es wird kein Klick gesendet.
 
    **Einzelne Aktion mit Before|After-Composite (`--label`):**
    ```
@@ -128,7 +139,7 @@ CAPTURE → SEE → REASON → [BATCH-DO mit --label] → REPEAT
    **Batch/Makro (JSON-Array):**
    ```
    python -m open_compute.cli do '[{"type":"mouse_move","x":0.5,"y":0.5},
-     {"type":"left_click","x":0.5,"y":0.3}]' --yes
+     {"type":"key","text":"tab"}]' --yes
    ```
    Antwort: `{"result": "batch", "count": 2, "width": W, "height": H}`
 
@@ -154,9 +165,36 @@ CAPTURE → SEE → REASON → [BATCH-DO mit --label] → REPEAT
    - `{"result": "confirm", ...}` (Exit 1): Bestätigung nötig → mit `--yes` erneut ausführen.
    - `{"result": "deny"}` (Exit 1): Aktion verweigert → anderen Weg wählen oder User fragen.
    - Bei Batch: `"action_index"` und `"executed_before"` zeigen wo die Sequenz gestoppt hat.
+   - Bei Koordinatenklicks: `"preclick_verification_failed"` mit Code
+     (`expected_window_required`, `coordinate_frame_required`,
+     `window_at_point_unresolvable` oder `window_identity_mismatch`) bedeutet:
+     Fensteridentität unsicher, Backend wurde nullmal aufgerufen.
 
 5. **RECAPTURE** — Zurück zu Schritt 1.
    - Alternativ: After-Shot aus Composite direkt lesen (`"composite"` oder `"after"` im Ergebnis-JSON) → ein Roundtrip gespart.
+
+### Präzisionsvertrag für Klicks
+
+1. **UIA vor Koordinaten:** `invoke` (klickfrei) → `click-name` (semantisch,
+   verifizierter Koordinaten-Fallback) → rohes `do` nur, wenn UIA das Ziel nicht
+   abbildet.
+2. **Fensteridentität ist Pflicht:** Ein roher Klick braucht `hwnd`, `pid` und
+   exakten Fenstertitel aus `list-windows` sowie den physischen Capture-Rahmen.
+   `WindowFromPoint` prüft unmittelbar vor dem Backend, welches Top-Level-Fenster
+   am Zielpunkt liegt; Child-/Overlay-Handles werden mit `GA_ROOT` aufgelöst.
+3. **Capture-Rahmen nicht vermischen:** Die 0..1-Koordinaten aus
+   `capture --window` sind fensterlokal. Die CLI-Antwort enthält deshalb
+   `window_identity` und `coordinate_frame`; genau diese Werte an `oc do`
+   weitergeben. Beim MCP liefert `capture(window=...)` nur ein Bild — dort
+   `click_name`/`invoke` verwenden oder Identität und Rechteck über
+   `list_windows` holen.
+4. **Mismatch heißt Stopp:** fehlende/mehrdeutige Identität, ein nicht
+   auflösbarer Punkt oder Mismatch niemals mit einem zweiten Schätzklick
+   umgehen. Neu capturen bzw. UIA-Ziel neu auflösen.
+
+Die Prüfung verhindert einen Klick in ein anderes Top-Level-Fenster. Sie kann
+keine Layoutänderung innerhalb desselben Fensters erkennen; deshalb bleibt
+`click_name`/`invoke` der Standard vor Koordinaten.
 
 ### Stop-Bedingungen
 
@@ -196,20 +234,21 @@ python -m open_compute.cli window minimize --hwnd 42 --yes
 
 # Einzelne Aktion (Legacy — kein --label)
 python -m open_compute.cli do '{"type":"mouse_move","x":0.5,"y":0.5}'
-python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.5}' --yes
 python -m open_compute.cli do '{"type":"type","text":"hello"}' --mode allow_all
+# Klick: semantisch statt rohe Koordinaten
+python -m open_compute.cli click-name "Speichern" --window "Word" --yes
 
 # Einzelne Aktion mit Before|After-Composite
-python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.3}' --label "click_ok" --yes
+python -m open_compute.cli do '{"type":"key","text":"ctrl+s"}' --label "save" --yes
 
 # Batch/Makro (Array von Aktionen)
 python -m open_compute.cli do '[{"type":"mouse_move","x":0.5,"y":0.5},
-  {"type":"left_click","x":0.5,"y":0.3}]' --yes
+  {"type":"key","text":"tab"}]' --yes
 python -m open_compute.cli do '[...]' --label "my_macro" --yes
 python -m open_compute.cli do '[...]' --shots each --label "my_macro" --yes
 
 # Fenster-Vordergrund-Check
-python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.3}' \
+python -m open_compute.cli do '{"type":"key","text":"ctrl+s"}' \
   --ensure-foreground "Word" --yes
 python -m open_compute.cli run "Ziel" --backend claude --ensure-foreground "Word"
 
@@ -220,23 +259,20 @@ python -m open_compute.cli tree --max 50 --depth 8          # Element-/Tiefenlim
 # Ausgabe: JSON-Array mit name, role, rect_px, center_norm, invokable
 
 # UIA-Feed: Klick per Name (v0.4)
-python -m open_compute.cli click-name "Schliessen"
-python -m open_compute.cli click-name "Einfuegen" --window "Word" --mode confirm
+python -m open_compute.cli click-name "Schließen"
+python -m open_compute.cli click-name "Einfügen" --window "Word" --mode confirm
 python -m open_compute.cli click-name "Datei:MenuItem" --yes  # Rolle-Filter via "name:Role"
 
 # UIA-Feed: Click-freies Invoke (v0.4)
 python -m open_compute.cli invoke "OK"
-python -m open_compute.cli invoke "Uebernehmen" --window "Einstellungen" --yes
+python -m open_compute.cli invoke "Übernehmen" --window "Einstellungen" --yes
 # Fallback-Kette: InvokePattern -> TogglePattern -> SelectionItemPattern -> LegacyIAccessible
 
 # Voll-Res-After-Shot + Annotierter Verifikations-Shot (v0.5)
-python -m open_compute.cli do '{"type":"left_click","x":0.5,"y":0.3}' --yes --fullres
-# Antwort: {"result":"executed",...,"fullres":"_session/...fullres.png"}
-# Mit Pillow: {"fullres_annotated":"..."} (roter Kreis + Fadenkreuz am Klickpunkt)
 python -m open_compute.cli click-name "OK" --yes --fullres
 # Fenster-Rect-Capture (v0.5, Windows)
 python -m open_compute.cli capture --window "Chrome"
-# Antwort: {"path":"...","width":W,"height":H,"window":"Chrome","region":{...}}
+# Antwort enthält zusätzlich window_identity und coordinate_frame.
 
 # Directory-Watch-Feed (v0.5)
 python -m open_compute.cli watch-dir /tmp/downloads --for 5    # 5 Sekunden sammeln
@@ -245,7 +281,7 @@ python -m open_compute.cli watch-dir /tmp/downloads --once     # einmaliger Snap
 # Ohne --for/--once: läuft bis Ctrl-C
 
 # Autonomer Loop (Modus B — braucht API-Key)
-python -m open_compute.cli run "Oeffne die Einstellungen" --backend claude --max-steps 10
+python -m open_compute.cli run "Öffne die Einstellungen" --backend claude --max-steps 10
 ```
 
 Nach Installation als Paket steht `oc` als direkter Befehl zur Verfügung:
@@ -254,7 +290,7 @@ oc capture
 oc capture --window "Word"                                   # Fenster-Rect (v0.5)
 oc do '{"type":"mouse_move","x":0.5,"y":0.5}' --mode allow_all
 oc do '[...]' --label "batch" --yes
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --yes --fullres   # Voll-Res (v0.5)
+oc click-name "OK" --yes --fullres                           # Voll-Res (v0.5)
 oc run "Ziel" --backend claude --ensure-foreground "Word"
 
 # UIA (v0.4)

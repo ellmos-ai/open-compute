@@ -100,6 +100,13 @@ import tempfile
 import textwrap
 import time as _time
 
+from .preclick import (
+    PreClickVerificationError,
+    coordinate_frame_from_executor,
+    execute_with_preclick,
+    expected_identity_for_window,
+    window_identity_from_hwnd,
+)
 from .window_control import Win32WindowAdapter
 
 
@@ -558,6 +565,19 @@ def _parse_actions(raw: str) -> list:
     return actions
 
 
+def _parse_json_mapping(raw: str | None, label: str) -> dict | None:
+    """Parse an optional JSON object used by the pre-click contract."""
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        _die(f"invalid {label} JSON: {exc}")
+    if not isinstance(value, dict):
+        _die(f"{label} must be a JSON object")
+    return value
+
+
 # ---------------------------------------------------------------------------
 # sub-commands
 # ---------------------------------------------------------------------------
@@ -777,14 +797,10 @@ def cmd_capture(args: list[str]) -> None:
     """oc capture [--out PATH] [--monitor N] [--window SUBSTR]
 
     IMPORTANT — coordinate consistency:
-    ``oc do`` always dispatches into the **virtual desktop** coordinate space
-    (monitor_index=0).  Capture must therefore also use monitor_index=0 so
-    that the agent's (nx, ny) fraction maps to the same physical pixel.
-    Using ``--monitor 1`` or higher gives the agent a fraction relative to
-    *that* monitor, but ``oc do`` will still project it over the full virtual
-    desktop — clicks will land in the wrong place on multi-monitor setups.
-    Default (monitor 0 = virtual desktop) is always safe.  Non-zero is
-    intentionally kept for diagnostic use; a warning is printed.
+    The JSON response includes the physical ``coordinate_frame`` used by the
+    image. Coordinate mouse actions must pass that frame to ``oc do``; the
+    pre-click guard rebases it into the current virtual desktop. This applies
+    especially to single-monitor and window-local captures.
 
     --window SUBSTR captures only the bounding rect of the named window
     (Win32 GetWindowRect; case-insensitive substring, whitespace-normalized).
@@ -802,9 +818,8 @@ def cmd_capture(args: list[str]) -> None:
     p.add_argument("--monitor", "-m", type=int, default=0,
                    help=(
                        "Monitor index: 0=virtual desktop (default, recommended). "
-                       "Non-zero values are for diagnostics only — coordinates "
-                       "computed from a single-monitor capture are NOT compatible "
-                       "with 'oc do' on a multi-monitor setup."
+                       "Non-zero values produce a monitor-local coordinate_frame "
+                       "that must be passed to a coordinate mouse action."
                    ))
     p.add_argument(
         "--window", "-w", default=None, metavar="SUBSTR",
@@ -861,6 +876,8 @@ def cmd_capture(args: list[str]) -> None:
             "height": h,
             "window": ns.window,
             "region": region,
+            "window_identity": window_identity_from_hwnd(hwnd),
+            "coordinate_frame": dict(region),
         }
         print(json.dumps(result))
         return
@@ -869,8 +886,7 @@ def cmd_capture(args: list[str]) -> None:
     if ns.monitor != 0:
         print(
             f"WARNING: --monitor {ns.monitor} captures only one monitor. "
-            "'oc do' always targets the virtual desktop (monitor 0). "
-            "Coordinates from this capture will be misaligned on multi-monitor setups.",
+            "Pass the returned coordinate_frame to any coordinate mouse action.",
             file=sys.stderr,
         )
 
@@ -890,7 +906,13 @@ def cmd_capture(args: list[str]) -> None:
         # exactly OC_SESSION_KEEP (matching cmd_do's write-then-rotate order).
         _rotate_session()
 
-    result = {"path": str(out_path.resolve()), "width": obs.width, "height": obs.height}
+    capture_frame = coordinate_frame_from_executor(executor)
+    result = {
+        "path": str(out_path.resolve()),
+        "width": obs.width,
+        "height": obs.height,
+        "coordinate_frame": capture_frame,
+    }
     print(json.dumps(result))
 
 
@@ -950,11 +972,29 @@ def cmd_do(args: list[str]) -> None:
             "is available. Path returned as 'fullres' or 'fullres_annotated' in JSON."
         ),
     )
+    p.add_argument(
+        "--expected-window", default=None, metavar="JSON",
+        help=(
+            "Required for coordinate mouse actions: JSON with hwnd, pid, and "
+            "exact title from 'oc list-windows'. May instead be supplied in "
+            "action.meta.expected_window."
+        ),
+    )
+    p.add_argument(
+        "--coordinate-frame", default=None, metavar="JSON",
+        help=(
+            "Required for coordinate mouse actions: source capture frame JSON "
+            "with left, top, width, height. May instead be supplied in "
+            "action.meta.coordinate_frame."
+        ),
+    )
     ns = p.parse_args(args)
 
     from open_compute.safety import Decision, SafetyPolicy
 
     actions = _parse_actions(ns.action_json)
+    expected_window = _parse_json_mapping(ns.expected_window, "expected-window")
+    coordinate_frame = _parse_json_mapping(ns.coordinate_frame, "coordinate-frame")
     is_batch = len(actions) > 1 or (
         # Original input was an array (even with 1 element) — detect via JSON parse
         ns.action_json.strip().startswith("[")
@@ -996,7 +1036,16 @@ def cmd_do(args: list[str]) -> None:
             current = _get_foreground_title()
             if _should_activate(current, ensure_fg, always_fg):
                 executor.activate_window(ensure_fg)
-        obs = executor.execute(action)
+        try:
+            obs = execute_with_preclick(
+                executor,
+                action,
+                expected_window=expected_window,
+                coordinate_frame=coordinate_frame,
+            )
+        except PreClickVerificationError as exc:
+            print(json.dumps(exc.to_result()))
+            sys.exit(1)
 
         resp: dict = {
             "result": "executed",
@@ -1085,7 +1134,19 @@ def cmd_do(args: list[str]) -> None:
         else:
             before_bytes = None
 
-        obs_after = executor.execute(action)
+        try:
+            obs_after = execute_with_preclick(
+                executor,
+                action,
+                expected_window=expected_window,
+                coordinate_frame=coordinate_frame,
+            )
+        except PreClickVerificationError as exc:
+            failed = exc.to_result()
+            failed["action_index"] = i
+            failed["executed_before"] = executed_count
+            print(json.dumps(failed))
+            sys.exit(1)
         final_obs = obs_after
         executed_count += 1
 
@@ -1430,7 +1491,19 @@ def cmd_click_name(args: list[str]) -> None:
         if _should_activate(current, ensure_fg, always_fg):
             executor.activate_window(ensure_fg)
 
-    obs = executor.execute(action)
+    try:
+        obs = execute_with_preclick(
+            executor,
+            action,
+            expected_window=expected_identity_for_window(ns.window),
+            coordinate_frame=coordinate_frame_from_executor(executor),
+        )
+    except PreClickVerificationError as exc:
+        failed = exc.to_result()
+        failed["target"] = target.name
+        failed["center_norm"] = list(target.center_norm)
+        print(json.dumps(failed))
+        sys.exit(1)
     cn_resp: dict = {
         "result": "executed",
         "action": "left_click",

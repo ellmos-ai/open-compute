@@ -40,11 +40,31 @@ class _FakeExec:
         return _Obs()
 
 
+_EXPECTED_WINDOW = {"hwnd": 42, "pid": 7001, "title": "Target - Editor"}
+_COORDINATE_FRAME = {"left": 0, "top": 0, "width": 1920, "height": 1080}
+_PRECLICK = {
+    "expected_window": _EXPECTED_WINDOW,
+    "coordinate_frame": _COORDINATE_FRAME,
+}
+
+
+class _FakeWindowProbe:
+    def __init__(self, identity=None):
+        self.identity = identity or dict(_EXPECTED_WINDOW)
+
+    def window_at_point(self, _x, _y):
+        return dict(self.identity)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_state(monkeypatch):
     monkeypatch.delenv("OC_SAFETY_MODE", raising=False)
     monkeypatch.delenv("OC_DENY", raising=False)
     S._STATE.set_executor(_FakeExec())
+    S._STATE.set_preclick_probe(_FakeWindowProbe())
+    monkeypatch.setattr(
+        S, "expected_identity_for_window", lambda _window: dict(_EXPECTED_WINDOW)
+    )
     yield
 
 
@@ -65,7 +85,9 @@ def test_do_schema_exposes_params():
     tools = asyncio.run(S.mcp.list_tools())
     do = next(t for t in tools if t.name == "do")
     props = (do.inputSchema or {}).get("properties", {})
-    assert {"action", "actions", "mode"} <= set(props)
+    assert {
+        "action", "actions", "mode", "expected_window", "coordinate_frame"
+    } <= set(props)
 
 
 def test_capture_returns_image():
@@ -75,16 +97,43 @@ def test_capture_returns_image():
 
 
 def test_click_confirm_gates_by_default():
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "needs_confirmation"
     assert r["action"] == "left_click"
 
 
 def test_click_executes_when_server_allows(monkeypatch):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
     assert r["action"] == "left_click"
+
+
+def test_click_without_expected_identity_is_fail_closed(monkeypatch):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    executor = S._STATE.executor()
+
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+
+    assert r["result"] == "preclick_verification_failed"
+    assert r["code"] == "expected_window_required"
+    assert executor.executed == []
+
+
+def test_click_mismatch_never_reaches_backend(monkeypatch):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    executor = S._STATE.executor()
+    S._STATE.set_preclick_probe(
+        _FakeWindowProbe({"hwnd": 99, "pid": 7002, "title": "Foreign Browser"})
+    )
+
+    r = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK
+    )
+
+    assert r["result"] == "preclick_verification_failed"
+    assert r["code"] == "window_identity_mismatch"
+    assert executor.executed == []
 
 
 def test_non_risky_action_allowed_by_default():
@@ -108,6 +157,7 @@ def test_batch_executes_in_order(monkeypatch):
     r = S.do(
         actions=[{"type": "mouse_move", "x": 0.1, "y": 0.1},
                  {"type": "left_click", "x": 0.2, "y": 0.2}],
+        **_PRECLICK,
     )
     assert r["result"] == "batch"
     assert r["count"] == 2
@@ -144,7 +194,7 @@ def test_requires_exactly_one_of_action_or_actions():
 
 def test_default_mode_env_applies(monkeypatch):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
 
 
@@ -374,7 +424,7 @@ def _clean_signal_auto_env(monkeypatch):
 
 def test_auto_signal_off_by_default(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
     assert "auto_signal_error" not in r
     assert S._STATE.signal_indicator is None
@@ -383,14 +433,14 @@ def test_auto_signal_off_by_default(monkeypatch, _signal_state):
 def test_auto_signal_off_value_disables(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "off")
-    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert S._STATE.signal_indicator is None
 
 
 def test_auto_signal_shows_after_executed_action(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
     assert "auto_signal_error" not in r
     assert S._STATE.signal_indicator is not None
@@ -416,7 +466,7 @@ def test_auto_signal_does_not_override_existing_manual_signal(monkeypatch, _sign
     S.signal_show(mode="observe", agent="human")
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     # a manually shown signal (any mode) is never overridden by auto-signal
     assert S._STATE.signal_mode == "observe"
 
@@ -424,7 +474,7 @@ def test_auto_signal_does_not_override_existing_manual_signal(monkeypatch, _sign
 def test_auto_signal_invalid_mode_reports_error_without_crashing(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "not-a-mode")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     # the action itself must still succeed — a bad auto-signal config must
     # never crash or block the tool it is attached to
     assert r["result"] == "executed"
@@ -438,7 +488,7 @@ def test_auto_signal_fires_once_for_a_batch(monkeypatch, _signal_state):
     r = S.do(actions=[
         {"type": "mouse_move", "x": 0.1, "y": 0.1},
         {"type": "left_click", "x": 0.2, "y": 0.2},
-    ])
+    ], **_PRECLICK)
     assert r["result"] == "batch"
     assert S._STATE.signal_mode == "control"
     # only one overlay call — the second gate pass sees signal already visible
@@ -485,7 +535,7 @@ def test_auto_signal_rec_replay(monkeypatch, _signal_state):
 # ---------------------------------------------------------------------------
 
 def _click(**_kw):
-    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
 
 
 def _await_idle_hide(timer, timeout=5.0):
@@ -740,7 +790,7 @@ def test_signal_show_resets_a_latched_kill_switch(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
     S.signal_show(mode="control", agent="kimi")  # fresh take-over re-arms it
 
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
 
 
@@ -869,7 +919,7 @@ def test_grace_period_blocks_the_first_action_until_it_elapses(
     S.signal_show(mode="control", agent="kimi")
 
     start = time.monotonic()
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     elapsed = time.monotonic() - start
 
     assert r["result"] == "executed"
@@ -882,7 +932,7 @@ def test_grace_period_zero_means_no_wait(monkeypatch, _signal_state):
     S.signal_show(mode="control", agent="kimi")
 
     start = time.monotonic()
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     elapsed = time.monotonic() - start
 
     assert r["result"] == "executed"
@@ -939,12 +989,12 @@ def test_auto_signal_does_not_arm_a_grace_period(monkeypatch, _signal_state):
     whatever the agent does next, the opposite of the intended effect."""
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert S._STATE.signal_indicator is not None
     assert S._STATE.grace_deadline is None
 
     start = time.monotonic()
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     elapsed = time.monotonic() - start
     assert r["result"] == "executed"
     assert elapsed < 1.0
@@ -978,7 +1028,7 @@ def test_activity_watch_off_by_default_ignores_real_human_input(
 ):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     _fake_activity(recent=True, provenance="human")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"  # opt-in feature, unset env => no-op
 
 
@@ -1001,7 +1051,7 @@ def test_activity_watch_lets_agent_owned_input_through(monkeypatch, _signal_stat
     monkeypatch.setattr(S, "_activity_watch_active", lambda: True)
     _fake_activity(recent=True, provenance="agent")
 
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
 
 
@@ -1011,7 +1061,7 @@ def test_activity_watch_lets_stale_input_through(monkeypatch, _signal_state):
     monkeypatch.setattr(S, "_activity_watch_active", lambda: True)
     _fake_activity(recent=False, provenance="unknown")
 
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
 
 

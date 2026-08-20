@@ -809,6 +809,14 @@ class TestCliUiaCommands:
         with (
             patch("open_compute.cli._load_uia_feed") as mock_load_uia,
             patch("open_compute.cli._load_local_executor") as mock_load_exec,
+            patch(
+                "open_compute.cli.expected_identity_for_window",
+                return_value={"hwnd": 42, "pid": 7001, "title": "Word"},
+            ),
+            patch(
+                "open_compute.preclick.Win32WindowProbe.window_at_point",
+                return_value={"hwnd": 42, "pid": 7001, "title": "Word"},
+            ),
         ):
             mock_feed = MagicMock()
             mock_feed.resolve.return_value = target
@@ -816,6 +824,9 @@ class TestCliUiaCommands:
 
             mock_executor = MagicMock()
             mock_executor.execute.return_value = fake_obs
+            mock_executor.width = 1920
+            mock_executor.height = 1080
+            mock_executor.coordinate_frame = (0, 0, 1920, 1080)
             mock_load_exec.return_value = mock_executor
 
             from open_compute.cli import cmd_click_name

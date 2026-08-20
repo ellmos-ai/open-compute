@@ -419,10 +419,24 @@ class TestCliParsing:
 
         fake_obs = Observation(screenshot=b"PNG", width=1920, height=1080)
 
-        with patch("open_compute.cli._load_local_executor") as mock_exec:
+        expected = {"hwnd": 42, "pid": 7001, "title": "Target - Editor"}
+        frame = {"left": 0, "top": 0, "width": 1920, "height": 1080}
+        with patch("open_compute.cli._load_local_executor") as mock_exec, \
+             patch(
+                 "open_compute.preclick.Win32WindowProbe.window_at_point",
+                 return_value=expected,
+            ):
             mock_exec.return_value.execute.return_value = fake_obs
+            mock_exec.return_value.width = 1920
+            mock_exec.return_value.height = 1080
+            mock_exec.return_value.coordinate_frame = (0, 0, 1920, 1080)
             from open_compute.cli import cmd_do
-            cmd_do(['{"type":"left_click","x":0.5,"y":0.5}', "--yes"])
+            cmd_do([
+                '{"type":"left_click","x":0.5,"y":0.5}',
+                "--yes",
+                "--expected-window", json.dumps(expected),
+                "--coordinate-frame", json.dumps(frame),
+            ])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)

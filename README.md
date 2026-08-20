@@ -152,21 +152,21 @@ oc capture
 
 # 3a. Execute one canonical action (single, backwards-compatible)
 oc do '{"type":"mouse_move","x":0.5,"y":0.5}' --mode allow_all
-oc do '{"type":"left_click","x":0.25,"y":0.1}' --yes   # --yes = agent pre-approved
+oc click-name "Save" --window "Word" --yes  # semantic click, verified window
 
 # 3b. Execute with Before|After composite (Pillow optional)
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --label "click_ok" --yes
-# -> {"result":"executed","action":"left_click","composite":"_session/0002_click_ok.png"}
+oc do '{"type":"key","text":"ctrl+s"}' --label "save" --yes
+# -> {"result":"executed","action":"key","composite":"_session/0002_save.png"}
 
 # 3c. Execute a batch/macro (JSON array, one call = multiple actions)
-oc do '[{"type":"mouse_move","x":0.5,"y":0.5},{"type":"left_click","x":0.5,"y":0.3}]' --yes
+oc do '[{"type":"mouse_move","x":0.5,"y":0.5},{"type":"key","text":"tab"}]' --yes
 # -> {"result":"batch","count":2,"width":1920,"height":1080}
 
 # 3d. Ensure the target window is in the foreground before acting
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --ensure-foreground "Word" --yes
+oc do '{"type":"key","text":"ctrl+s"}' --ensure-foreground "Word" --yes
 
 # 3e. Save a full-res after-shot + annotated click marker (v0.5, Pillow optional)
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --yes --fullres
+oc click-name "Save" --window "Word" --yes --fullres
 # -> {"result":"executed",...,"fullres_annotated":"_session/...fullres.png"}
 
 # 3f. Capture only the active window's bounding rect (v0.5, Windows)
@@ -298,6 +298,29 @@ capture — the original frame is returned instead.
 so a prompt-injected agent cannot escape a `read_only`/`confirm` server via
 `mode="allow_all"`. Because stdio MCP has no server→client confirm callback,
 `confirm`/`read_only` return a `needs_confirmation`/`deny` result **without acting**.
+
+**Fail-closed coordinate clicks.** Prefer the semantic path: use `invoke` when
+UIA exposes a click-free pattern, otherwise use `click_name`, which resolves the
+element by name and automatically binds its coordinate fallback to the resolved
+top-level window. Raw coordinate clicks through `do` are the last resort. They
+require both `expected_window` (`hwnd`, `pid`, exact `title`, copied from
+`list_windows`) and `coordinate_frame` (`left`, `top`, `width`, `height`). The
+server rebases window-local coordinates into the current virtual desktop, calls
+Win32 `WindowFromPoint` immediately before dispatch, promotes child/overlay
+handles to `GA_ROOT`, and compares the full identity. Missing data, an
+unresolvable point, or a mismatch returns
+`{"result":"preclick_verification_failed", ...}` and sends no click.
+
+For a full-screen MCP capture, take `coordinate_frame` from
+`get_screen_size().virtual_desktop`. An MCP `capture(window=...)` returns only an
+image block, so do **not** reuse its 0..1 coordinates with raw `do`; use
+`click_name`/`invoke`, or obtain the exact window rect and identity from
+`list_windows`. The CLI `oc capture --window ...` prints `window_identity` and
+`coordinate_frame` alongside the image path, and `oc do` accepts them through
+`--expected-window` / `--coordinate-frame` (or per-action `meta`). This is an
+intentional safety break for old unbound coordinate clicks; non-click actions
+retain their prior API.
+
 For interactive use, run the server with `OC_SAFETY_MODE=allow_all` **in an isolated
 VM** and let the client's tool-permission dialog be the human-in-the-loop. Optional
 `OC_DENY` (comma-separated action types) is a hard deny list.

@@ -44,6 +44,19 @@
   `_state/timing.jsonl`; Auswertung als `oc timing-report` oder kleines
   Skript. Abnahme: bei aktiviertem Flag entstehen JSONL-Zeilen mit
   Phasen-Feldern; ohne Flag null Overhead; Unit-Test prüft Log-Schema.
+- [ ] **Zielbezogene Capture→Identität→Klick→Diff-Transaktion.** Die
+  Pre-Click-Seite ist seit 2026-08-20 fail-closed (`WindowFromPoint`,
+  Child→`GA_ROOT`, HWND/PID/Titel, expliziter Capture-Rahmen). Offen bleibt
+  eine belastbare Erfolgsbewertung *nach* dem Klick. Ein SHA-256-Vergleich des
+  Vollbilds ist ungeeignet: Uhr, Animationen und fremde Fenster erzeugen
+  Änderungen ohne Zielerfolg; ein unverändertes Bild kann umgekehrt bei
+  unsichtbarer Zustandsänderung auftreten. Vor Umsetzung zuerst die bereits
+  dokumentierte gesplittete GDI→WGC-Fensteraufnahme aus CLI/MCP als eine
+  robuste Capture-by-HWND-Funktion in `drivers` zentralisieren und danach eine
+  Settle-/Diff-Policy (Zielrechteck, Toleranz, Timeout) definieren. Abnahme:
+  gemockte Transaktion protokolliert Vorher-/Nachher-Hash des identischen HWND,
+  klassifiziert `changed`/`unchanged`/`unverifiable` und behauptet bei
+  `unverifiable` keinen Erfolg.
 
 ## Headless Cooperative-Core-Slice 2026-07-28 [U]
 

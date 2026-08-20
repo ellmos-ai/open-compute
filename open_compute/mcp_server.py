@@ -19,9 +19,11 @@ Why a server (over Mode A CLI):
   the same :class:`~open_compute.safety.SafetyPolicy`; the default ``confirm``
   mode returns a structured ``needs_confirmation`` result instead of a TTY prompt.
 
-Coordinates are **normalized 0..1** everywhere (the client estimates them from
-the returned image), consistent with the CLI. Windows-only for real capture /
-input (LocalExecutor + UIA need the interactive desktop session).
+Coordinates are **normalized 0..1**, but coordinate mouse actions additionally
+require the physical source frame plus a robust expected top-level window
+identity. Window-local captures must never be treated as virtual-desktop
+coordinates. Windows-only for real capture / input (LocalExecutor + UIA need
+the interactive desktop session).
 
 Import-light: only ``mcp``, :mod:`open_compute.actions` and
 :mod:`open_compute.safety` (both stdlib-only) are imported at module load.
@@ -44,6 +46,12 @@ from mcp.server.fastmcp import FastMCP, Image
 
 from . import mcp_i18n
 from .actions import Action, ActionType
+from .preclick import (
+    PreClickVerificationError,
+    coordinate_frame_from_executor,
+    execute_with_preclick,
+    expected_identity_for_window,
+)
 from .safety import Decision, SafetyPolicy
 
 _LANG = mcp_i18n.current_language()
@@ -60,6 +68,7 @@ class _ServerState:
 
     def __init__(self) -> None:
         self._executor: Any = None
+        self.preclick_probe: Any = None
         self.dirwatch_baselines: dict[str, dict] = {}
         self._feed_manager: Any = None
         # Human-in-the-loop signal state (one persistent overlay per server).
@@ -111,6 +120,10 @@ class _ServerState:
     def set_executor(self, executor: Any) -> None:
         """Inject an executor (used by tests with a MockExecutor)."""
         self._executor = executor
+
+    def set_preclick_probe(self, probe: Any) -> None:
+        """Inject a WindowFromPoint probe (tests never touch real windows)."""
+        self.preclick_probe = probe
 
     def feed_manager(self) -> Any:
         if self._feed_manager is None:
@@ -526,8 +539,10 @@ def _capture_window_png(window: str) -> bytes:
 def capture(window: str | None = None) -> Image:
     """Take a screenshot of the local screen and return it as a PNG image.
 
-    Look at the returned image, then choose your next action; give coordinates to
-    `do`/click tools as fractions 0..1 of the image width/height.
+    Look at the returned image, then choose the next action. Prefer `invoke` or
+    `click_name`. Raw coordinates passed to `do` require an expected window and
+    the physical coordinate frame; a window-only image does not carry those
+    metadata, so its 0..1 coordinates must not be reused without `list_windows`.
 
     Args:
         window: Optional window-title substring (case-insensitive). If given,
@@ -585,8 +600,9 @@ def tree(window: str | None = None, max_elements: int = 200, depth: int = 8) -> 
     """List UI elements of a window via the Windows accessibility tree (UIA).
 
     Returns a JSON array of elements with `name`, `role`, `value`, `rect_px` and
-    `center_norm` (0..1) — feed `center_norm` to `do`/`click_name` to click an
-    element without pixel-guessing. Windows-only; needs open-compute[uia].
+    `center_norm` (0..1). Use the element name with `invoke`/`click_name`; a raw
+    `do` coordinate additionally needs the resolved top-level identity and
+    physical frame. Windows-only; needs open-compute[uia].
 
     Args:
         window: Target window-title substring. Omit for the foreground window.
@@ -677,11 +693,15 @@ def do(
     action: dict | None = None,
     actions: list[dict] | None = None,
     mode: str | None = None,
+    expected_window: dict | None = None,
+    coordinate_frame: dict | None = None,
 ) -> dict:
     """Execute one canonical action, or a batch (macro) of them, on the desktop.
 
     Provide exactly one of `action` (single object) or `actions` (array, run in
-    order). Coordinates are normalized 0..1. Each action passes the safety gate:
+    order). Coordinates are normalized 0..1. Coordinate mouse actions also
+    require a robust `expected_window` and the physical `coordinate_frame` from
+    which x/y were derived. Each action passes the safety gate:
     in `confirm` mode (default) a risky action returns `needs_confirmation`
     without acting; in `allow_all` it runs; in `read_only` state-changing actions
     are denied.
@@ -699,6 +719,12 @@ def do(
         action: A single action object, e.g. {"type":"left_click","x":0.5,"y":0.3}.
         actions: A list of action objects for one macro call.
         mode: Override safety mode for this call (confirm|allow_all|read_only).
+        expected_window: Top-level `hwnd`, `pid`, and exact `title` from
+            `list_windows`; required for coordinate mouse actions unless the
+            same object is supplied in `action.meta.expected_window`.
+        coordinate_frame: Physical `left`, `top`, `width`, and `height` of the
+            source capture. Use `get_screen_size().virtual_desktop` for a full
+            capture or the exact window rect for window-local coordinates.
 
     Returns: a status dict; for a batch, `count` of executed actions. On a gated
     action the batch stops and reports which index blocked.
@@ -750,7 +776,20 @@ def do(
                 paused["action_index"] = i
             return paused
         started_tick = _now_tick_ms() if _activity_watch_active() else None
-        final_obs = executor.execute(act)
+        try:
+            final_obs = execute_with_preclick(
+                executor,
+                act,
+                expected_window=expected_window,
+                coordinate_frame=coordinate_frame,
+                probe=_STATE.preclick_probe,
+            )
+        except PreClickVerificationError as exc:
+            failed = exc.to_result()
+            failed["executed_before"] = executed
+            if is_batch:
+                failed["action_index"] = i
+            return failed
         if started_tick is not None:
             _record_agent_action(f"do:{i}:{act.type.value}", started_tick)
         executed += 1
@@ -809,8 +848,21 @@ def click_name(query: str, window: str | None = None, mode: str | None = None) -
         paused["center_norm"] = list(target.center_norm)
         return paused
 
+    executor = _STATE.executor()
     started_tick = _now_tick_ms() if _activity_watch_active() else None
-    obs = _STATE.executor().execute(act)
+    try:
+        obs = execute_with_preclick(
+            executor,
+            act,
+            expected_window=expected_identity_for_window(window),
+            coordinate_frame=coordinate_frame_from_executor(executor),
+            probe=_STATE.preclick_probe,
+        )
+    except PreClickVerificationError as exc:
+        failed = exc.to_result()
+        failed["target"] = target.name
+        failed["center_norm"] = list(target.center_norm)
+        return failed
     if started_tick is not None:
         _record_agent_action(f"click_name:{query}", started_tick)
     result = {

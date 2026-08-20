@@ -11,6 +11,38 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.
 
+### Fixed (fail-closed pre-click window verification, 2026-08-20)
+
+Ticket T-20260819-561386711 hardened every coordinate click/drag/mouse-down in
+the CLI and MCP paths. Raw coordinates are no longer sufficient: callers must
+supply a robust expected top-level identity (`hwnd` + `pid` + exact normalized
+title) and the physical capture frame (`left`, `top`, `width`, `height`). The
+guard rebases window-local capture coordinates into the executor's current
+virtual-desktop frame, then calls Win32 `WindowFromPoint` immediately before
+the backend. `GetAncestor(..., GA_ROOT)` promotes child/overlay handles. A
+missing identity/frame, an unresolvable point, or any mismatch returns a
+structured `preclick_verification_failed` result and invokes the click backend
+zero times. `click_name` derives both values from its UIA window scope, so the
+semantic path stays the default and needs no manual identity plumbing.
+
+Root-cause matrix from the four incidents:
+
+| Class | Code evidence | Resolution / remaining boundary |
+|---|---|---|
+| DPI / rounding | Per-Monitor-v2 and one normalized mapping already existed, but integer conversion can still move a boundary point by about one pixel. More importantly, `capture(window=...)` produced window-local 0..1 coordinates while `do` interpreted them as virtual-desktop 0..1. | The explicit source frame is now transformed through physical pixels into the live executor frame; invalid/out-of-frame mappings fail closed. A one-pixel edge remains possible inside the verified window. |
+| Z-order / focus race | Safety and optional foreground activation happened before `executor.execute`; nothing re-read the window at the target point after another window could cover it. | `WindowFromPoint` is the final probe before backend dispatch; a changed top-level identity blocks the action. |
+| Overlay / child handle | Win32 can return a child control or overlay HWND rather than the application's top-level HWND; there was no comparison at all. | The probe resolves child → `GA_ROOT` and compares root HWND, PID and title. Unresolvable roots fail closed. |
+| Capture → click time gap | Capture/UIA resolution and click were separate calls with an unbounded human/model delay; the code trusted stale coordinates. | Expected capture identity is compared with the live target-point root immediately before dispatch. Same-window content/layout changes remain possible; use UIA `click_name`/`invoke` rather than raw coordinates. |
+
+The requested post-click transaction was evaluated but is not claimed as a
+correctness gate yet. `LocalExecutor.execute` already returns an after-capture
+and CLI composites can record before/after, but an exact full-screen hash is
+dominated by clocks, animations and unrelated windows. A reliable target-only
+diff first needs the split CLI/MCP GDI→WGC window-capture paths centralized by
+HWND plus a settle/difference policy; that bounded follow-up is recorded in
+`TODO.md`. Pre-click prevention is therefore fail-closed now, while outcome
+classification remains explicit future work.
+
 ### Added (Not-Aus / kill switch, pre-action grace period, 2026-08-18)
 
 Ticket T-20260818-895473048: an incident where a screenshot briefly captured

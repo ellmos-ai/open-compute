@@ -159,21 +159,21 @@ oc capture
 
 # 3a. Einzelne Aktion ausführen (Safety-Gate: confirm als Default)
 oc do '{"type":"mouse_move","x":0.5,"y":0.5}' --mode allow_all
-oc do '{"type":"left_click","x":0.25,"y":0.1}' --yes   # --yes = Agent hat entschieden
+oc click-name "Speichern" --window "Word" --yes  # semantisch + Fensterprüfung
 
 # 3b. Aktion mit automatischem Vorher|Nachher-Composite
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --label "klick_ok" --yes
-# -> {"result":"executed","action":"left_click","composite":"_session/0002_klick_ok.png"}
+oc do '{"type":"key","text":"ctrl+s"}' --label "speichern" --yes
+# -> {"result":"executed","action":"key","composite":"_session/0002_speichern.png"}
 
 # 3c. Batch/Makro: mehrere Aktionen in einem Aufruf (JSON-Array)
-oc do '[{"type":"mouse_move","x":0.5,"y":0.5},{"type":"left_click","x":0.5,"y":0.3}]' --yes
+oc do '[{"type":"mouse_move","x":0.5,"y":0.5},{"type":"key","text":"tab"}]' --yes
 # -> {"result":"batch","count":2,"width":1920,"height":1080}
 
 # 3d. Fenster-Vordergrund vor der Aktion sicherstellen
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --ensure-foreground "Word" --yes
+oc do '{"type":"key","text":"ctrl+s"}' --ensure-foreground "Word" --yes
 
 # 3e. Voll-Res-After-Shot + annotierter Klick-Marker (v0.5, Pillow optional)
-oc do '{"type":"left_click","x":0.5,"y":0.3}' --yes --fullres
+oc click-name "Speichern" --window "Word" --yes --fullres
 # -> {"result":"executed",...,"fullres_annotated":"_session/...fullres.png"}
 
 # 3f. Nur Fenster-Bereich capturen (v0.5, Windows)
@@ -308,7 +308,32 @@ Originalbild zurück.
 lockern — ein prompt-injizierter Agent kann einen `read_only`/`confirm`-Server nicht
 via `mode="allow_all"` umgehen. Da stdio-MCP keinen Server→Client-Confirm-Callback
 hat, geben `confirm`/`read_only` ein `needs_confirmation`/`deny` **ohne auszuführen**
-zurück. Für interaktiven Betrieb den Server mit `OC_SAFETY_MODE=allow_all` **in einer
+zurück.
+
+**Koordinatenklicks schließen bei Unsicherheit.** Nutze vorrangig den
+semantischen Pfad: `invoke`, wenn UIA ein klickfreies Pattern anbietet, sonst
+`click_name`. `click_name` löst das Element über seinen Namen auf und bindet den
+Koordinaten-Fallback automatisch an das ermittelte Top-Level-Fenster. Rohe
+Koordinaten über `do` sind nur der letzte Ausweg. Sie brauchen sowohl
+`expected_window` (`hwnd`, `pid`, exakter `title` aus `list_windows`) als auch
+`coordinate_frame` (`left`, `top`, `width`, `height`). Der Server rechnet
+fensterlokale Koordinaten in den aktuellen virtuellen Desktop um, ruft Win32
+`WindowFromPoint` unmittelbar vor der Ausführung auf, hebt Child-/Overlay-Handles
+mit `GA_ROOT` auf das Top-Level-Fenster und vergleicht die vollständige Identität.
+Fehlende Daten, ein nicht auflösbarer Punkt oder ein Mismatch liefern
+`{"result":"preclick_verification_failed", ...}`; es wird kein Klick gesendet.
+
+Für eine MCP-Vollbildaufnahme stammt `coordinate_frame` aus
+`get_screen_size().virtual_desktop`. MCP-`capture(window=...)` liefert nur einen
+Bildblock; dessen 0..1-Koordinaten dürfen deshalb **nicht** roh an `do` gehen.
+Nutze `click_name`/`invoke` oder hole exaktes Fensterrechteck und Identität über
+`list_windows`. Die CLI gibt bei `oc capture --window ...` zusätzlich
+`window_identity` und `coordinate_frame` aus; `oc do` akzeptiert beides über
+`--expected-window` / `--coordinate-frame` oder im `meta`-Objekt der Aktion.
+Dass alte, ungebundene Koordinatenklicks nun blockieren, ist eine beabsichtigte
+Sicherheitsänderung; Nicht-Klick-Aktionen behalten ihre bisherige API.
+
+Für interaktiven Betrieb den Server mit `OC_SAFETY_MODE=allow_all` **in einer
 isolierten VM** starten und den Tool-Berechtigungsdialog des Clients als
 Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) eine
 harte Deny-Liste.
