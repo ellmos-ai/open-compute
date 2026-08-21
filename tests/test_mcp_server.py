@@ -363,6 +363,8 @@ def _signal_state(monkeypatch):
 
 
 def test_signal_show_and_hide(_signal_state):
+    from open_compute.indicator import DEFAULT_PRE_ACTION_GRACE_COLOR
+
     result = S.signal_show(
         mode="control",
         agent="kimi",
@@ -371,8 +373,13 @@ def test_signal_show_and_hide(_signal_state):
     )
     assert result["visible"] is True
     assert result["mode"] == "control"
-    assert result["color"] == [255, 40, 60]
-    assert "kimi" in result["label"]
+    assert result["phase"] == "countdown"
+    assert result["color"] == list(DEFAULT_PRE_ACTION_GRACE_COLOR)
+    assert result["active_color"] == [255, 40, 60]
+    assert result["grace_color"] == list(DEFAULT_PRE_ACTION_GRACE_COLOR)
+    assert result["countdown_seconds"] == 20
+    assert "Start in 20 Sekunden" in result["label"]
+    assert "kimi" in result["accessible_label"]
     assert result["owner"] == "codex"
     assert result["session"] == "test-session"
     assert result["expires_at"]
@@ -380,6 +387,10 @@ def test_signal_show_and_hide(_signal_state):
     status = S.signal_status()
     assert status["visible"] is True
     assert status["mode"] == "control"
+    assert status["phase"] == "countdown"
+    assert status["countdown_seconds"] in {19, 20}
+    assert "Start in" in status["label"]
+    assert "kimi" in status["accessible_label"]
     assert status["owner"] == "codex"
     assert status["session"] == "test-session"
     assert status["pending_abort_message"] is None
@@ -469,6 +480,9 @@ def test_signal_show_config_toggles(monkeypatch, _signal_state, tmp_path):
 
     cfg = SignalConfig.from_dict({
         "thickness": 9,
+        "pre_action_grace_seconds": 7,
+        "pre_action_grace_color": [12, 34, 56],
+        "pre_action_grace_label": "Beginn in {seconds} Sekunden",
         "modes": {"control": {"border": False, "cursor": True}},
     })
     path = tmp_path / "cfg.json"
@@ -478,8 +492,97 @@ def test_signal_show_config_toggles(monkeypatch, _signal_state, tmp_path):
     assert result["visible"] is True
     overlay = S._STATE.signal_indicator.renderer
     assert overlay.kwargs["thickness"] == 9
+    assert overlay.kwargs["grace_color"] == (12, 34, 56)
+    assert overlay.kwargs["grace_label_template"] == "Beginn in {seconds} Sekunden"
     assert overlay.shown[-1]["border"] is False
     assert overlay.shown[-1]["cursor"] is True
+    assert result["phase"] == "countdown"
+    assert result["color"] == [12, 34, 56]
+    assert result["countdown_seconds"] == 7
+    assert "Beginn in 7 Sekunden" in result["label"]
+
+
+def test_disabled_signal_mode_never_arms_an_invisible_countdown(
+    _signal_state, tmp_path
+):
+    from open_compute.indicator import SignalConfig
+
+    cfg = SignalConfig.from_dict({"modes": {"control": {"enabled": False}}})
+    path = tmp_path / "disabled.json"
+    cfg.save(path)
+
+    result = S.signal_show(mode="control", config_path=str(path))
+
+    assert result["visible"] is False
+    assert result["phase"] == "hidden"
+    assert result["reason"] == "signal_mode_disabled"
+    assert S._STATE.signal_indicator is None
+    assert S._STATE.grace_deadline is None
+
+
+def test_signal_show_zero_grace_starts_in_active_phase(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    result = S.signal_show(mode="control", agent="kimi")
+
+    assert result["phase"] == "active"
+    assert result["color"] == [255, 40, 60]
+    assert result["countdown_seconds"] is None
+    assert S._STATE.grace_deadline is None
+    assert S.signal_status()["phase"] == "active"
+
+
+def test_signal_status_retires_elapsed_countdown_without_an_action(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "20")
+    S.signal_show(mode="control", agent="kimi")
+    S._STATE.grace_deadline = time.monotonic() - 1
+
+    status = S.signal_status()
+
+    assert status["phase"] == "active"
+    assert status["countdown_seconds"] is None
+    assert status["color"] == [255, 40, 60]
+    assert S._STATE.grace_deadline is None
+
+
+def test_signal_restart_replaces_old_overlay_and_rearms_from_new_duration(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "20")
+    first = S.signal_show(mode="control", agent="first")
+    first_indicator = S._STATE.signal_indicator
+    first_deadline = S._STATE.grace_deadline
+
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "3")
+    second = S.signal_show(mode="observe", agent="second")
+
+    assert first["countdown_seconds"] == 20
+    assert second["countdown_seconds"] == 3
+    assert first_indicator.renderer.is_visible() is False
+    assert S._STATE.signal_indicator is not first_indicator
+    assert S._STATE.grace_deadline is not None
+    assert S._STATE.grace_deadline < first_deadline
+
+
+def test_failed_signal_start_leaves_no_hidden_countdown(
+    monkeypatch, _signal_state
+):
+    class _BrokenOverlay:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("renderer failed")
+
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "20")
+    monkeypatch.setattr(S, "WindowsBorderOverlay", _BrokenOverlay, raising=False)
+
+    with pytest.raises(RuntimeError, match="renderer failed"):
+        S.signal_show(mode="control")
+
+    assert S._STATE.grace_deadline is None
+    assert S._STATE.signal_indicator is None
+    assert S._STATE.signal_mode == ""
 
 
 def test_signal_abort_uses_channel(monkeypatch, _signal_state):
@@ -1221,11 +1324,14 @@ def test_capture_blocks_during_grace_then_succeeds(monkeypatch, _signal_state):
     S.signal_show(mode="control", agent="kimi")
 
     start = time.monotonic()
+    expected_remaining = max(0.0, S._STATE.grace_deadline - start)
     result = S.capture()
     elapsed = time.monotonic() - start
 
     assert any(isinstance(item, ImageContent) for item in result.content)
-    assert elapsed >= 0.1
+    # The grace clock starts inside signal_show, before this measurement. Prove
+    # capture waited out the actual remaining deadline, with scheduler jitter.
+    assert elapsed >= expected_remaining - 0.01
 
 
 def test_auto_signal_kept_across_calls_does_not_arm_a_grace_period(

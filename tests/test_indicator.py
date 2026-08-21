@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 
 import pytest
 
@@ -153,6 +154,36 @@ def test_windows_overlay_rejects_bad_thickness() -> None:
     else:
         with pytest.raises(ValueError, match="thickness"):
             WindowsBorderOverlay(thickness=1)
+
+
+def test_overlay_countdown_worker_starts_without_blocking(monkeypatch) -> None:
+    """The UI/countdown owns a daemon thread; show itself must return promptly."""
+
+    import open_compute.indicator as indicator_module
+
+    monkeypatch.setattr(indicator_module.sys, "platform", "win32")
+    overlay = WindowsBorderOverlay(
+        grace_seconds=20,
+        grace_color=(12, 34, 56),
+        on_abort=lambda: None,
+    )
+
+    def _fake_run(_color, _label, _border=True, _cursor=True) -> None:
+        overlay._stop.wait(1.0)
+
+    monkeypatch.setattr(overlay, "_run", _fake_run)
+    started = time.monotonic()
+    overlay.show(color=(255, 40, 60), label="codex | CONTROL | screen")
+    elapsed = time.monotonic() - started
+
+    snapshot = overlay.status_snapshot()
+    assert elapsed < 0.5
+    assert snapshot["phase"] == "countdown"
+    assert snapshot["color"] == [12, 34, 56]
+    assert snapshot["countdown_seconds"] == 20
+
+    overlay.hide()
+    assert overlay.status_snapshot()["phase"] == "hidden"
 
 
 def test_cli_signal_on_off_cycle(tmp_path, monkeypatch, capsys) -> None:

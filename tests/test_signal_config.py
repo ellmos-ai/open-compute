@@ -7,10 +7,12 @@ import json
 import pytest
 
 from open_compute.indicator import (
+    DEFAULT_PRE_ACTION_GRACE_COLOR,
+    DEFAULT_PRE_ACTION_GRACE_LABEL,
     MODE_SIGNALS,
     ScreenSignalIndicator,
     SignalConfig,
-    SignalModeConfig,
+    signal_presentation,
 )
 from open_compute.session import SessionMode
 
@@ -36,12 +38,19 @@ def test_default_config_has_a_20s_grace_and_no_quick_reasons() -> None:
     """Ticket T-20260818-895473048: 'signal.pre_action_grace_seconds, Default 20'."""
     cfg = SignalConfig()
     assert cfg.pre_action_grace_seconds == 20.0
+    assert cfg.pre_action_grace_color == DEFAULT_PRE_ACTION_GRACE_COLOR
+    assert cfg.pre_action_grace_label == DEFAULT_PRE_ACTION_GRACE_LABEL
+    assert cfg.pre_action_grace_color not in {
+        color for _label, color in MODE_SIGNALS.values()
+    }
     assert cfg.abort_reasons == ()
 
 
 def test_from_dict_reads_grace_seconds_and_abort_reasons() -> None:
     cfg = SignalConfig.from_dict({
         "pre_action_grace_seconds": 5,
+        "pre_action_grace_color": [12, 34, 56],
+        "pre_action_grace_label": "Beginn in {seconds} Sekunden",
         "abort_reasons": [
             "Ich arbeite gerade selbst",
             "Datengeschuetzter Bereich sichtbar",
@@ -49,6 +58,8 @@ def test_from_dict_reads_grace_seconds_and_abort_reasons() -> None:
         ],
     })
     assert cfg.pre_action_grace_seconds == 5.0
+    assert cfg.pre_action_grace_color == (12, 34, 56)
+    assert cfg.pre_action_grace_label == "Beginn in {seconds} Sekunden"
     assert cfg.abort_reasons == (
         "Ich arbeite gerade selbst",
         "Datengeschuetzter Bereich sichtbar",
@@ -64,6 +75,8 @@ def test_abort_reasons_drops_blank_entries() -> None:
 def test_config_rejects_negative_grace_seconds() -> None:
     with pytest.raises(ValueError, match="grace"):
         SignalConfig(pre_action_grace_seconds=-1)
+    with pytest.raises(ValueError, match="finite"):
+        SignalConfig(pre_action_grace_seconds=float("inf"))
 
 
 def test_grace_seconds_zero_disables_the_countdown() -> None:
@@ -75,14 +88,46 @@ def test_grace_seconds_zero_disables_the_countdown() -> None:
 def test_config_round_trip_save_load_grace_and_reasons(tmp_path) -> None:
     cfg = SignalConfig.from_dict({
         "pre_action_grace_seconds": 3.5,
-        "abort_reasons": ["Spaeter erneut", "Falsches Fenster"],
+        "pre_action_grace_color": [70, 80, 90],
+        "pre_action_grace_label": "Start in {seconds} Sekunden",
+        "abort_reasons": ["Später erneut", "Falsches Fenster"],
     })
     path = tmp_path / "signal-config.json"
     cfg.save(path)
 
     loaded = SignalConfig.load(path)
     assert loaded.pre_action_grace_seconds == 3.5
-    assert loaded.abort_reasons == ("Spaeter erneut", "Falsches Fenster")
+    assert loaded.pre_action_grace_color == (70, 80, 90)
+    assert loaded.pre_action_grace_label == "Start in {seconds} Sekunden"
+    assert loaded.abort_reasons == ("Später erneut", "Falsches Fenster")
+
+
+def test_countdown_presentation_is_text_first_and_uses_ceiling() -> None:
+    countdown = signal_presentation(
+        base_label="codex | CONTROL | screen",
+        active_color=(255, 40, 60),
+        grace_color=(12, 34, 56),
+        grace_label_template="Start in {seconds} Sekunden",
+        remaining_seconds=19.01,
+    )
+
+    assert countdown.phase == "countdown"
+    assert countdown.seconds_remaining == 20
+    assert countdown.color == (12, 34, 56)
+    assert "Start in 20 Sekunden" in countdown.visual_label
+    assert "Start in 20 Sekunden" in countdown.accessible_label
+    assert "Abbruch ist jederzeit möglich" in countdown.accessible_label
+
+    active = signal_presentation(
+        base_label="codex | CONTROL | screen",
+        active_color=(255, 40, 60),
+        grace_color=(12, 34, 56),
+        grace_label_template="Start in {seconds} Sekunden",
+        remaining_seconds=0,
+    )
+    assert active.phase == "active"
+    assert active.seconds_remaining is None
+    assert active.color == (255, 40, 60)
 
 
 def test_default_config_matches_builtin_palette() -> None:
@@ -169,6 +214,10 @@ def test_config_rejects_bad_values(tmp_path) -> None:
         SignalConfig.from_dict({"abort_hotkey": "ctrl+"})
     with pytest.raises(ValueError, match="thickness"):
         SignalConfig(thickness=1)
+    with pytest.raises(ValueError, match="seconds"):
+        SignalConfig.from_dict({"pre_action_grace_label": "Bitte warten"})
+    with pytest.raises(ValueError, match="color"):
+        SignalConfig.from_dict({"pre_action_grace_color": [1, 2]})
 
 
 def test_cli_signal_config_init_and_show(tmp_path, capsys) -> None:

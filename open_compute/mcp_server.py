@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import math
 import os
 import pathlib
 import threading
@@ -1667,10 +1668,10 @@ def _show_signal_indicator(
     True for the explicit ``signal_show`` tool, which is the deliberate
     take-over gesture and therefore gets the grace window.
     ``_ensure_auto_signal`` passes False because the action tool already owns
-    the approved turn; auto-signaling must not arm a second 20-second wait.
+    the approved turn; auto-signaling must not arm a second configured wait.
     """
 
-    from .indicator import ScreenSignalIndicator, SignalConfig, signal_for_mode
+    from .indicator import ScreenSignalIndicator, SignalConfig, signal_presentation
     from .session import SessionMode
 
     # Validate the lease before mutating any currently visible overlay.
@@ -1680,27 +1681,52 @@ def _show_signal_indicator(
     if renderer_cls is None:
         from .indicator import WindowsBorderOverlay as renderer_cls
 
-    cfg: SignalConfig | None = None
+    cfg = SignalConfig()
     path = pathlib.Path(config_path) if config_path else _signal_config_path()
     if path is not None:
         cfg = SignalConfig.load(path)
 
-    hotkey = abort_hotkey or (cfg.abort_hotkey if cfg else None)
-    grace_seconds = cfg.pre_action_grace_seconds if cfg else SignalConfig().pre_action_grace_seconds
+    hotkey = abort_hotkey or cfg.abort_hotkey
+    grace_seconds = cfg.pre_action_grace_seconds
     # OC_SIGNAL_GRACE_SECONDS is the highest-precedence override, same escape
     # hatch as OC_SIGNAL_IDLE_HIDE — operators (and tests) can dial the
     # countdown to 0 without hand-writing a signal-config.json.
     env_grace = os.environ.get("OC_SIGNAL_GRACE_SECONDS", "").strip()
     if env_grace:
         try:
-            grace_seconds = max(0.0, float(env_grace))
+            candidate = float(env_grace)
+            if math.isfinite(candidate):
+                grace_seconds = max(0.0, candidate)
         except ValueError:
             pass  # an unusable override must not break the overlay
-    abort_reasons = tuple(cfg.abort_reasons) if cfg else ()
+    abort_reasons = tuple(cfg.abort_reasons)
+    session_mode = SessionMode(mode)
+    mode_cfg = cfg.for_mode(session_mode)
 
     _cancel_signal_lease()
     if _STATE.signal_indicator is not None:
         _STATE.signal_indicator.clear()
+        _STATE.signal_indicator = None
+    if not mode_cfg.enabled:
+        with _STATE.signal_lock:
+            _STATE.grace_deadline = None
+            _STATE.signal_mode = ""
+            _STATE.signal_owner = ""
+            _STATE.signal_session = ""
+            _STATE.signal_expires_at = None
+        return {
+            "visible": False,
+            "mode": session_mode.value,
+            "phase": "hidden",
+            "reason": "signal_mode_disabled",
+            "label": "",
+            "accessible_label": "",
+            "color": None,
+            "active_color": list(mode_cfg.color),
+            "grace_color": list(cfg.pre_action_grace_color),
+            "countdown_seconds": None,
+            "pre_action_grace_seconds": grace_seconds,
+        }
 
     # Clearing a latched kill switch here is safe unconditionally (not just
     # when arm_grace=True): a state-changing tool can only reach the
@@ -1708,9 +1734,6 @@ def _show_signal_indicator(
     # already cleared the kill switch's own gate to execute in the first
     # place — so this can never silently wave through an action mid-abort.
     _reset_kill_switch()
-    if arm_grace:
-        _start_grace_period(grace_seconds)
-
     def _on_abort() -> None:
         # SOFORT: latch the kill switch before anything else — a batch loop
         # or grace wait polling in another thread must see this the instant
@@ -1736,7 +1759,7 @@ def _show_signal_indicator(
 
     indicator = ScreenSignalIndicator(
         renderer=renderer_cls(
-            thickness=cfg.thickness if cfg else 6,
+            thickness=cfg.thickness,
             border=not no_border,
             cursor_ring=not no_cursor,
             # Always wired (not just when a hotkey is set): the on-screen
@@ -1744,24 +1767,46 @@ def _show_signal_indicator(
             on_abort=_on_abort,
             abort_hotkey=hotkey,
             grace_seconds=grace_seconds,
+            grace_color=cfg.pre_action_grace_color,
+            grace_label_template=cfg.pre_action_grace_label,
         ),
         config=cfg,
     )
-    session_mode = SessionMode(mode)
-    indicator.show(agent=agent, scope=scope, mode=session_mode)
+    try:
+        indicator.show(agent=agent, scope=scope, mode=session_mode)
+    except BaseException:
+        # A failed/restarted overlay must never leave a hidden countdown armed.
+        with _STATE.signal_lock:
+            _STATE.grace_deadline = None
+            _STATE.signal_indicator = None
+            _STATE.signal_mode = ""
+        raise
     _STATE.signal_indicator = indicator
     _STATE.signal_mode = session_mode.value
+    if arm_grace:
+        _start_grace_period(grace_seconds)
     lease = _arm_signal_lease(
         owner=owner or agent,
         session_id=session_id or "default",
         ttl_seconds=resolved_ttl,
     )
-    _label, color = signal_for_mode(session_mode)
+    presentation = signal_presentation(
+        base_label=indicator.last_label,
+        active_color=mode_cfg.color,
+        grace_color=cfg.pre_action_grace_color,
+        grace_label_template=cfg.pre_action_grace_label,
+        remaining_seconds=grace_seconds if arm_grace else 0.0,
+    )
     return {
         "visible": True,
         "mode": session_mode.value,
-        "label": indicator.last_label,
-        "color": list(color),
+        "phase": presentation.phase,
+        "label": presentation.visual_label,
+        "accessible_label": presentation.accessible_label,
+        "color": list(presentation.color),
+        "active_color": list(mode_cfg.color),
+        "grace_color": list(cfg.pre_action_grace_color),
+        "countdown_seconds": presentation.seconds_remaining,
         "pre_action_grace_seconds": grace_seconds,
         **lease,
     }
@@ -1784,9 +1829,11 @@ def signal_show(
 
     The overlay has an owner/session lease and bounded TTL. Action tools hide it
     at turn end unless ``keep_signal=true``; ``signal_hide`` is idempotent.
-    Colors and border/cursor toggles come from the signal config
-    (``OC_SIGNAL_CONFIG`` or ``_state/signal-config.json``). An abort hotkey
-    opens a reason box and the message is held for ``signal_status``.
+    The configured grace duration, static grace color and text template are
+    shown before the mode color; ``signal_status`` exposes both visual and
+    accessibility state. Colors and border/cursor toggles come from the signal
+    config (``OC_SIGNAL_CONFIG`` or ``_state/signal-config.json``). An abort
+    hotkey opens a reason box and the message is held for ``signal_status``.
     """
 
     with _STATE.signal_lock:
@@ -1965,11 +2012,14 @@ def _ensure_auto_signal() -> dict | None:
             }
 
         try:
-            _show_signal_indicator(
+            shown = _show_signal_indicator(
                 mode=auto_mode, agent="auto", scope="screen", arm_grace=False,
             )
         except Exception as exc:  # pragma: no cover - defensive, never break the action
             return {"auto_signal_error": f"{type(exc).__name__}: {exc}"}
+        if not shown.get("visible"):
+            _STATE.signal_auto_shown = False
+            return None
         _STATE.signal_auto_shown = True
         return _idle_error_result(_arm_idle_hide())
 
@@ -2005,7 +2055,9 @@ def signal_hide() -> dict:
 
 @mcp.tool(description=mcp_i18n.tool_description("signal_status", _LANG))
 def signal_status() -> dict:
-    """Report overlay state and collect a pending abort message (consumed)."""
+    """Report phase/countdown/accessibility state and consume an abort message."""
+
+    from .indicator import SignalConfig, signal_presentation
 
     indicator = _STATE.signal_indicator
     message = _STATE.pending_abort_message
@@ -2016,17 +2068,38 @@ def signal_status() -> dict:
             visible = bool(indicator.renderer.is_visible())
         except Exception:  # renderer state must not break the status call
             visible = False
+    now = time.monotonic()
     with _STATE.signal_lock:
         aborted = _STATE.abort_triggered
         abort_reason = _STATE.abort_reason
         deadline = _STATE.grace_deadline
+        if deadline is not None and deadline <= now:
+            # Status is a valid readback even when no action arrived to consume
+            # the grace window. Retire an elapsed deadline deterministically.
+            _STATE.grace_deadline = None
+            deadline = None
         owner = _STATE.signal_owner
         session = _STATE.signal_session
         expires_at = _STATE.signal_expires_at
-    grace_remaining = max(0.0, deadline - time.monotonic()) if deadline else 0.0
+        signal_mode = _STATE.signal_mode
+        auto_shown = _STATE.signal_auto_shown
+        idle_hide_armed = _STATE.signal_idle_timer is not None
+    grace_remaining = max(0.0, deadline - now) if deadline else 0.0
+    presentation = None
+    if indicator is not None and signal_mode:
+        cfg = indicator.config or SignalConfig()
+        mode_cfg = cfg.for_mode(signal_mode)
+        presentation = signal_presentation(
+            base_label=indicator.last_label,
+            active_color=mode_cfg.color,
+            grace_color=cfg.pre_action_grace_color,
+            grace_label_template=cfg.pre_action_grace_label,
+            remaining_seconds=grace_remaining,
+        )
     return {
         "visible": visible,
-        "mode": _STATE.signal_mode,
+        "mode": signal_mode,
+        "phase": presentation.phase if visible and presentation else "hidden",
         "owner": owner,
         "session": session,
         "expires_at": (
@@ -2034,12 +2107,17 @@ def signal_status() -> dict:
             if expires_at is not None
             else None
         ),
-        "label": indicator.last_label if indicator else "",
+        "label": presentation.visual_label if presentation else "",
+        "accessible_label": presentation.accessible_label if presentation else "",
+        "color": list(presentation.color) if presentation else None,
+        "countdown_seconds": (
+            presentation.seconds_remaining if presentation else None
+        ),
         "pending_abort_message": message,
         # Who owns the overlay, and whether it is on an idle-hide countdown —
         # answers "why did the overlay disappear / why does it linger".
-        "auto_shown": _STATE.signal_auto_shown,
-        "idle_hide_armed": _STATE.signal_idle_timer is not None,
+        "auto_shown": auto_shown,
+        "idle_hide_armed": idle_hide_armed,
         # Not-Aus: NOT consumed (unlike pending_abort_message) — stays true
         # until a fresh signal_show re-arms the session, so a poll always
         # sees why every tool call keeps getting denied.

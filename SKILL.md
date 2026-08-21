@@ -1,7 +1,7 @@
 # open-compute Skill — Mode A: Session-Agent als Reasoner
 
 **Skill-ID:** `open-compute`
-**Version:** 0.8.0
+**Version:** 0.9.0
 **Modus:** A — OHNE API-Key, Session-Modell als Reasoner, manuelles Stepping
 **Voraussetzungen:** Extra `[local]` installiert (mss; siehe Installation unten — das Paket kommt aus dem Git-Repo, nicht von PyPI); Windows-Host; `oc` CLI aufrufbar via `python -m open_compute.cli`
 
@@ -198,7 +198,7 @@ Die Prüfung verhindert einen Klick in ein anderes Top-Level-Fenster. Sie kann
 keine Layoutänderung innerhalb desselben Fensters erkennen; deshalb bleibt
 `click_name`/`invoke` der Standard vor Koordinaten.
 
-### MCP-Interaktionsvertrag (v0.8)
+### MCP-Interaktionsvertrag (v0.9)
 
 - `click_name` und `invoke` wählen exakte Namen zuerst. Mehrdeutige oder zu
   schwache Treffer werden mit Kandidatenliste abgewiesen; `exact=true` erzwingt
@@ -214,6 +214,13 @@ keine Layoutänderung innerhalb desselben Fensters erkennen; deshalb bleibt
 - Signal-Overlays haben eine harte TTL. Aktions-Calls räumen sie bei Turn-Ende,
   Fehler und Abbruch auf. Nur `keep_signal=true` hält eine Lease bewusst über
   mehrere Calls; `signal_hide` bleibt idempotent.
+- Ein manuelles `signal_show` startet die konfigurierte Vorlaufphase. Das
+  Overlay zeigt textlich `Start in N Sekunden`, zählt sekündlich herunter und
+  verwendet bis zum Start `pre_action_grace_color`; danach wechselt es einmalig
+  zur Modusfarbe. `signal_status` meldet `phase`, `countdown_seconds`, aktuelle
+  Farbe und einen Screenreader-Text. Bei `0` beginnt es sofort im aktiven Modus.
+- Die Vorlaufanzeige blinkt und pulsiert nicht. Der Text bleibt deshalb auch bei
+  deaktivierten Windows-Animationen verständlich; Farbe ist nur redundant.
 
 ### Stop-Bedingungen
 
@@ -325,7 +332,7 @@ oc watch-dir /tmp/downloads --once
 
 ---
 
-## Umgebungsvariablen (v0.8)
+## Umgebungsvariablen (v0.9)
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
@@ -336,6 +343,8 @@ oc watch-dir /tmp/downloads --once
 | `OC_SIGNAL_AUTO` | `off` | Session-Modus für ein Signal vor freigegebener MCP-Aktion |
 | `OC_SIGNAL_TTL` | `120` | Harte maximale Sichtbarkeit eines Signal-Overlays in Sekunden |
 | `OC_SIGNAL_IDLE_HIDE` | `60` | Zusätzlicher Idle-Countdown für ausdrücklich beibehaltene Auto-Signale |
+| `OC_SIGNAL_GRACE_SECONDS` | `20` | Vorlaufdauer vor der ersten Aktion; `0` startet sofort |
+| `OC_SIGNAL_CONFIG` | `_state/signal-config.json` | JSON mit `pre_action_grace_color`, `pre_action_grace_label` und Modusfarben |
 
 ---
 

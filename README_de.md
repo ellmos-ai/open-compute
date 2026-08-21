@@ -347,6 +347,21 @@ Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt den Call
 scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status` für die
 manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
 
+**Vorlauf-Countdown.** Ein ausdrückliches `signal_show` startet die
+konfigurierte Karenzzeit vor der ersten Aktion oder Aufnahme. Das Overlay nutzt
+eine eigene statische Vorlauffarbe und zeigt `Start in N Sekunden`; es zählt
+sekündlich herunter und wechselt bei null genau einmal zur gewählten Modusfarbe.
+Die Dauer stammt aus `pre_action_grace_seconds` beziehungsweise dem
+höherrangigen `OC_SIGNAL_GRACE_SECONDS`, niemals aus einer nur für die Anzeige
+fest codierten Zahl. `0` startet direkt in der aktiven Phase. Die JSON-
+Signalkonfiguration akzeptiert außerdem `pre_action_grace_color: [r, g, b]` und
+die lokalisierbare Vorlage `pre_action_grace_label`, die `{seconds}` enthalten
+muss. `signal_status` meldet `phase`, `countdown_seconds`, die aktuelle `color`
+und ein `accessible_label`. Der native Fenstertitel trägt denselben semantischen
+Text und sendet sekündlich ein Accessibility-Namensereignis. Es gibt kein
+Blinken, Pulsieren oder animiertes Überblenden; deaktivierte Windows-Animationen
+entfernen daher keine Information und Farbe ist nie das einzige Signal.
+
 **Signal-Cleanup und Leases.** Jedes Overlay hat eine TTL (`ttl_seconds` oder
 `OC_SIGNAL_TTL`, Standard 120 Sekunden). `do`, `click_name`, `invoke` und `rec_replay`
 verbergen es am normalen Turn-Ende sowie bei Fehler oder Abbruch; nur
@@ -613,7 +628,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**640 bestanden, 1 übersprungen** (2026-08-21).
+**647 bestanden, 1 übersprungen** (2026-08-21).
 
 ---
 

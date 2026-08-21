@@ -45,7 +45,7 @@ from .loop import AgentLoop, LoopResult, StepTrace
 from .perception import Observation, PerceptionProvider, ScreenshotPerception
 from .safety import Decision, PolicyResult, SafetyPolicy
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "Action",

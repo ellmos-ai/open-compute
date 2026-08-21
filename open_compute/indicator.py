@@ -21,8 +21,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import math
 import os
 from pathlib import Path
+from string import Formatter
 import sys
 import tempfile
 import threading
@@ -39,10 +41,16 @@ MODE_SIGNALS: dict[SessionMode, tuple[str, tuple[int, int, int]]] = {
     SessionMode.OBSERVE: ("observe - Modell schaut zu", (0, 150, 255)),
     SessionMode.COMPANION: ("companion - gemeinsam", (0, 200, 120)),
     SessionMode.ASSIST: ("assist", (255, 200, 0)),
-    SessionMode.HANDOFF: ("handoff - Uebergabe", (255, 130, 0)),
+    SessionMode.HANDOFF: ("handoff - Übergabe", (255, 130, 0)),
     SessionMode.CONTROL: ("CONTROL - Modell steuert", (255, 40, 60)),
     SessionMode.PAUSED: ("paused", (150, 150, 150)),
 }
+
+# The pre-action phase is intentionally distinct from every mode color. It is
+# static (no flashing/pulsing), so the safety state remains understandable when
+# Windows animations are disabled or reduced-motion preferences are active.
+DEFAULT_PRE_ACTION_GRACE_COLOR = (176, 86, 255)
+DEFAULT_PRE_ACTION_GRACE_LABEL = "Start in {seconds} Sekunden"
 
 
 def signal_for_mode(mode: SessionMode | str) -> tuple[str, tuple[int, int, int]]:
@@ -107,6 +115,76 @@ def _validate_color(value: object) -> tuple[int, int, int]:
     return parts  # type: ignore[return-value]
 
 
+def _validate_grace_label_template(value: object) -> str:
+    template = str(value).strip()
+    fields = {
+        field_name
+        for _literal, field_name, _format_spec, _conversion in Formatter().parse(template)
+        if field_name is not None
+    }
+    if fields != {"seconds"}:
+        raise ValueError(
+            "pre_action_grace_label must contain exactly the {seconds} placeholder"
+        )
+    try:
+        rendered = template.format(seconds=1)
+    except (IndexError, KeyError, ValueError) as exc:
+        raise ValueError("invalid pre_action_grace_label format") from exc
+    if not rendered.strip():
+        raise ValueError("pre_action_grace_label must render visible text")
+    return template
+
+
+@dataclass(frozen=True)
+class SignalPresentation:
+    """One deterministic visual/accessibility state of the signal overlay."""
+
+    phase: str
+    color: tuple[int, int, int]
+    visual_label: str
+    accessible_label: str
+    seconds_remaining: int | None
+
+
+def signal_presentation(
+    *,
+    base_label: str,
+    active_color: tuple[int, int, int],
+    grace_color: tuple[int, int, int],
+    grace_label_template: str,
+    remaining_seconds: float,
+) -> SignalPresentation:
+    """Build the visible and screenreader-readable signal state.
+
+    ``ceil`` ensures a configured 20-second grace starts at 20 rather than 19.
+    The countdown is text-first and uses a static color; color is redundant
+    information, never the only way to understand the phase.
+    """
+
+    if remaining_seconds > 0:
+        seconds = max(1, math.ceil(remaining_seconds))
+        countdown = grace_label_template.format(seconds=seconds)
+        return SignalPresentation(
+            phase="countdown",
+            color=grace_color,
+            visual_label=f"{countdown} | ABBRUCH stoppt sofort",
+            accessible_label=(
+                f"Open Compute. {countdown}. {base_label}. "
+                "Abbruch ist jederzeit möglich."
+            ),
+            seconds_remaining=seconds,
+        )
+    return SignalPresentation(
+        phase="active",
+        color=active_color,
+        visual_label=base_label,
+        accessible_label=(
+            f"Open Compute aktiv. {base_label}. Abbruch ist jederzeit möglich."
+        ),
+        seconds_remaining=None,
+    )
+
+
 @dataclass
 class SignalModeConfig:
     """Per-mode signal settings.
@@ -143,6 +221,11 @@ class SignalConfig:
     # einer Sitzung (Not-Aus-Feature, Ticket T-20260818-895473048). 0 = sofort,
     # kein Countdown.
     pre_action_grace_seconds: float = 20.0
+    # Eigene, statische Farbe und textliche (also nicht nur farbliche)
+    # Kennzeichnung der Vorlaufphase. Der Platzhalter ist verpflichtend, damit
+    # eine Konfiguration den Countdown nicht versehentlich unsichtbar macht.
+    pre_action_grace_color: tuple[int, int, int] = DEFAULT_PRE_ACTION_GRACE_COLOR
+    pre_action_grace_label: str = DEFAULT_PRE_ACTION_GRACE_LABEL
     # Freitext ODER 1-Klick: die Vorschlagsliste fuer den Abbruch-Dialog
     # (TkAbortChannel). Leer = nur Freitext, wie bisher.
     abort_reasons: tuple[str, ...] = ()
@@ -155,8 +238,15 @@ class SignalConfig:
             raise ValueError("thickness must be in 2..40")
         if self.abort_hotkey is not None:
             parse_hotkey(self.abort_hotkey)  # validate eagerly
-        if self.pre_action_grace_seconds < 0:
-            raise ValueError("pre_action_grace_seconds must be >= 0")
+        if (
+            not math.isfinite(self.pre_action_grace_seconds)
+            or self.pre_action_grace_seconds < 0
+        ):
+            raise ValueError("pre_action_grace_seconds must be finite and >= 0")
+        self.pre_action_grace_color = _validate_color(self.pre_action_grace_color)
+        self.pre_action_grace_label = _validate_grace_label_template(
+            self.pre_action_grace_label
+        )
         self.abort_reasons = tuple(
             str(reason).strip() for reason in self.abort_reasons if str(reason).strip()
         )
@@ -195,6 +285,12 @@ class SignalConfig:
             thickness=int(data.get("thickness", 6)),
             abort_hotkey=str(hotkey) if hotkey else None,
             pre_action_grace_seconds=float(data.get("pre_action_grace_seconds", 20.0)),
+            pre_action_grace_color=_validate_color(
+                data.get("pre_action_grace_color", DEFAULT_PRE_ACTION_GRACE_COLOR)
+            ),
+            pre_action_grace_label=str(
+                data.get("pre_action_grace_label", DEFAULT_PRE_ACTION_GRACE_LABEL)
+            ),
             abort_reasons=tuple(str(r) for r in data.get("abort_reasons", ())),
         )
 
@@ -208,6 +304,8 @@ class SignalConfig:
             "thickness": self.thickness,
             "abort_hotkey": self.abort_hotkey,
             "pre_action_grace_seconds": self.pre_action_grace_seconds,
+            "pre_action_grace_color": list(self.pre_action_grace_color),
+            "pre_action_grace_label": self.pre_action_grace_label,
             "abort_reasons": list(self.abort_reasons),
             "modes": {
                 mode.value: {
@@ -308,7 +406,7 @@ class ConsoleAbortChannel:
             text = self.input_fn(
                 "[open-compute] Abbruch"
                 + (f" ({context})" if context else "")
-                + " — kurzer Grund fuers Modell (leer = keiner): "
+                + " — kurzer Grund fürs Modell (leer = keiner): "
             )
         except (EOFError, KeyboardInterrupt):
             return None
@@ -363,7 +461,7 @@ class TkAbortChannel:
                 ).pack(side="left", padx=(0, 4), pady=2)
         tk.Label(
             root,
-            text="...oder eigener Grund fuers Modell (wird mitgesendet):",
+            text="...oder eigener Grund fürs Modell (wird mitgesendet):",
             anchor="w",
         ).pack(fill="x", padx=10, pady=(10, 0))
         entry = tk.Entry(root, width=50)
@@ -508,27 +606,41 @@ class WindowsBorderOverlay:
         on_abort: Callable[[], None] | None = None,
         abort_hotkey: str | None = None,
         grace_seconds: float = 0.0,
+        grace_color: tuple[int, int, int] = DEFAULT_PRE_ACTION_GRACE_COLOR,
+        grace_label_template: str = DEFAULT_PRE_ACTION_GRACE_LABEL,
     ) -> None:
         if sys.platform != "win32":
             raise RuntimeError("WindowsBorderOverlay is Windows-only")
         if not 2 <= thickness <= 40:
             raise ValueError("thickness must be in 2..40")
-        if grace_seconds < 0:
-            raise ValueError("grace_seconds must be >= 0")
+        if not math.isfinite(grace_seconds) or grace_seconds < 0:
+            raise ValueError("grace_seconds must be finite and >= 0")
         self._thickness = thickness
         self._border = border
         self._cursor_ring = cursor_ring
         self._on_abort = on_abort
         # Parsed eagerly so a bad spec fails at construction, not in the thread.
         self._abort_hotkey = parse_hotkey(abort_hotkey) if abort_hotkey else None
-        # Karenzzeit vor der ersten Aktion — nur eine Anzeige-/Timing-Angabe,
-        # das eigentliche Blockieren macht der Aufrufer (mcp_server); die
-        # Ueberlagerung zeigt hier nur "Uebernahme in Ns" im Label an.
+        # Karenzzeit vor der ersten Aktion — nur eine Anzeige-/Timing-Angabe;
+        # das eigentliche Blockieren macht der Aufrufer (mcp_server). Das
+        # Overlay zeigt die aus der Konfiguration berechnete Restzeit an.
         self._grace_seconds = float(grace_seconds)
+        self._grace_color = _validate_color(grace_color)
+        self._grace_label_template = _validate_grace_label_template(
+            grace_label_template
+        )
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._visible = False
         self.error: BaseException | None = None
+        self._presentation_lock = threading.RLock()
+        self._presentation = SignalPresentation(
+            phase="hidden",
+            color=(0, 0, 0),
+            visual_label="",
+            accessible_label="",
+            seconds_remaining=None,
+        )
         # Debounce a rapid double-fire (double-click on the abort button, or
         # a hotkey held slightly too long despite MOD_NOREPEAT) so the human
         # never sees the reason dialog pop up twice for one intent.
@@ -549,6 +661,18 @@ class WindowsBorderOverlay:
         self.error = None
         use_border = self._border if border is None else border
         use_cursor = self._cursor_ring if cursor is None else cursor
+        initial = signal_presentation(
+            base_label=str(label),
+            active_color=tuple(int(c) for c in color),
+            grace_color=self._grace_color,
+            grace_label_template=self._grace_label_template,
+            remaining_seconds=(
+                self._grace_seconds
+                if self._grace_seconds > 0 and self._on_abort is not None
+                else 0.0
+            ),
+        )
+        self._set_presentation(initial)
         self._thread = threading.Thread(
             target=self._run,
             args=(tuple(int(c) for c in color), str(label), use_border, use_cursor),
@@ -564,9 +688,35 @@ class WindowsBorderOverlay:
         if thread is not None and thread.is_alive():
             thread.join(timeout=3)
         self._visible = False
+        self._set_presentation(
+            SignalPresentation(
+                phase="hidden",
+                color=(0, 0, 0),
+                visual_label="",
+                accessible_label="",
+                seconds_remaining=None,
+            )
+        )
 
     def is_visible(self) -> bool:
         return self._visible and self.error is None
+
+    def _set_presentation(self, presentation: SignalPresentation) -> None:
+        with self._presentation_lock:
+            self._presentation = presentation
+
+    def status_snapshot(self) -> dict[str, object]:
+        """Thread-safe phase snapshot for MCP status/readback."""
+
+        with self._presentation_lock:
+            presentation = self._presentation
+        return {
+            "phase": presentation.phase,
+            "color": list(presentation.color),
+            "visual_label": presentation.visual_label,
+            "accessible_label": presentation.accessible_label,
+            "countdown_seconds": presentation.seconds_remaining,
+        }
 
     def _fire_abort(self) -> None:
         """Invoke the abort callback; failures surface via ``self.error``.
@@ -654,6 +804,13 @@ class WindowsBorderOverlay:
         ]
         user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
         user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+        user32.InvalidateRect.argtypes = [
+            wintypes.HWND, ctypes.POINTER(wintypes.RECT), wintypes.BOOL,
+        ]
+        user32.UpdateWindow.argtypes = [wintypes.HWND]
+        user32.NotifyWinEvent.argtypes = [
+            wintypes.DWORD, wintypes.HWND, ctypes.c_long, ctypes.c_long,
+        ]
         gdi32.CreateSolidBrush.restype = wintypes.HBRUSH
         gdi32.CreatePen.restype = wintypes.HANDLE
         gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HANDLE]
@@ -692,12 +849,47 @@ class WindowsBorderOverlay:
             r, g, b = rgb
             return r | (g << 8) | (b << 16)
 
-        colorref = _colorref(color)
-        brush = gdi32.CreateSolidBrush(colorref)
+        active_presentation = signal_presentation(
+            base_label=label,
+            active_color=color,
+            grace_color=self._grace_color,
+            grace_label_template=self._grace_label_template,
+            remaining_seconds=0.0,
+        )
+        grace_enabled = bool(
+            label and self._grace_seconds > 0 and self._on_abort is not None
+        )
+        initial_presentation = signal_presentation(
+            base_label=label,
+            active_color=color,
+            grace_color=self._grace_color,
+            grace_label_template=self._grace_label_template,
+            remaining_seconds=self._grace_seconds if grace_enabled else 0.0,
+        )
+        current: dict[str, SignalPresentation] = {
+            "presentation": initial_presentation
+        }
+        self._set_presentation(initial_presentation)
+
+        def _color_resources(rgb: tuple[int, int, int]) -> dict[str, int]:
+            ref = _colorref(rgb)
+            return {
+                "colorref": ref,
+                "brush": gdi32.CreateSolidBrush(ref),
+                "glow_brush": gdi32.CreateSolidBrush(ref),
+                "ring_pen": gdi32.CreatePen(0, 4, ref),
+                "glow_pen": gdi32.CreatePen(0, 10, ref),
+            }
+
+        active_resources = _color_resources(active_presentation.color)
+        grace_resources = _color_resources(initial_presentation.color)
+
+        def _current_resources() -> dict[str, int]:
+            if current["presentation"].phase == "countdown":
+                return grace_resources
+            return active_resources
+
         black_brush = gdi32.CreateSolidBrush(0)
-        glow_brush = gdi32.CreateSolidBrush(colorref)
-        ring_pen = gdi32.CreatePen(0, 4, colorref)
-        glow_pen = gdi32.CreatePen(0, 10, colorref)
         abort_brush = gdi32.CreateSolidBrush(_colorref(_ABORT_BUTTON_COLOR))
         created: dict[str, list] = {"hwnds": []}
         hotkey_id: int | None = None
@@ -711,14 +903,15 @@ class WindowsBorderOverlay:
         _ROLE_ABORT_BUTTON = 3
 
         def _paint_ring(hwnd: int) -> None:
+            resources = _current_resources()
             hdc = user32.GetDC(hwnd)
             try:
-                old_glow = gdi32.SelectObject(hdc, glow_pen)
+                old_glow = gdi32.SelectObject(hdc, resources["glow_pen"])
                 old_brush = gdi32.SelectObject(
                     hdc, gdi32.GetStockObject(5)  # NULL_BRUSH
                 )
                 gdi32.Ellipse(hdc, 2, 2, _CURSOR_RING - 2, _CURSOR_RING - 2)
-                gdi32.SelectObject(hdc, ring_pen)
+                gdi32.SelectObject(hdc, resources["ring_pen"])
                 gdi32.Ellipse(hdc, 8, 8, _CURSOR_RING - 8, _CURSOR_RING - 8)
                 gdi32.SelectObject(hdc, old_glow)
                 gdi32.SelectObject(hdc, old_brush)
@@ -726,17 +919,23 @@ class WindowsBorderOverlay:
                 user32.ReleaseDC(hwnd, hdc)
 
         def _paint_label(hwnd: int) -> None:
+            presentation = current["presentation"]
+            resources = _current_resources()
             hdc = user32.GetDC(hwnd)
             try:
                 rect = wintypes.RECT()
                 user32.GetClientRect(hwnd, ctypes.byref(rect))
                 gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
-                gdi32.SetTextColor(hdc, colorref)
+                gdi32.SetTextColor(hdc, resources["colorref"])
                 gdi32.SelectObject(
                     hdc, gdi32.GetStockObject(17)  # DEFAULT_GUI_FONT
                 )
                 user32.DrawTextW(
-                    hdc, label, -1, ctypes.byref(rect), 0x0024  # DT_CENTER|DT_VCENTER
+                    hdc,
+                    presentation.visual_label,
+                    -1,
+                    ctypes.byref(rect),
+                    0x0024,  # DT_CENTER|DT_VCENTER
                 )
             finally:
                 user32.ReleaseDC(hwnd, hdc)
@@ -772,11 +971,19 @@ class WindowsBorderOverlay:
                     user32.GetClientRect(hwnd, ctypes.byref(rect))
                     user32.FillRect(wparam, ctypes.byref(rect), black_brush)
                     return 1
-                # border bars keep the class brush (the signal color)
-                return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+                # Border bars use the current phase color. Filling them here,
+                # instead of relying on the immutable class brush, makes the
+                # countdown -> active transition visible without recreating
+                # any overlay window.
+                rect = wintypes.RECT()
+                user32.GetClientRect(hwnd, ctypes.byref(rect))
+                user32.FillRect(
+                    wparam, ctypes.byref(rect), _current_resources()["brush"]
+                )
+                return 1
             if msg == WM_PAINT:
                 ps = ctypes.create_string_buffer(72)
-                hdc = user32.BeginPaint(hwnd, ps)
+                user32.BeginPaint(hwnd, ps)
                 user32.EndPaint(hwnd, ps)
                 role = user32.GetWindowLongPtrW(hwnd, -21)  # GWLP_USERDATA
                 if role == _ROLE_RING:
@@ -811,7 +1018,7 @@ class WindowsBorderOverlay:
         wc.lpfnWndProc = wnd_proc
         wc.hInstance = instance
         wc.lpszClassName = class_name
-        wc.hbrBackground = brush
+        wc.hbrBackground = active_resources["brush"]
         if not user32.RegisterClassW(ctypes.byref(wc)):
             self.error = RuntimeError("RegisterClassW failed")
             return
@@ -830,10 +1037,20 @@ class WindowsBorderOverlay:
         ex_style_clickable = ex_style & ~0x00000020
         WS_POPUP = 0x80000000
 
-        def _create(x, y, w, h, role=0, alpha=_BORDER_ALPHA, colorkey=None, clickable=False):
+        def _create(
+            x,
+            y,
+            w,
+            h,
+            role=0,
+            alpha=_BORDER_ALPHA,
+            colorkey=None,
+            clickable=False,
+            title="",
+        ):
             hwnd = user32.CreateWindowExW(
                 ex_style_clickable if clickable else ex_style,
-                class_name, "", WS_POPUP, x, y, w, h,
+                class_name, title, WS_POPUP, x, y, w, h,
                 None, None, instance, None,
             )
             if not hwnd:
@@ -874,18 +1091,21 @@ class WindowsBorderOverlay:
                 label_w = min(720, vw - 40)
                 label_hwnd = _create(
                     vx + (vw - label_w) // 2, vy + glow + 4, label_w, 26,
-                    role=2, alpha=210, colorkey=None,
+                    role=2,
+                    alpha=210,
+                    colorkey=None,
+                    title=initial_presentation.accessible_label,
                 )
 
             # Abort button: always drawn whenever an abort path is wired
             # (independent of whether a hotkey is ALSO configured) — "immer
             # sichtbares, klickbares Abort-Element" (Ticket T-20260818-895473048).
-            abort_hwnd = None
             if self._on_abort is not None:
                 bx, by, bw, bh = _abort_button_rect(vx, vy, vw, vh, glow)
-                abort_hwnd = _create(
+                _create(
                     bx, by, bw, bh, role=_ROLE_ABORT_BUTTON, alpha=248,
                     clickable=True,
+                    title="Open Compute: Abbruch — stoppt sofort",
                 )
 
             hotkey_id = None
@@ -895,16 +1115,35 @@ class WindowsBorderOverlay:
                 if user32.RegisterHotKey(None, 1, mods | 0x4000, vk):
                     hotkey_id = 1
 
+            def _apply_presentation(presentation: SignalPresentation) -> None:
+                current["presentation"] = presentation
+                self._set_presentation(presentation)
+                if label_hwnd:
+                    # The HWND title is the accessibility name. NotifyWinEvent
+                    # lets a screenreader observe the once-per-second semantic
+                    # change; the painted label is separately invalidated below.
+                    user32.SetWindowTextW(
+                        label_hwnd, presentation.accessible_label
+                    )
+                    user32.NotifyWinEvent(
+                        0x800C, label_hwnd, 0, 0  # EVENT_OBJECT_NAMECHANGE
+                    )
+                for overlay_hwnd in created["hwnds"]:
+                    user32.InvalidateRect(overlay_hwnd, None, True)
+                    user32.UpdateWindow(overlay_hwnd)
+
+            _apply_presentation(initial_presentation)
+
             # Grace countdown — display-only (the actual blocking-before-first
-            # -action wait lives server-side in mcp_server._await_grace_period);
-            # this just updates the label text once a second while it runs so
-            # the human sees "Uebernahme in Ns" and knows the button still works.
+            # -action wait lives server-side in mcp_server._await_grace_period).
+            # Text changes once per second and the color changes exactly once
+            # at activation: no flashing, pulsing or motion animation.
             grace_deadline = (
                 time.monotonic() + self._grace_seconds
-                if label_hwnd and self._grace_seconds > 0 and self._on_abort is not None
+                if grace_enabled
                 else None
             )
-            last_shown_seconds: int | None = None
+            last_shown_seconds = initial_presentation.seconds_remaining
 
             msg = wintypes.MSG()
             point = wintypes.POINT()
@@ -933,17 +1172,19 @@ class WindowsBorderOverlay:
                 if grace_deadline is not None:
                     remaining = grace_deadline - time.monotonic()
                     if remaining <= 0:
-                        user32.SetWindowTextW(label_hwnd, label)
+                        _apply_presentation(active_presentation)
                         grace_deadline = None
                     else:
-                        seconds_left = int(remaining) + 1
-                        if seconds_left != last_shown_seconds:
-                            last_shown_seconds = seconds_left
-                            user32.SetWindowTextW(
-                                label_hwnd,
-                                f"{label}  |  Uebernahme in {seconds_left}s "
-                                "— Klick auf ABBRUCH stoppt sofort",
-                            )
+                        next_presentation = signal_presentation(
+                            base_label=label,
+                            active_color=color,
+                            grace_color=self._grace_color,
+                            grace_label_template=self._grace_label_template,
+                            remaining_seconds=remaining,
+                        )
+                        if next_presentation.seconds_remaining != last_shown_seconds:
+                            last_shown_seconds = next_presentation.seconds_remaining
+                            _apply_presentation(next_presentation)
                 self._stop.wait(0.033)
         except BaseException as exc:  # surface overlay failures, never crash caller
             self.error = exc
@@ -953,5 +1194,11 @@ class WindowsBorderOverlay:
             for hwnd in created["hwnds"]:
                 user32.DestroyWindow(hwnd)
             user32.UnregisterClassW(class_name, instance)
-            for obj in (brush, black_brush, glow_brush, ring_pen, glow_pen, abort_brush):
+            resource_objects = [
+                value
+                for resources in (active_resources, grace_resources)
+                for key, value in resources.items()
+                if key != "colorref"
+            ]
+            for obj in (*resource_objects, black_brush, abort_brush):
                 gdi32.DeleteObject(obj)

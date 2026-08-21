@@ -7,6 +7,40 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.0] - 2026-08-21
+
+Visible pre-action countdown and accessibility release for ticket
+`T-20260821-676249921`.
+
+### Added
+
+- `SignalConfig` now exposes `pre_action_grace_color` and the localizable
+  `pre_action_grace_label` template. The configured duration remains
+  `pre_action_grace_seconds`, with `OC_SIGNAL_GRACE_SECONDS` as its runtime
+  override; no display-only 20-second constant was introduced.
+- `signal_show` and `signal_status` now report `phase`, `countdown_seconds`,
+  current/active/grace colors, and an accessibility label.
+- The Win32 label window publishes its semantic title and emits
+  `EVENT_OBJECT_NAMECHANGE` for screenreaders on each second transition.
+
+### Changed
+
+- The countdown uses a separate static purple default, displays
+  `Start in N Sekunden` once per second, and changes exactly once to the
+  configured mode color when the grace period ends. It does not flash, pulse,
+  or depend on enabled Windows animations.
+- Starting a new signal replaces and resets the previous countdown; zero
+  seconds starts directly in the active phase.
+
+### Fixed
+
+- The custom paint handler now draws the current countdown text and phase color
+  instead of repainting the immutable initial label after `SetWindowTextW`.
+- Renderer startup failure, abort, hide, and restart no longer leave a hidden
+  grace deadline armed.
+- A mode disabled in `SignalConfig` now remains truly hidden and never arms an
+  invisible countdown or auto-signal lease.
+
 ## [0.8.0] - 2026-08-21
 
 Safety-hardening release for ticket `T-20260821-611823643`.

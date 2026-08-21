@@ -270,7 +270,7 @@ class TestImportWithoutMss:
         # mss may or may not be installed; we verify local.py is not pulled in
         # by the top-level __init__.py
         import open_compute  # should succeed regardless of mss presence
-        assert open_compute.__version__ == "0.8.0"
+        assert open_compute.__version__ == "0.9.0"
 
 
 # ---------------------------------------------------------------------------

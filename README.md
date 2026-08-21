@@ -333,6 +333,21 @@ name surfaces as `auto_signal_error` in the tool result instead of failing
 the call. See `signal_show`/`signal_hide`/`signal_status` below for the
 manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
 
+**Pre-action countdown.** An explicit `signal_show` arms the configured grace
+period before the first action or capture. The overlay uses a separate static
+grace color and shows `Start in N Sekunden`, counting down once per second; at
+zero it changes once to the selected mode color. The duration comes from
+`pre_action_grace_seconds` (or the higher-precedence
+`OC_SIGNAL_GRACE_SECONDS`), never from a UI-only constant. `0` starts directly
+in the active phase. The JSON signal config also accepts
+`pre_action_grace_color: [r, g, b]` and the localizable
+`pre_action_grace_label` template, which must contain `{seconds}`.
+`signal_status` reports `phase`, `countdown_seconds`, current `color`, and an
+`accessible_label`. The native window title carries the same semantic text and
+emits an accessibility name-change event each second. There is no flashing,
+pulsing, or animated color transition, so disabled Windows animations do not
+remove information and color is never the only cue.
+
 **Signal cleanup and leases.** Every overlay has a TTL (`ttl_seconds` or
 `OC_SIGNAL_TTL`, default 120 seconds). `do`, `click_name`, `invoke`, and `rec_replay` hide it
 at normal turn end and on errors/abort by default; use `keep_signal=true` only
@@ -589,7 +604,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **640 passed, 1 skipped** (2026-08-21).
+installs pytest. Current full-suite state: **647 passed, 1 skipped** (2026-08-21).
 
 ---
 

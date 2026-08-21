@@ -29,7 +29,7 @@ statt das erste Fenster zu wählen. `adaptive_capture.py` ist beobachtend,
 hart begrenzt und dedupliziert identische Frames; Vollbild ist nur nach
 explizitem Opt-in möglich.
 
-### MCP-Interaktionskern (v0.8, 2026-08-21)
+### MCP-Interaktionskern (v0.9, 2026-08-21)
 
 `interaction.py` ist die inhaltsfreie Vertragsgrenze zwischen Wahrnehmung und
 lokalem Input. `list_windows` erzeugt stabile Deskriptoren und Prozess-lokale
@@ -43,7 +43,11 @@ Gleichstand oder einen Score unterhalb der Schwelle ab. Texteingabe wird in
 begrenzten Segmenten gesendet, vor jedem Segment auf den exakten Vordergrund
 geprüft und nur über Längen-/Statusmetadaten quittiert. Signal-Overlays sind an
 Owner, Session und eine harte TTL gebunden; Turn-Ende, Fehler, Abbruch und
-Serverende führen über denselben idempotenten Cleanup-Pfad.
+Serverende führen über denselben idempotenten Cleanup-Pfad. Die Vorlaufzeit
+bleibt serverseitig autoritativ, während `indicator.py` daraus einen
+sekündlichen, textbasierten Präsentationszustand ableitet. Vorlauf- und
+Modusfarbe sind getrennt konfigurierbar; der Win32-Renderer zeichnet denselben
+laufenden Zustand, den er als zugänglichen Fensternamen meldet.
 
 ### Headless-Kooperationskern (2026-07-28)
 
@@ -75,9 +79,11 @@ Sicherheitsinvarianten:
   Tastendaten sind als Felder gesperrt.
 - Retention-Metadaten sind begrenzt. Kapazitäts- und TTL-Löschungen laufen über
   einen injizierten Löschadapter; ein Löschfehler bleibt sichtbar/fail-closed.
-- Overlay und Not-Aus existieren ausschließlich als Protokoll bzw.
-  nicht-rendernde/in-memory Implementierung. Ein sichtbares Overlay oder
-  globaler Hotkey ist nicht implementiert oder aktiviert.
+- Im plattformneutralen `cooperative.py` bleiben Overlay und Not-Aus reine
+  Protokolle beziehungsweise In-Memory-Implementierungen. Der getrennte
+  Windows-Adapter `indicator.py` implementiert das sichtbare Overlay, den
+  klickbaren Abbruch und optional den globalen Hotkey; dadurch bleibt der
+  Kooperationskern weiterhin headless testbar.
 
 `human_activity.py` enthält eine zeitstempelbasierte,
 inhaltfreie Klassifikation von menschlicher gegenüber eigener Eingabe. Der

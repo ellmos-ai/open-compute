@@ -110,12 +110,12 @@ _TOOLS: dict[str, dict[str, str]] = {
         "zh": "通过安全门控在桌面上重放录制的 .clirec 宏（需要可选的 clirec 包）。",
     },
     "signal_show": {
-        "en": "Show the mode-colored screen signal with an owner/session lease and bounded TTL; action turn-end cleanup applies unless keep_signal=true.",
-        "de": "Zeigt das modusfarbige Bildschirmsignal mit Owner-/Session-Lease und begrenzter TTL; am Aktions-Turn-Ende wird ohne keep_signal=true aufgeräumt.",
-        "es": "Muestra la señal de pantalla por modo con una concesión owner/session y TTL limitada; se limpia al final de la acción salvo keep_signal=true.",
-        "ja": "モード色の画面シグナルを owner/session リースと有限 TTL 付きで表示します。keep_signal=true 以外はアクション終了時に消去されます。",
-        "ru": "Показывает цветовой сигнал режима с арендой owner/session и ограниченным TTL; в конце действия очищается, если не задано keep_signal=true.",
-        "zh": "显示带 owner/session 租约和有限 TTL 的模式彩色屏幕信号；除非 keep_signal=true，否则动作回合结束时会清理。",
+        "en": "Show the screen signal with a configurable pre-action color and text countdown, then the mode color; the owner/session lease has a bounded TTL.",
+        "de": "Zeigt das Bildschirmsignal zunächst mit konfigurierbarer Vorlauffarbe und Text-Countdown, danach in der Modusfarbe; die Owner-/Session-Lease hat eine begrenzte TTL.",
+        "es": "Muestra la señal de pantalla primero con un color previo y una cuenta atrás de texto configurables, y después con el color del modo; la concesión owner/session tiene una TTL limitada.",
+        "ja": "設定可能な開始前カラーとテキストのカウントダウンを表示し、その後モード色へ切り替えます。owner/session リースには有限の TTL があります。",
+        "ru": "Показывает экранный сигнал сначала с настраиваемым цветом и текстовым обратным отсчётом, затем с цветом режима; аренда owner/session имеет ограниченный TTL.",
+        "zh": "先以可配置的启动前颜色和文字倒计时显示屏幕信号，再切换到模式颜色；owner/session 租约具有有限 TTL。",
     },
     "signal_hide": {
         "en": "Hide the screen-usage signal overlay.",

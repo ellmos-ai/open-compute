@@ -145,6 +145,16 @@ renderer."). Dieser Lauf liefert den Renderer.
   Datei gelten exakt die eingebauten Defaults/Farben. CLI:
   `oc signal config --init|--show`, `oc signal on --config PATH`,
   Overrides `--no-border`/`--no-cursor`.
+- [x] **Vorlauf als eigene, zugängliche Signalphase (umgesetzt 2026-08-21,
+  T-20260821-676249921):** Die reale `pre_action_grace_seconds`-Konfiguration
+  speist nun den sichtbaren sekündlichen Text `Start in N Sekunden`. Die
+  Vorlaufphase besitzt mit `pre_action_grace_color` eine eigene statische Farbe
+  und wechselt bei null genau einmal zur Modusfarbe. Die Zeichenroutine nutzt
+  jetzt den laufenden Präsentationszustand statt des früher eingefrorenen
+  Ausgangstextes. Fenstertitel und Accessibility-Name-Change-Ereignisse machen
+  den Zustand für Screenreader lesbar; Farbe, Blinken oder Animation sind keine
+  Voraussetzung. Abbruch, Neustart, Nullsekundenfall und fehlgeschlagener Start
+  räumen den Countdown deterministisch auf.
 - [x] **Chat-Anbindung über Bildschirminhalt (v0, umgesetzt 2026-07-31):**
   `oc chat [--channel console|tk] [--shot]` — Kurznachricht des Menschen zum
   Bildschirminhalt, optional mit Vollbild-Screenshot aus `_session/`, als
