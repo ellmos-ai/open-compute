@@ -310,28 +310,27 @@ via `mode="allow_all"` umgehen. Da stdio-MCP keinen Server→Client-Confirm-Call
 hat, geben `confirm`/`read_only` ein `needs_confirmation`/`deny` **ohne auszuführen**
 zurück.
 
-**Koordinatenklicks schließen bei Unsicherheit.** Nutze vorrangig den
-semantischen Pfad: `invoke`, wenn UIA ein klickfreies Pattern anbietet, sonst
-`click_name`. `click_name` löst das Element über seinen Namen auf und bindet den
-Koordinaten-Fallback automatisch an das ermittelte Top-Level-Fenster. Rohe
-Koordinaten über `do` sind nur der letzte Ausweg. Sie brauchen sowohl
-`expected_window` (`hwnd`, `pid`, exakter `title` aus `list_windows`) als auch
-`coordinate_frame` (`left`, `top`, `width`, `height`). Der Server rechnet
-fensterlokale Koordinaten in den aktuellen virtuellen Desktop um, ruft Win32
-`WindowFromPoint` unmittelbar vor der Ausführung auf, hebt Child-/Overlay-Handles
-mit `GA_ROOT` auf das Top-Level-Fenster und vergleicht die vollständige Identität.
-Fehlende Daten, ein nicht auflösbarer Punkt oder ein Mismatch liefern
-`{"result":"preclick_verification_failed", ...}`; es wird kein Klick gesendet.
+**Fail-closed-Interaktionsvertrag (MCP 0.8).** Nutze zuerst `invoke`, danach
+`click_name`: Beide wählen exakte Elementnamen zuerst und weisen mehrdeutige oder
+zu schwache Treffer ab. Die Rückgabe enthält `match_type`, `score` und relevante
+Alternativen; für destruktive oder externe Aktionen ist `exact=true` verfügbar.
+Beide verlangen einen ausgegebenen Fensterdeskriptor oder Token.
+Rohe Koordinaten über `do` sind nur der letzte Ausweg. Bewahre zunächst den
+vollständigen Fensterdeskriptor oder `window_token` aus `list_windows` auf. Rufe
+dann `capture` oder `tree` auf und übergib deren `observation_id` zusammen mit
+`expected_window` an genau eine Koordinatenaktion. `capture` bezeichnet dieselbe
+ID zusätzlich als `screenshot_id`. Wiederverwendung, veränderte Aufnahme/Baum,
+Frame- oder Fokuswechsel und verdeckte Ziele werden abgewiesen. Eine erfolgreiche
+Aktion liefert eine neue `post_action_observation` und meldet neue beziehungsweise
+zugehörige Fensterkandidaten.
 
-Für eine MCP-Vollbildaufnahme stammt `coordinate_frame` aus
-`get_screen_size().virtual_desktop`. MCP-`capture(window=...)` liefert nur einen
-Bildblock; dessen 0..1-Koordinaten dürfen deshalb **nicht** roh an `do` gehen.
-Nutze `click_name`/`invoke` oder hole exaktes Fensterrechteck und Identität über
-`list_windows`. Die CLI gibt bei `oc capture --window ...` zusätzlich
-`window_identity` und `coordinate_frame` aus; `oc do` akzeptiert beides über
-`--expected-window` / `--coordinate-frame` oder im `meta`-Objekt der Aktion.
-Dass alte, ungebundene Koordinatenklicks nun blockieren, ist eine beabsichtigte
-Sicherheitsänderung; Nicht-Klick-Aktionen behalten ihre bisherige API.
+Auch `type`, Tastaturaktionen und `activate_window` verlangen einen ausgegebenen
+Fensterdeskriptor oder Token. Vor jedem Textsegment beziehungsweise Tastendruck
+wird der Fokus erneut geprüft. Textergebnisse melden angeforderte und gesendete
+Zeichenzahl sowie vollständig/teilweise, ohne Klartext zurückzugeben. Das optionale
+`coordinate_frame` dient nur noch als Gleichheitsprüfung gegen den an die
+Observation gebundenen Frame. Die CLI behält ihren expliziten Vorabvertrag über
+`--expected-window` und `--coordinate-frame`.
 
 Für interaktiven Betrieb den Server mit `OC_SAFETY_MODE=allow_all` **in einer
 isolierten VM** starten und den Tool-Berechtigungsdialog des Clients als
@@ -339,10 +338,8 @@ Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) e
 harte Deny-Liste.
 
 **Auto-Signal (`OC_SIGNAL_AUTO`).** Auf einen `SessionMode`-Namen setzen (z. B.
-`control`), um das Bildschirm-Signal-Overlay automatisch zu zeigen, sobald ein
-zustandsänderndes Tool (`do` / `click_name` / `invoke` / `rec_replay`) das erste
-Mal tatsächlich das Safety-Gate passiert — kein separater `signal_show`-Aufruf
-mehr nötig, bevor das Modell die Steuerung übernimmt. Ein bereits sichtbares
+`control`), damit das Bildschirm-Signal vor der Ausführung eines freigegebenen
+zustandsändernden Tools (`do` / `click_name` / `invoke` / `rec_replay`) erscheint. Ein bereits sichtbares
 Signal (manuell oder automatisch gesetzt, egal in welchem Modus) wird nie
 überschrieben; ein vom Gate geblockter Aufruf oder ein read-only-Tool löst nie
 aus. Unset oder `off` (Standard) deaktiviert das Feature; ein ungültiger
@@ -350,18 +347,16 @@ Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt den Call
 scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status` für die
 manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
 
-**Auto-Hide (`OC_SIGNAL_IDLE_HIDE`).** Ein automatisch gezeigtes Overlay
-verschwindet von allein, sobald nicht mehr gesteuert wird: Jeder
-zustandsändernde Tool-Aufruf armiert einen Idle-Countdown neu; läuft er ohne
-weitere Aktion ab, wird das Overlay verborgen. Der Wert sind **Sekunden,
-Standard 60**; `0`, ein leerer Wert oder `off` schaltet das Auto-Hide ab und
-lässt das Overlay wie bisher bis zum `signal_hide` stehen. Weggeräumt wird nur,
-was `OC_SIGNAL_AUTO` selbst gezeigt hat — ein per `signal_show` angefordertes
-Overlay bleibt, bis du es verbirgst, und ein manuelles `signal_show` über einem
-automatischen übernimmt die Hoheit und bricht den Countdown ab. `signal_status`
-meldet beides (`auto_shown`, `idle_hide_armed`); ein unbrauchbarer Wert
-erscheint als `signal_idle_hide_error` im Tool-Ergebnis, statt die Aktion
-scheitern zu lassen.
+**Signal-Cleanup und Leases.** Jedes Overlay hat eine TTL (`ttl_seconds` oder
+`OC_SIGNAL_TTL`, Standard 120 Sekunden). `do`, `click_name`, `invoke` und `rec_replay`
+verbergen es am normalen Turn-Ende sowie bei Fehler oder Abbruch; nur
+`keep_signal=true` hält die sichtbare Lease über mehrere Calls. Auch beim
+Serverende wird aufgeräumt. `signal_status` meldet Owner, Session, Modus,
+Sichtbarkeit und Ablaufzeit. Für ausdrücklich beibehaltene Auto-Signale liefert
+`OC_SIGNAL_IDLE_HIDE` zusätzlich einen Idle-Countdown (Standard 60 Sekunden).
+`0`, ein leerer Wert oder `off` deaktiviert nur diesen Idle-Countdown; die harte
+TTL bleibt bestehen. Ein ungültiger Wert erscheint als
+`signal_idle_hide_error`, statt die Aktion scheitern zu lassen.
 
 **Troubleshooting: `do`/`click_name` liefern nur `needs_confirmation` und handeln
 nie.** Das ist die `confirm`-Obergrenze, die unter stdio-MCP designgemäß so wirkt —
@@ -618,7 +613,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**564 bestanden, 1 übersprungen** (2026-08-16).
+**640 bestanden, 1 übersprungen** (2026-08-21).
 
 ---
 

@@ -76,6 +76,10 @@ class Target:
                      available (e.g. UIA InvokePattern).  ``False`` means
                      the targeter falls back to a coordinate click.
         feed:        Name of the feed that produced this target (informational).
+        match_type:  ``exact`` / ``prefix`` / ``contains`` for transparent
+                     target selection.
+        score:       Deterministic confidence attached to ``match_type``.
+        alternatives: Relevant non-selected candidates, without live controls.
     """
 
     name: str
@@ -84,6 +88,9 @@ class Target:
     center_norm: tuple[float, float]    # 0..1 normalized against the virtual desktop
     invokable: bool = False
     feed: str = ""
+    match_type: str = ""
+    score: float = 0.0
+    alternatives: tuple[dict[str, Any], ...] = ()
 
 
 # ---------------------------------------------------------------------------

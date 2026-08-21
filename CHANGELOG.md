@@ -7,6 +7,50 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] - 2026-08-21
+
+Safety-hardening release for ticket `T-20260821-611823643`.
+
+### Added
+
+- `list_windows` now returns compatibility-preserving `hwnd`/`pid` fields plus
+  stable `window_id`, `process_id`, and a server-issued `window_token`.
+- MCP `capture` and `tree` return one-shot `observation_id` metadata;
+  screenshots also expose the same value as `screenshot_id`. A coordinate
+  action consumes exactly one observation and returns a fresh
+  `post_action_observation` with new/owned-window candidates.
+- Verified Unicode text delivery is segmented into bounded chunks and reports
+  `requested_chars`, `sent_chars`, `complete`, `partial`, `segments`, and the
+  exact target focus. Results and logs never echo the typed cleartext.
+- Signal overlays have bounded leases (`ttl_seconds` / `OC_SIGNAL_TTL`, default
+  120 seconds). `signal_status` reports `owner`, `session`, `mode`, `visible`,
+  and `expires_at`.
+
+### Changed
+
+- **Breaking MCP safety contract:** coordinate actions require a fresh
+  `observation_id` and a full descriptor or token previously issued by
+  `list_windows`. Observation-bound actions are accepted only one per tool
+  call. The old caller-supplied `coordinate_frame` is now only an equality
+  assertion against the observation-bound frame.
+- `type`, key actions, and `activate_window` require exact window binding.
+  Focus is re-read immediately before input; activation uses the bound HWND
+  instead of repeating a fuzzy title search.
+- `click_name` and `invoke` resolve exact names first, reject ambiguous or weak
+  matches by default, accept `exact=true`, and report match type, score, and
+  alternatives. In particular, `Erstellen` cannot select `Wiederherstellen`.
+- State-changing MCP calls show auto-signals before actuation and hide signals
+  on normal turn end, abort, and error unless `keep_signal=true` explicitly
+  extends the lease. Server shutdown also performs idempotent cleanup.
+
+### Fixed
+
+- Prevented text from reaching a different foreground window after a focus
+  change and made partial writes observable.
+- Prevented stale coordinates, reused observations, changed capture/tree
+  states, and newly covered/modal windows from being silently trusted.
+- Prevented orphaned border/cursor overlays after action completion or abort.
+
 ## [0.7.0] - 2026-07-31
 
 Alpha release `v0.7.0-alpha`: screen-usage signaling (overlay, config, abort hotkey), chat, push-to-talk, MCP signal/chat/talk tools, plus the 2026-07-28 companion/handoff core.

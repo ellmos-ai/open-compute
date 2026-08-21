@@ -59,6 +59,7 @@ import sys
 import time
 from typing import Any
 
+from ..interaction import InteractionContractError, select_target
 from .base import FeedObservation, Target
 
 # ---------------------------------------------------------------------------
@@ -492,6 +493,7 @@ def _get_root(window: str | None):
     # Normalize query once; compare against normalized candidate titles.
     q_norm = _normalize_window_name(window).lower()
 
+    matches: list[tuple[str, Any]] = []
     try:
         root = uia.GetRootControl()
         child = root.GetFirstChildControl()
@@ -499,7 +501,7 @@ def _get_root(window: str | None):
             try:
                 title_norm = _normalize_window_name(child.Name or "").lower()
                 if q_norm in title_norm:
-                    return child
+                    matches.append((title_norm, child))
             except Exception:  # noqa: BLE001
                 pass
             try:
@@ -507,7 +509,20 @@ def _get_root(window: str | None):
             except Exception:  # noqa: BLE001
                 break
     except Exception:  # noqa: BLE001
-        pass
+        matches = []
+
+    exact = [child for title, child in matches if title == q_norm]
+    if len(exact) == 1:
+        return exact[0]
+    strongest = exact or [child for _title, child in matches]
+    if len(strongest) == 1:
+        return strongest[0]
+    if len(strongest) > 1:
+        titles = [str(getattr(child, "Name", "")) for child in strongest]
+        raise RuntimeError(
+            f"AMBIGUOUS_TARGET: top-level window {window!r} matches "
+            f"{len(strongest)} candidates: {titles}"
+        )
 
     # No window found by name — raise instead of silently falling back to
     # the desktop root (which would scope searches to the Taskbar / entire
@@ -599,7 +614,6 @@ class UiaWindowsFeed:
         # Attempt to read document text via TextPattern
         doc_text: str | None = None
         try:
-            uia = _get_uia()
             tp = root.GetTextPattern()
             if tp:
                 doc_text = tp.DocumentRange.GetText(-1)
@@ -672,6 +686,55 @@ class UiaWindowsFeed:
             feed=self.name,
         )
 
+    def resolve_detailed(
+        self,
+        query: str,
+        window: str | None = None,
+        *,
+        exact: bool = False,
+        min_score: float = 0.8,
+    ) -> Target:
+        """Resolve one exact-first target or raise a structured contract error."""
+
+        if sys.platform != "win32":
+            raise RuntimeError("UiaWindowsFeed is Windows-only")
+        if not self.available():
+            raise RuntimeError("UIA feed is unavailable")
+        _set_dpi_awareness()
+        obs = self.observe(window=window)
+        match = select_target(
+            query,
+            obs.elements,
+            exact=exact,
+            min_score=min_score,
+        )
+        best = match.target
+        virt_left, virt_top, virt_width, virt_height = _get_virtual_desktop()
+        rx, ry, rw, rh = best["rect_px"]
+
+        class _Rect:
+            def __init__(self, x, y, w, h):
+                self.x, self.y, self.width, self.height = x, y, w, h
+
+        center_norm = _rect_to_center_norm(
+            _Rect(rx, ry, rw, rh),
+            virt_left,
+            virt_top,
+            virt_width,
+            virt_height,
+        )
+        return Target(
+            name=best["name"],
+            role=best["role"],
+            rect_px=(rx, ry, rw, rh),
+            center_norm=center_norm,
+            invokable=self._check_invokable(best["name"], best["role"], window),
+            feed=self.name,
+            match_type=match.match_type,
+            score=match.score,
+            alternatives=match.alternatives,
+        )
+
     def invoke(self, query: str, window: str | None = None) -> bool:
         """Click-free invocation of the element matching *query*.
 
@@ -703,6 +766,47 @@ class UiaWindowsFeed:
             return False
 
         return _invoke_control(ctrl)
+
+    def invoke_target(self, target: Target, window: str | None = None) -> bool:
+        """Invoke the already resolved exact name/role, rejecting duplicates."""
+
+        if sys.platform != "win32" or not self.available():
+            return False
+        _set_dpi_awareness()
+        root = _get_root(window)
+        if root is None:
+            return False
+        uia = _get_uia()
+        matches = []
+        try:
+            for ctrl, _depth in uia.WalkControl(root, maxDepth=self._max_depth):
+                try:
+                    if (
+                        (ctrl.Name or "").casefold() == target.name.casefold()
+                        and (ctrl.ControlTypeName or "").casefold()
+                        == target.role.casefold()
+                    ):
+                        matches.append(ctrl)
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            return False
+        if not matches:
+            raise InteractionContractError(
+                "target_changed",
+                "the resolved UI element no longer exists; observe again",
+                target={"name": target.name, "role": target.role},
+            )
+        if len(matches) > 1:
+            raise InteractionContractError(
+                "ambiguous_target",
+                "the resolved UI element became ambiguous before invocation",
+                candidates=[
+                    {"name": target.name, "role": target.role}
+                    for _control in matches
+                ],
+            )
+        return _invoke_control(matches[0])
 
     # ------------------------------------------------------------------
     # Internal helpers

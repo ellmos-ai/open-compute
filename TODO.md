@@ -110,9 +110,9 @@
   (`open_compute/drivers/local.py:417`). Vor dem Umstellen prüfen, ab welcher mss-Version
   `mss.MSS` existiert, und `mss>=…` in `pyproject.toml` entsprechend anheben — sonst bricht
   die untere Grenze `mss>=9.0`.
-- [ ] **`SKILL.md` trägt Version 0.5.0, das Paket steht auf 0.6.0.** Bewusst nicht angefasst,
-  weil unklar ist, ob die Skill-Version eigenständig zählt. Einmal festlegen: entweder mit der
-  Paketversion mitziehen oder als eigenständige Skill-Version kennzeichnen.
+- [x] **Skill-/Paketversion synchronisiert.** Seit v0.8.0 zieht `SKILL.md` mit
+  `pyproject.toml` und `open_compute.__version__` mit; die frühere Abweichung ist
+  damit ausdrücklich beendet.
 
 ## User-Auftrag 2026-07-31 — Bildschirm-Signalisierung (Compute-Mode-Anzeige)
 
@@ -465,6 +465,10 @@ Neue Recorder-/Ringpuffer-/Pause-Hotkey-/Replay-Arbeit gehört in das `clirec`-R
   nur ein per `OC_SIGNAL_AUTO` gezeigtes Overlay verborgen — ein manuelles `signal_show`
   bleibt unangetastet. Dokumentiert in README.md/README_de.md, `signal_status` meldet
   `auto_shown`/`idle_hide_armed`. Wirksam erst nach Neustart des MCP-Serverprozesses.
+  Erweitert 2026-08-21 (v0.8): harte Signal-Lease/TTL mit Owner, Session und
+  Ablaufzeit; Aktions-Turn-Ende, Fehler, Abbruch und Serverende räumen über den
+  idempotenten `signal_hide`-Pfad auf. `keep_signal=true` ist der ausdrückliche
+  Opt-in für eine sichtbare Lease über mehrere Calls.
 
 - [ ] Tighten-only-Sicherheitsdeckel aus dem MCP-Adapter in den Kern verlagern.
   Kontext (2026-08-13, Launcher-Verifikation, Befund 2 in

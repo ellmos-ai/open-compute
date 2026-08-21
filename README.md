@@ -299,53 +299,54 @@ so a prompt-injected agent cannot escape a `read_only`/`confirm` server via
 `mode="allow_all"`. Because stdio MCP has no server→client confirm callback,
 `confirm`/`read_only` return a `needs_confirmation`/`deny` result **without acting**.
 
-**Fail-closed coordinate clicks.** Prefer the semantic path: use `invoke` when
-UIA exposes a click-free pattern, otherwise use `click_name`, which resolves the
-element by name and automatically binds its coordinate fallback to the resolved
-top-level window. Raw coordinate clicks through `do` are the last resort. They
-require both `expected_window` (`hwnd`, `pid`, exact `title`, copied from
-`list_windows`) and `coordinate_frame` (`left`, `top`, `width`, `height`). The
-server rebases window-local coordinates into the current virtual desktop, calls
-Win32 `WindowFromPoint` immediately before dispatch, promotes child/overlay
-handles to `GA_ROOT`, and compares the full identity. Missing data, an
-unresolvable point, or a mismatch returns
-`{"result":"preclick_verification_failed", ...}` and sends no click.
+**Fail-closed interaction contract (MCP 0.8).** Prefer `invoke`, then
+`click_name`; both resolve exact element names first and reject ambiguous or weak
+matches. Their results include `match_type`, `score`, and alternatives, and
+`exact=true` is available for destructive/external operations. Both require an
+issued window descriptor/token. Raw coordinates
+through `do` are the last resort. Call `list_windows` and retain its full window
+descriptor or `window_token`, then call `capture`/`tree` and retain the returned
+`observation_id` (`capture` also calls it `screenshot_id`). Pass both as
+`expected_window` and `observation_id` to exactly one coordinate action. The ID
+is one-shot: reuse, a changed screenshot/tree, frame drift, focus drift, or a
+covered target fails closed. A successful action returns a fresh
+`post_action_observation` and reports newly opened/owned-window candidates.
 
-For a full-screen MCP capture, take `coordinate_frame` from
-`get_screen_size().virtual_desktop`. An MCP `capture(window=...)` returns only an
-image block, so do **not** reuse its 0..1 coordinates with raw `do`; use
-`click_name`/`invoke`, or obtain the exact window rect and identity from
-`list_windows`. The CLI `oc capture --window ...` prints `window_identity` and
-`coordinate_frame` alongside the image path, and `oc do` accepts them through
-`--expected-window` / `--coordinate-frame` (or per-action `meta`). This is an
-intentional safety break for old unbound coordinate clicks; non-click actions
-retain their prior API.
+`type`, key actions, and `activate_window` also require an issued window
+descriptor/token. Focus is checked immediately before each text segment or key
+dispatch; text results report requested/sent character counts and
+complete/partial state without echoing cleartext. The optional
+`coordinate_frame` argument is retained only as an assertion against the frame
+bound to the observation. The CLI keeps its existing explicit
+`--expected-window` / `--coordinate-frame` pre-click contract.
 
 For interactive use, run the server with `OC_SAFETY_MODE=allow_all` **in an isolated
 VM** and let the client's tool-permission dialog be the human-in-the-loop. Optional
 `OC_DENY` (comma-separated action types) is a hard deny list.
 
 **Auto-signal (`OC_SIGNAL_AUTO`).** Set it to a `SessionMode` name (e.g.
-`control`) to auto-show the screen-usage overlay the first time a
-state-changing tool (`do` / `click_name` / `invoke` / `rec_replay`) actually
-passes the safety gate — no separate `signal_show` call to remember before
-the model starts steering. It never overrides an already-visible signal
+`control`) to auto-show the screen-usage overlay before an approved
+state-changing tool (`do` / `click_name` / `invoke` / `rec_replay`) actuates. It never overrides an already-visible signal
 (manual or auto, any mode) and never fires from a gate-blocked call or a
 read-only tool. Unset or `off` (the default) disables it; an invalid mode
 name surfaces as `auto_signal_error` in the tool result instead of failing
 the call. See `signal_show`/`signal_hide`/`signal_status` below for the
 manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
 
-**Auto-hide (`OC_SIGNAL_IDLE_HIDE`).** An auto-shown overlay takes itself down
-once the steering stops: every state-changing tool call re-arms an idle
-countdown, and when it expires with no further action the overlay is hidden.
+**Signal cleanup and leases.** Every overlay has a TTL (`ttl_seconds` or
+`OC_SIGNAL_TTL`, default 120 seconds). `do`, `click_name`, `invoke`, and `rec_replay` hide it
+at normal turn end and on errors/abort by default; use `keep_signal=true` only
+when a visible lease must span calls. Server shutdown also clears it.
+`signal_status` reports owner, session, mode, visibility, and expiration.
+For explicitly kept auto-signals, `OC_SIGNAL_IDLE_HIDE` supplies an additional
+idle countdown: every state-changing tool call re-arms it.
 The value is **seconds, default 60**; `0`, an empty value, or `off` disables the
-auto-hide and keeps the overlay up until `signal_hide` (the pre-0.7 behavior).
-Only an overlay that `OC_SIGNAL_AUTO` put up is ever swept away — one you asked
-for with `signal_show` stays until you hide it, and a manual `signal_show` over
-an auto-shown overlay takes ownership and cancels the countdown. `signal_status`
-reports both (`auto_shown`, `idle_hide_armed`); an unusable value surfaces as
-`signal_idle_hide_error` in the tool result instead of failing the action.
+idle countdown, while the hard TTL still applies.
+Only an overlay that `OC_SIGNAL_AUTO` put up is subject to the idle countdown;
+a manual `signal_show` over an auto-shown overlay takes ownership and cancels
+that countdown. Either kind is still removed at the next action turn end unless
+`keep_signal=true`. An unusable idle value surfaces as
+`signal_idle_hide_error` instead of failing the action.
 
 **Troubleshooting: `do`/`click_name` only ever return `needs_confirmation` and never
 act.** That is the `confirm` ceiling working as designed under stdio MCP — there is
@@ -588,7 +589,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **564 passed, 1 skipped** (2026-08-16).
+installs pytest. Current full-suite state: **640 passed, 1 skipped** (2026-08-21).
 
 ---
 

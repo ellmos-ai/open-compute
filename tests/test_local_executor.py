@@ -132,7 +132,7 @@ class TestLocalExecutorDispatch:
     def test_mouse_move_sends_move_event(self):
         from open_compute.actions import Action, ActionType
 
-        with self._patch_send() as mock_si, self._patch_screenshot():
+        with self._patch_send(), self._patch_screenshot():
             self.executor.execute(Action(ActionType.MOUSE_MOVE, x=0.5, y=0.5))
         # _move calls _send_input with one INPUT
         assert len(self._sent) == 1
@@ -270,7 +270,7 @@ class TestImportWithoutMss:
         # mss may or may not be installed; we verify local.py is not pulled in
         # by the top-level __init__.py
         import open_compute  # should succeed regardless of mss presence
-        assert open_compute.__version__ == "0.7.0"
+        assert open_compute.__version__ == "0.8.0"
 
 
 # ---------------------------------------------------------------------------

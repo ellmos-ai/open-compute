@@ -44,9 +44,10 @@ import ctypes.wintypes
 import io
 import sys
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Mapping
 
 from ..actions import Action, ActionType
+from ..interaction import describe_window, send_text_verified
 from ..perception import Observation
 
 # ---------------------------------------------------------------------------
@@ -327,9 +328,10 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
         visible_only: Skip windows that are not visible or have an empty title.
 
     Returns:
-        List of dicts with ``title``, ``hwnd``, ``rect`` (left/top/width/height
-        in physical pixels), ``center`` (normalized x/y in 0..1 of the virtual
-        desktop), ``minimized`` and ``foreground``. Empty list off Windows.
+        List of dicts with compatibility ``hwnd``/``pid`` fields, stable
+        ``window_id``/``process_id`` aliases, ``window_token``, exact title,
+        owner, physical rect, normalized center, minimized and foreground state.
+        Empty list off Windows.
     """
     if sys.platform != "win32":
         return []
@@ -342,7 +344,13 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
 
     # Keep the callback wrapper alive in a local until EnumWindows returns
     # (a locally-defined WINFUNCTYPE can otherwise be collected mid-call).
-    _EnumCB = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+    user32.GetWindow.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.UINT]
+    user32.GetWindow.restype = ctypes.wintypes.HWND
+    _EnumCB = ctypes.WINFUNCTYPE(
+        ctypes.wintypes.BOOL,
+        ctypes.wintypes.HWND,
+        ctypes.wintypes.LPARAM,
+    )
 
     def _enum_impl(hwnd: int, _lp: int) -> bool:
         if visible_only and not user32.IsWindowVisible(hwnd):
@@ -363,8 +371,12 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
 
         cx = rect.left + width / 2
         cy = rect.top + height / 2
+        try:
+            owner_hwnd = int(user32.GetWindow(hwnd, 4) or 0)  # GW_OWNER
+        except (AttributeError, TypeError, ValueError):
+            owner_hwnd = 0
         windows.append(
-            {
+            describe_window({
                 "title": buf.value,
                 "hwnd": int(hwnd),
                 "pid": int(process_id.value),
@@ -380,7 +392,8 @@ def list_windows(visible_only: bool = True) -> list[dict[str, Any]]:
                 },
                 "minimized": bool(user32.IsIconic(hwnd)),
                 "foreground": int(hwnd) == foreground_value,
-            }
+                "owner_window_id": owner_hwnd or None,
+            })
         )
         return True
 
@@ -500,6 +513,9 @@ class LocalExecutor:
     # we track it so release_all() can always restore a clean keyboard/mouse.
     _held_buttons: list[str] = field(default_factory=list, init=False, repr=False)
     _held_keys: list[int] = field(default_factory=list, init=False, repr=False)
+    last_text_transfer: dict[str, Any] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         _set_dpi_awareness()
@@ -553,7 +569,7 @@ class LocalExecutor:
         elif t is ActionType.LEFT_CLICK_DRAG:
             self._drag(action.x, action.y, action.end_x, action.end_y)
         elif t is ActionType.TYPE:
-            self._type(action.text or "")
+            self.last_text_transfer = self.type_text_verified(action.text or "")
         elif t is ActionType.KEY:
             self._key(action.text or "")
         elif t is ActionType.SCROLL:
@@ -717,6 +733,16 @@ class LocalExecutor:
             user32.ShowWindow(hwnd, 9)   # SW_RESTORE
             user32.SetForegroundWindow(hwnd)
 
+    def activate_window_identity(self, window: Mapping[str, Any]) -> None:
+        """Activate one already resolved HWND; never repeat fuzzy title matching."""
+
+        from ..window_control import Win32WindowAdapter
+
+        hwnd = int(window.get("window_id", window.get("hwnd", 0)))
+        if hwnd <= 0:
+            raise ValueError("window identity requires a positive window_id/hwnd")
+        Win32WindowAdapter().show(hwnd, "activate")
+
     # ------------------------------------------------------------------
     # Internal input helpers
     # ------------------------------------------------------------------
@@ -777,17 +803,73 @@ class LocalExecutor:
             _mouse_event(lu, edx, edy),
         )
 
-    def _type(self, text: str) -> None:
-        """Type a string via Unicode key events (KEYEVENTF_UNICODE)."""
+    def _send_unicode_chunk(self, text: str) -> int:
+        """Send one bounded Unicode chunk and return complete characters queued."""
         events: list[_INPUT] = []
         for ch in text:
             events.append(_unicode_event(ch))
             events.append(_unicode_event(ch, KEYEVENTF_KEYUP))
-        if events:
-            # Send in one batch for performance
-            n = len(events)
-            arr = (_INPUT * n)(*events)
-            ctypes.windll.user32.SendInput(n, arr, ctypes.sizeof(_INPUT))
+        if not events:
+            return 0
+        inserted = int(_send_input(*events))
+        return min(len(text), max(0, inserted // 2))
+
+    def type_text_verified(
+        self,
+        text: str,
+        *,
+        check_focus: Callable[[], Mapping[str, Any]] | None = None,
+        expected_window: Mapping[str, Any] | None = None,
+        chunk_chars: int = 100,
+    ) -> dict[str, Any]:
+        """Segment text, optionally rechecking exact focus before each chunk.
+
+        The returned postcondition contains only lengths/status and window
+        identity metadata.  The cleartext is never copied into logs/results.
+        """
+
+        if check_focus is None:
+            sent = 0
+            segments = 0
+            size = max(1, min(int(chunk_chars), 1_000))
+            for start in range(0, len(text), size):
+                chunk = text[start : start + size]
+                accepted = self._send_unicode_chunk(chunk)
+                sent += accepted
+                segments += 1
+                if accepted != len(chunk):
+                    return {
+                        "requested_chars": len(text),
+                        "sent_chars": sent,
+                        "complete": False,
+                        "partial": sent > 0,
+                        "status": "partial" if sent else "rejected",
+                        "segments": segments,
+                        "target_focus": None,
+                        "code": "short_write",
+                        "reason": "input backend accepted fewer characters than requested",
+                    }
+            return {
+                "requested_chars": len(text),
+                "sent_chars": sent,
+                "complete": True,
+                "partial": False,
+                "status": "complete",
+                "segments": segments,
+                "target_focus": None,
+            }
+
+        return send_text_verified(
+            text,
+            send_chunk=self._send_unicode_chunk,
+            check_focus=check_focus,
+            expected_window=expected_window,
+            chunk_chars=chunk_chars,
+        )
+
+    def _type(self, text: str) -> None:
+        """Compatibility wrapper for older direct callers."""
+        self.last_text_transfer = self.type_text_verified(text)
 
     def _vks_for(self, combo: str) -> list[int]:
         """Resolve ``ctrl+s`` / ``Return`` / ``a`` to a list of virtual key codes."""

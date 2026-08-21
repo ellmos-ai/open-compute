@@ -29,6 +29,22 @@ statt das erste Fenster zu wählen. `adaptive_capture.py` ist beobachtend,
 hart begrenzt und dedupliziert identische Frames; Vollbild ist nur nach
 explizitem Opt-in möglich.
 
+### MCP-Interaktionskern (v0.8, 2026-08-21)
+
+`interaction.py` ist die inhaltsfreie Vertragsgrenze zwischen Wahrnehmung und
+lokalem Input. `list_windows` erzeugt stabile Deskriptoren und Prozess-lokale
+Tokens. `ObservationRegistry` bindet Capture-/UIA-Zustände per Hash an genau
+eine Koordinatenaktion; jede Aktion invalidiert ältere Zustände und erzeugt eine
+neue Post-Observation. Fenster-, Fokus-, Frame- und Modalwechsel schließen
+damit vor der Eingabe fehl.
+
+Die UIA-Selektion rankt deterministisch `exact > prefix > contains` und lehnt
+Gleichstand oder einen Score unterhalb der Schwelle ab. Texteingabe wird in
+begrenzten Segmenten gesendet, vor jedem Segment auf den exakten Vordergrund
+geprüft und nur über Längen-/Statusmetadaten quittiert. Signal-Overlays sind an
+Owner, Session und eine harte TTL gebunden; Turn-Ende, Fehler, Abbruch und
+Serverende führen über denselben idempotenten Cleanup-Pfad.
+
 ### Headless-Kooperationskern (2026-07-28)
 
 `cooperative.py` ergänzt den bestehenden modellorientierten `AgentLoop` um

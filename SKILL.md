@@ -1,7 +1,7 @@
 # open-compute Skill — Mode A: Session-Agent als Reasoner
 
 **Skill-ID:** `open-compute`
-**Version:** 0.6.0
+**Version:** 0.8.0
 **Modus:** A — OHNE API-Key, Session-Modell als Reasoner, manuelles Stepping
 **Voraussetzungen:** Extra `[local]` installiert (mss; siehe Installation unten — das Paket kommt aus dem Git-Repo, nicht von PyPI); Windows-Host; `oc` CLI aufrufbar via `python -m open_compute.cli`
 
@@ -185,9 +185,11 @@ CAPTURE → SEE → REASON → [BATCH-DO mit --label] → REPEAT
 3. **Capture-Rahmen nicht vermischen:** Die 0..1-Koordinaten aus
    `capture --window` sind fensterlokal. Die CLI-Antwort enthält deshalb
    `window_identity` und `coordinate_frame`; genau diese Werte an `oc do`
-   weitergeben. Beim MCP liefert `capture(window=...)` nur ein Bild — dort
-   `click_name`/`invoke` verwenden oder Identität und Rechteck über
-   `list_windows` holen.
+   weitergeben. Beim MCP liefert `capture` zusätzlich eine einmalige
+   `observation_id`/`screenshot_id`. Ein roher Koordinaten-Call braucht diese ID
+   und einen vollständigen Deskriptor oder `window_token` aus `list_windows`.
+   Genau eine Aktion darf die Observation verbrauchen; danach kommt automatisch
+   eine frische `post_action_observation` zurück.
 4. **Mismatch heißt Stopp:** fehlende/mehrdeutige Identität, ein nicht
    auflösbarer Punkt oder Mismatch niemals mit einem zweiten Schätzklick
    umgehen. Neu capturen bzw. UIA-Ziel neu auflösen.
@@ -195,6 +197,23 @@ CAPTURE → SEE → REASON → [BATCH-DO mit --label] → REPEAT
 Die Prüfung verhindert einen Klick in ein anderes Top-Level-Fenster. Sie kann
 keine Layoutänderung innerhalb desselben Fensters erkennen; deshalb bleibt
 `click_name`/`invoke` der Standard vor Koordinaten.
+
+### MCP-Interaktionsvertrag (v0.8)
+
+- `click_name` und `invoke` wählen exakte Namen zuerst. Mehrdeutige oder zu
+  schwache Treffer werden mit Kandidatenliste abgewiesen; `exact=true` erzwingt
+  Namensgleichheit. Beide verlangen einen Fensterdeskriptor oder Token aus
+  `list_windows`. Erfolgsresultate enthalten Match-Typ, Score und Alternativen.
+- `type`, Tastaturaktionen und `activate_window` brauchen einen ausgegebenen
+  Fensterdeskriptor oder Token. Vor jedem Segment wird der Vordergrund erneut
+  verglichen. Texteingaben melden `requested_chars`, `sent_chars`,
+  `complete`/`partial` und den Zielfokus, aber niemals den Klartext.
+- Capture-/Tree-Daten gelten nur bis zur nächsten Aktion oder Zustandsänderung.
+  Bei Fokus-, Layout-, Fenster- oder Modalwechsel neu beobachten; keine alte ID
+  erneut verwenden.
+- Signal-Overlays haben eine harte TTL. Aktions-Calls räumen sie bei Turn-Ende,
+  Fehler und Abbruch auf. Nur `keep_signal=true` hält eine Lease bewusst über
+  mehrere Calls; `signal_hide` bleibt idempotent.
 
 ### Stop-Bedingungen
 
@@ -306,7 +325,7 @@ oc watch-dir /tmp/downloads --once
 
 ---
 
-## Umgebungsvariablen (v0.5)
+## Umgebungsvariablen (v0.8)
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
@@ -314,6 +333,9 @@ oc watch-dir /tmp/downloads --once
 | `OC_SESSION_KEEP` | `20` | Anzahl der zu behaltenden Session-Dateien |
 | `OC_SAFETY_MODE` | `confirm` | Safety-Modus für `oc do` |
 | `OC_ALWAYS_FOREGROUND` | `""` (falsy) | Wenn `1`: immer `activate_window` vor Aktion |
+| `OC_SIGNAL_AUTO` | `off` | Session-Modus für ein Signal vor freigegebener MCP-Aktion |
+| `OC_SIGNAL_TTL` | `120` | Harte maximale Sichtbarkeit eines Signal-Overlays in Sekunden |
+| `OC_SIGNAL_IDLE_HIDE` | `60` | Zusätzlicher Idle-Countdown für ausdrücklich beibehaltene Auto-Signale |
 
 ---
 

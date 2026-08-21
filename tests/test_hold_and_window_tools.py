@@ -351,10 +351,14 @@ def test_unknown_window_is_an_error(monkeypatch, wgc_fallback):
 def test_list_windows_tool_returns_driver_output(monkeypatch):
     from open_compute.drivers import local
 
-    fake = [{"title": "Blender", "hwnd": 7, "foreground": True}]
+    fake = [{"title": "Blender", "hwnd": 7, "pid": 77, "foreground": True}]
     monkeypatch.setattr(local, "list_windows", lambda visible_only=True: fake)
 
-    assert S.list_windows() == fake
+    result = S.list_windows()
+    assert result[0]["window_id"] == 7
+    assert result[0]["process_id"] == 77
+    assert result[0]["title"] == "Blender"
+    assert result[0]["window_token"].startswith("win_1_")
 
 
 def test_get_screen_size_tool_returns_driver_output(monkeypatch):

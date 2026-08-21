@@ -8,14 +8,20 @@ SDK is an optional extra, so the module is import-or-skipped.
 import asyncio
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
 pytest.importorskip("mcp")  # server needs the optional open-compute[mcp] extra
 
-from mcp.server.fastmcp import Image  # noqa: E402
+from mcp.types import CallToolResult, ImageContent  # noqa: E402
 
 from open_compute import mcp_server as S  # noqa: E402
+from open_compute.interaction import (  # noqa: E402
+    InteractionContractError,
+    describe_window,
+    send_text_verified,
+)
 
 
 class _Obs:
@@ -39,9 +45,27 @@ class _FakeExec:
         self.executed.append(action)
         return _Obs()
 
+    def type_text_verified(self, text, *, check_focus, expected_window):
+        self.executed.append(("type", len(text)))
+        return send_text_verified(
+            text,
+            send_chunk=lambda chunk: len(chunk),
+            check_focus=check_focus,
+            expected_window=expected_window,
+        )
 
-_EXPECTED_WINDOW = {"hwnd": 42, "pid": 7001, "title": "Target - Editor"}
+    def activate_window_identity(self, window):
+        self.executed.append(("activate", window["window_id"]))
+
+
 _COORDINATE_FRAME = {"left": 0, "top": 0, "width": 1920, "height": 1080}
+_EXPECTED_WINDOW = {
+    "hwnd": 42,
+    "pid": 7001,
+    "title": "Target - Editor",
+    "foreground": True,
+    "rect": dict(_COORDINATE_FRAME),
+}
 _PRECLICK = {
     "expected_window": _EXPECTED_WINDOW,
     "coordinate_frame": _COORDINATE_FRAME,
@@ -62,9 +86,14 @@ def _fresh_state(monkeypatch):
     monkeypatch.delenv("OC_DENY", raising=False)
     S._STATE.set_executor(_FakeExec())
     S._STATE.set_preclick_probe(_FakeWindowProbe())
-    monkeypatch.setattr(
-        S, "expected_identity_for_window", lambda _window: dict(_EXPECTED_WINDOW)
-    )
+    def _fake_windows(*, issue_tokens=False):
+        window = describe_window(_EXPECTED_WINDOW)
+        if issue_tokens:
+            S._STATE.window_tokens[window["window_token"]] = window
+        return [window]
+    monkeypatch.setattr(S, "_current_windows", _fake_windows)
+    S.list_windows()  # issue the descriptor/token used by action tests
+    _PRECLICK["observation_id"] = S.capture().structuredContent["observation_id"]
     yield
 
 
@@ -86,14 +115,26 @@ def test_do_schema_exposes_params():
     do = next(t for t in tools if t.name == "do")
     props = (do.inputSchema or {}).get("properties", {})
     assert {
-        "action", "actions", "mode", "expected_window", "coordinate_frame"
+        "action", "actions", "mode", "expected_window", "coordinate_frame",
+        "observation_id", "keep_signal",
     } <= set(props)
 
 
 def test_capture_returns_image():
-    img = S.capture()
-    assert isinstance(img, Image)
-    assert img.data  # PNG bytes passed through
+    result = S.capture()
+    assert isinstance(result, CallToolResult)
+    meta = result.structuredContent
+    assert meta["observation_id"].startswith("obs_1_")
+    assert meta["screenshot_id"] == meta["observation_id"]
+    image = next(item for item in result.content if isinstance(item, ImageContent))
+    assert image.data  # base64 PNG bytes passed through
+
+
+def test_capture_serializes_through_fastmcp():
+    result = asyncio.run(S.mcp.call_tool("capture", {}))
+    assert isinstance(result, CallToolResult)
+    assert result.structuredContent["observation_id"].startswith("obs_1_")
+    assert any(isinstance(item, ImageContent) for item in result.content)
 
 
 def test_click_confirm_gates_by_default():
@@ -107,6 +148,36 @@ def test_click_executes_when_server_allows(monkeypatch):
     r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "executed"
     assert r["action"] == "left_click"
+    assert r["post_action_observation"]["observation_id"].startswith("obs_1_")
+
+
+def test_coordinate_observation_is_one_shot(monkeypatch):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    first = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK
+    )
+    second = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK
+    )
+
+    assert first["result"] == "executed"
+    assert second["result"] == "interaction_rejected"
+    assert second["code"] == "stale_observation"
+
+
+@pytest.mark.parametrize("length", [100, 500, 2_000])
+def test_type_reports_verified_character_counts(monkeypatch, length):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    result = S.do(
+        action={"type": "type", "text": "x" * length},
+        expected_window=_EXPECTED_WINDOW,
+    )
+
+    assert result["result"] == "executed"
+    assert result["requested_chars"] == length
+    assert result["sent_chars"] == length
+    assert result["complete"] is True
+    assert "text" not in result
 
 
 def test_click_without_expected_identity_is_fail_closed(monkeypatch):
@@ -115,7 +186,7 @@ def test_click_without_expected_identity_is_fail_closed(monkeypatch):
 
     r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3})
 
-    assert r["result"] == "preclick_verification_failed"
+    assert r["result"] == "interaction_rejected"
     assert r["code"] == "expected_window_required"
     assert executor.executed == []
 
@@ -136,8 +207,10 @@ def test_click_mismatch_never_reaches_backend(monkeypatch):
     assert executor.executed == []
 
 
-def test_non_risky_action_allowed_by_default():
-    r = S.do(action={"type": "mouse_move", "x": 0.5, "y": 0.5})
+def test_mouse_move_requires_observation_and_window():
+    r = S.do(
+        action={"type": "mouse_move", "x": 0.5, "y": 0.5}, **_PRECLICK
+    )
     assert r["result"] == "executed"
 
 
@@ -148,26 +221,28 @@ def test_read_only_denies_state_change():
 
 def test_action_alias_key_accepted():
     # 'action' as an alias for 'type' (Claude-style dicts)
-    r = S.do(action={"action": "mouse_move", "x": 0.4, "y": 0.4})
+    r = S.do(
+        action={"action": "mouse_move", "x": 0.4, "y": 0.4}, **_PRECLICK
+    )
     assert r["result"] == "executed"
 
 
-def test_batch_executes_in_order(monkeypatch):
+def test_coordinate_batch_is_rejected_before_execution(monkeypatch):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     r = S.do(
         actions=[{"type": "mouse_move", "x": 0.1, "y": 0.1},
                  {"type": "left_click", "x": 0.2, "y": 0.2}],
         **_PRECLICK,
     )
-    assert r["result"] == "batch"
-    assert r["count"] == 2
+    assert r["result"] == "interaction_rejected"
+    assert r["code"] == "one_action_per_observation_required"
 
 
 def test_batch_stops_at_gate():
     r = S.do(
-        actions=[{"type": "mouse_move", "x": 0.1, "y": 0.1},
-                 {"type": "left_click", "x": 0.2, "y": 0.2}],
-    )  # default confirm: mouse_move ok, left_click needs confirmation
+        actions=[{"type": "wait", "duration": 0.001},
+                 {"type": "launch_app", "app_name": "notepad"}],
+    )
     assert r["result"] == "needs_confirmation"
     assert r["action_index"] == 1
     assert r["executed_before"] == 1
@@ -260,10 +335,14 @@ class _FakePromptChannel:
 
 def _reset_signal_state():
     S._cancel_idle_hide()  # never let a live timer leak into the next test
+    S._cancel_signal_lease()
     S._STATE.signal_indicator = None
     S._STATE.signal_mode = ""
     S._STATE.pending_abort_message = None
     S._STATE.signal_auto_shown = False
+    S._STATE.signal_owner = ""
+    S._STATE.signal_session = ""
+    S._STATE.signal_expires_at = None
     # Not-Aus / grace state (Ticket T-20260818-895473048) — a leaked armed
     # grace_deadline would silently block the *next* test's do()/capture()
     # call for real wall-clock seconds, so this reset is not optional.
@@ -284,20 +363,92 @@ def _signal_state(monkeypatch):
 
 
 def test_signal_show_and_hide(_signal_state):
-    result = S.signal_show(mode="control", agent="kimi")
+    result = S.signal_show(
+        mode="control",
+        agent="kimi",
+        owner="codex",
+        session_id="test-session",
+    )
     assert result["visible"] is True
     assert result["mode"] == "control"
     assert result["color"] == [255, 40, 60]
     assert "kimi" in result["label"]
+    assert result["owner"] == "codex"
+    assert result["session"] == "test-session"
+    assert result["expires_at"]
 
     status = S.signal_status()
     assert status["visible"] is True
     assert status["mode"] == "control"
+    assert status["owner"] == "codex"
+    assert status["session"] == "test-session"
     assert status["pending_abort_message"] is None
 
     hidden = S.signal_hide()
     assert hidden == {"visible": False}
     assert S.signal_status()["visible"] is False
+
+
+def test_signal_lease_expires_and_cleans_up(_signal_state):
+    S.signal_show(mode="control", ttl_seconds=0.05)
+    timer = S._STATE.signal_lease_timer
+    assert timer is not None
+    timer.join(2.0)
+    assert not timer.is_alive()
+    status = S.signal_status()
+    assert status["visible"] is False
+    assert status["owner"] == ""
+    assert status["session"] == ""
+    assert status["expires_at"] is None
+
+
+def test_action_turn_end_hides_auto_signal(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    result = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK
+    )
+    assert result["result"] == "executed"
+    assert S._STATE.signal_indicator is None
+    assert S._STATE.signal_lease_timer is None
+
+
+def test_auto_signal_replaces_orphaned_invisible_overlay(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    stale = S.signal_show(mode="observe", ttl_seconds=30)
+    assert stale["visible"] is True
+    S._STATE.signal_indicator.renderer.visible = False
+
+    result = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3},
+        keep_signal=True,
+        **_PRECLICK,
+    )
+    assert result["result"] == "executed"
+    assert S.signal_status()["visible"] is True
+    assert S._STATE.signal_mode == "control"
+
+
+def test_action_error_hides_manual_signal(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    S.signal_show(mode="control")
+    result = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3},
+        expected_window=_EXPECTED_WINDOW,
+    )
+    assert result["code"] == "observation_required"
+    assert S._STATE.signal_indicator is None
+
+
+def test_invalid_action_schema_hides_manual_signal(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0")
+    S.signal_show(mode="control")
+    with pytest.raises(ValueError):
+        S.do(action={"type": "left_click"})
+    assert S._STATE.signal_indicator is None
 
 
 def test_signal_show_rejects_unknown_mode(_signal_state):
@@ -407,6 +558,16 @@ class _FakeUiaFeed:
     def resolve(self, query, window=None):
         return self.target
 
+    def observe(self, window=None):
+        return SimpleNamespace(elements=[{
+            "name": self.target.name,
+            "role": self.target.role,
+            "value": "",
+            "rect_px": self.target.rect_px,
+            "visible": True,
+            "depth": 1,
+        }])
+
     def invoke(self, query, window=None):
         self.invoked.append((query, window))
         return self.invoke_result
@@ -440,7 +601,11 @@ def test_auto_signal_off_value_disables(monkeypatch, _signal_state):
 def test_auto_signal_shows_after_executed_action(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    r = S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3},
+        keep_signal=True,
+        **_PRECLICK,
+    )
     assert r["result"] == "executed"
     assert "auto_signal_error" not in r
     assert S._STATE.signal_indicator is not None
@@ -466,7 +631,11 @@ def test_auto_signal_does_not_override_existing_manual_signal(monkeypatch, _sign
     S.signal_show(mode="observe", agent="human")
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    S.do(
+        action={"type": "left_click", "x": 0.5, "y": 0.3},
+        keep_signal=True,
+        **_PRECLICK,
+    )
     # a manually shown signal (any mode) is never overridden by auto-signal
     assert S._STATE.signal_mode == "observe"
 
@@ -485,10 +654,13 @@ def test_auto_signal_invalid_mode_reports_error_without_crashing(monkeypatch, _s
 def test_auto_signal_fires_once_for_a_batch(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    r = S.do(actions=[
-        {"type": "mouse_move", "x": 0.1, "y": 0.1},
-        {"type": "left_click", "x": 0.2, "y": 0.2},
-    ], **_PRECLICK)
+    r = S.do(
+        actions=[
+            {"type": "wait", "duration": 0.001},
+            {"type": "wait", "duration": 0.001},
+        ],
+        keep_signal=True,
+    )
     assert r["result"] == "batch"
     assert S._STATE.signal_mode == "control"
     # only one overlay call — the second gate pass sees signal already visible
@@ -499,16 +671,82 @@ def test_auto_signal_click_name(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
     monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
-    r = S.click_name("Einfuegen")
+    r = S.click_name("Einfuegen", window=_EXPECTED_WINDOW, keep_signal=True)
     assert r["result"] == "executed"
+    assert r["match_type"] == "exact"
+    assert r["score"] == 1.0
+    assert r["alternatives"] == []
     assert S._STATE.signal_mode == "control"
+
+
+def test_click_name_requires_previously_issued_window(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    result = S.click_name("Einfuegen")
+    assert result["code"] == "expected_window_required"
+    assert S._STATE.executor().executed == []
+
+
+def test_click_name_returns_structured_ambiguity(monkeypatch, _signal_state):
+    class _AmbiguousFeed:
+        def resolve_detailed(self, *_args, **_kwargs):
+            raise InteractionContractError(
+                "ambiguous_target",
+                "multiple strongest matches",
+                candidates=[{"name": "Save"}, {"name": "Save"}],
+            )
+
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _AmbiguousFeed())
+    result = S.click_name("Save", window=_EXPECTED_WINDOW)
+    assert result["status"] == "AMBIGUOUS_TARGET"
+    assert len(result["candidates"]) == 2
+
+
+def test_click_name_rejects_element_that_moves_before_dispatch(
+    monkeypatch, _signal_state
+):
+    class _MovingFeed:
+        calls = 0
+
+        def resolve_detailed(self, *_args, **_kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                name="Erstellen",
+                role="Button",
+                rect_px=(10 + self.calls, 10, 40, 20),
+                center_norm=(0.5, 0.3),
+                match_type="exact",
+                score=1.0,
+                alternatives=(),
+            )
+
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _MovingFeed())
+    result = S.click_name("Erstellen", window=_EXPECTED_WINDOW)
+    assert result["code"] == "target_changed"
+    assert S._STATE.executor().executed == []
+
+
+def test_tree_observation_can_drive_exactly_one_coordinate_action(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    tree_result = S.tree()
+    result = S.do(
+        action={"type": "mouse_move", "x": 0.5, "y": 0.3},
+        expected_window=_EXPECTED_WINDOW,
+        observation_id=tree_result["observation_id"],
+    )
+    assert result["result"] == "executed"
+    assert result["post_action_observation"]["kind"] == "screenshot"
 
 
 def test_auto_signal_invoke(monkeypatch, _signal_state):
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
     monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
-    r = S.invoke("Einfuegen")
+    r = S.invoke("Einfuegen", window=_EXPECTED_WINDOW, keep_signal=True)
     assert r["result"] == "invoked"
     assert S._STATE.signal_mode == "control"
 
@@ -525,7 +763,7 @@ def test_auto_signal_rec_replay(monkeypatch, _signal_state):
         oc_cli, "_run_replay",
         lambda path, params, executor, policy=None, abort_check=None: {"steps": 1},
     )
-    r = S.rec_replay("dummy.clirec")
+    r = S.rec_replay("dummy.clirec", keep_signal=True)
     assert r["result"] == "replayed"
     assert S._STATE.signal_mode == "control"
 
@@ -535,7 +773,14 @@ def test_auto_signal_rec_replay(monkeypatch, _signal_state):
 # ---------------------------------------------------------------------------
 
 def _click(**_kw):
-    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    current = {
+        "expected_window": _EXPECTED_WINDOW,
+        "coordinate_frame": _COORDINATE_FRAME,
+        "observation_id": S.capture().structuredContent["observation_id"],
+        "keep_signal": True,
+    }
+    current.update(_kw)
+    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **current)
 
 
 def _await_idle_hide(timer, timeout=5.0):
@@ -599,11 +844,11 @@ def test_idle_hide_rearms_via_click_name_and_invoke(
     _click()
     after_do = S._STATE.signal_idle_timer
 
-    S.click_name("Einfuegen")
+    S.click_name("Einfuegen", window=_EXPECTED_WINDOW, keep_signal=True)
     after_click = S._STATE.signal_idle_timer
     assert after_click is not None and after_click is not after_do
 
-    S.invoke("Einfuegen")
+    S.invoke("Einfuegen", window=_EXPECTED_WINDOW, keep_signal=True)
     after_invoke = S._STATE.signal_idle_timer
     assert after_invoke is not None and after_invoke is not after_click
 
@@ -760,9 +1005,9 @@ def test_kill_switch_flushes_a_running_batch_mid_flight(monkeypatch, _signal_sta
 
     S._STATE.set_executor(_AbortingExec())
     r = S.do(actions=[
-        {"type": "mouse_move", "x": 0.1, "y": 0.1},
-        {"type": "mouse_move", "x": 0.2, "y": 0.2},
-        {"type": "mouse_move", "x": 0.3, "y": 0.3},
+        {"type": "wait", "duration": 0.001},
+        {"type": "wait", "duration": 0.001},
+        {"type": "wait", "duration": 0.001},
     ])
     assert r["result"] == "aborted"
     assert r["executed_before"] == 1
@@ -976,25 +1221,25 @@ def test_capture_blocks_during_grace_then_succeeds(monkeypatch, _signal_state):
     S.signal_show(mode="control", agent="kimi")
 
     start = time.monotonic()
-    img = S.capture()
+    result = S.capture()
     elapsed = time.monotonic() - start
 
-    assert isinstance(img, Image)
+    assert any(isinstance(item, ImageContent) for item in result.content)
     assert elapsed >= 0.1
 
 
-def test_auto_signal_does_not_arm_a_grace_period(monkeypatch, _signal_state):
-    """Ticket-implied: auto-signal shows the overlay *after* an action already
-    ran (reactive) — arming a fresh grace wait there would instead stall
-    whatever the agent does next, the opposite of the intended effect."""
+def test_auto_signal_kept_across_calls_does_not_arm_a_grace_period(
+    monkeypatch, _signal_state
+):
+    """An auto signal may be explicitly leased across calls without a new wait."""
     monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
     monkeypatch.setenv("OC_SIGNAL_AUTO", "control")
-    S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    _click()
     assert S._STATE.signal_indicator is not None
     assert S._STATE.grace_deadline is None
 
     start = time.monotonic()
-    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    r = _click()
     elapsed = time.monotonic() - start
     assert r["result"] == "executed"
     assert elapsed < 1.0
