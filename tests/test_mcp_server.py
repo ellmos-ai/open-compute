@@ -92,6 +92,17 @@ def _fresh_state(monkeypatch):
             S._STATE.window_tokens[window["window_token"]] = window
         return [window]
     monkeypatch.setattr(S, "_current_windows", _fake_windows)
+    # Ticket T-20260825-540085216: the mandatory grace window (bypass fix)
+    # now arms itself by default on the very first gate-relevant call in a
+    # process, with no signal_show/OC_SIGNAL_AUTO needed — which is the
+    # whole point of that fix, but would otherwise add a real ~4s wait to
+    # every single test below (this fixture is autouse for the whole file).
+    # Start every test "as if" a grace window had just been satisfied, same
+    # as a real desktop session mid-use — the specific grace/cooldown tests
+    # further down explicitly reset this via ``_signal_state`` to get a
+    # genuinely fresh session instead.
+    S._STATE.grace_deadline = None
+    S._STATE.grace_last_satisfied_at = time.monotonic()
     S.list_windows()  # issue the descriptor/token used by action tests
     _PRECLICK["observation_id"] = S.capture().structuredContent["observation_id"]
     yield
@@ -349,6 +360,16 @@ def _reset_signal_state():
     S._STATE.abort_triggered = False
     S._STATE.abort_reason = None
     S._STATE.grace_deadline = None
+    # Ticket T-20260825-540085216 (mandatory grace + activity cooldown): the
+    # mandatory arm now fires by default with no signal_show/OC_SIGNAL_AUTO
+    # needed, which would otherwise add a real wait to every test in this
+    # section that is not itself about grace timing. Same "as if a window
+    # was just satisfied" default as `_fresh_state` above, for the same
+    # reason — tests that specifically exercise the grace/cooldown
+    # mechanics arm their own deadline via signal_show + OC_SIGNAL_GRACE_
+    # SECONDS regardless, and the one bypass-regression test below sets
+    # this back to None explicitly to get a genuinely fresh session.
+    S._STATE.grace_last_satisfied_at = time.monotonic()
     S._STATE.activity_classifier = None
     S._STATE.activity_adapter = None
 
@@ -377,8 +398,8 @@ def test_signal_show_and_hide(_signal_state):
     assert result["color"] == list(DEFAULT_PRE_ACTION_GRACE_COLOR)
     assert result["active_color"] == [255, 40, 60]
     assert result["grace_color"] == list(DEFAULT_PRE_ACTION_GRACE_COLOR)
-    assert result["countdown_seconds"] == 20
-    assert "Start in 20 Sekunden" in result["label"]
+    assert result["countdown_seconds"] == 4
+    assert "Start in 4 Sekunden" in result["label"]
     assert "kimi" in result["accessible_label"]
     assert result["owner"] == "codex"
     assert result["session"] == "test-session"
@@ -388,7 +409,7 @@ def test_signal_show_and_hide(_signal_state):
     assert status["visible"] is True
     assert status["mode"] == "control"
     assert status["phase"] == "countdown"
-    assert status["countdown_seconds"] in {19, 20}
+    assert status["countdown_seconds"] in {3, 4}
     assert "Start in" in status["label"]
     assert "kimi" in status["accessible_label"]
     assert status["owner"] == "codex"
@@ -1349,6 +1370,186 @@ def test_auto_signal_kept_across_calls_does_not_arm_a_grace_period(
     elapsed = time.monotonic() - start
     assert r["result"] == "executed"
     assert elapsed < 1.0
+
+
+# --- mandatory grace / bypass hardening (Ticket T-20260825-540085216) ----
+#
+# Bypass this closes: previously, `_await_grace_period` only ever blocked if
+# something had *already* armed a deadline — an explicit `signal_show` call,
+# or the opt-in auto-signal path (`OC_SIGNAL_AUTO`, off by default). A caller
+# that simply never called `signal_show` skipped the whole safety window
+# with no config change at all. The tests below start with a genuinely
+# fresh session (`grace_last_satisfied_at = None`, undoing `_signal_state`'s
+# "as if already satisfied" default further up) so the mandatory arm is
+# actually exercised, matching a real cold session.
+
+def test_do_without_signal_show_still_waits_by_default(monkeypatch, _signal_state):
+    """The core bypass fix: no signal_show, no OC_SIGNAL_AUTO — `do` must
+    still wait out the canonical grace on a fresh session."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.15")
+    S._STATE.grace_last_satisfied_at = None
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "executed"
+    assert elapsed >= 0.15
+    assert S._STATE.signal_indicator is None  # no OC_SIGNAL_AUTO -> no overlay,
+    # but the wait itself must not depend on one existing.
+
+
+def test_capture_without_signal_show_still_waits_by_default(monkeypatch, _signal_state):
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.15")
+    S._STATE.grace_last_satisfied_at = None
+
+    start = time.monotonic()
+    result = S.capture()
+    elapsed = time.monotonic() - start
+
+    assert any(isinstance(item, ImageContent) for item in result.content)
+    assert elapsed >= 0.15
+
+
+def test_click_name_without_signal_show_still_waits_by_default(monkeypatch, _signal_state):
+    """invoke/rec_replay share the identical `_await_grace_period` call site
+    as click_name and do — not re-tested individually here."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.15")
+    monkeypatch.setattr(S, "_load_uia_feed", lambda *a, **k: _FakeUiaFeed())
+    S._STATE.grace_last_satisfied_at = None
+
+    start = time.monotonic()
+    S.click_name("Einfuegen")
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.15
+
+
+def _fresh_click(**extra):
+    """A left_click with its own freshly-captured (never reused) observation_id
+    — coordinate actions consume their observation_id one-shot (see
+    test_coordinate_observation_is_one_shot), so repeated do() calls in the
+    cooldown tests below each need their own."""
+    call = dict(_PRECLICK)
+    call["observation_id"] = S.capture().structuredContent["observation_id"]
+    call.update(extra)
+    return S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **call)
+
+
+def test_grace_activity_cooldown_skips_a_second_wait_within_window(
+    monkeypatch, _signal_state
+):
+    """Ticket part 1b: repeated use inside the cooldown must not reopen the
+    window every single action."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.1")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_COOLDOWN_SECONDS", "60")
+    S._STATE.grace_last_satisfied_at = None
+
+    assert _fresh_click()["result"] == "executed"
+
+    start = time.monotonic()
+    second = _fresh_click()
+    elapsed = time.monotonic() - start
+
+    assert second["result"] == "executed"
+    assert elapsed < 0.1  # well under the grace duration -- cooldown skipped it
+
+
+def test_grace_activity_cooldown_rearms_once_it_expires(monkeypatch, _signal_state):
+    """The counterpart to the cooldown-skip test above: once the cooldown
+    itself elapses, the next action waits out the grace again."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.1")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_COOLDOWN_SECONDS", "0.05")
+    S._STATE.grace_last_satisfied_at = None
+
+    assert _fresh_click()["result"] == "executed"
+    time.sleep(0.1)  # let the 0.05s cooldown lapse
+
+    start = time.monotonic()
+    second = _fresh_click()
+    elapsed = time.monotonic() - start
+
+    assert second["result"] == "executed"
+    assert elapsed >= 0.1
+
+
+def test_grace_cooldown_zero_disables_the_cooldown(monkeypatch, _signal_state):
+    """0 must stay legal — every action waits out the full grace again, same
+    escape hatch shape as pre_action_grace_seconds=0."""
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "0.1")
+    monkeypatch.setenv("OC_SIGNAL_GRACE_COOLDOWN_SECONDS", "0")
+    S._STATE.grace_last_satisfied_at = None
+
+    _fresh_click()
+
+    start = time.monotonic()
+    second = _fresh_click()
+    elapsed = time.monotonic() - start
+
+    assert second["result"] == "executed"
+    assert elapsed >= 0.1  # cooldown off -> waited the full grace again
+
+
+def test_pre_action_grace_seconds_zero_is_the_only_real_off_switch(
+    monkeypatch, _signal_state, tmp_path
+):
+    """Ticket part 1c: the documented, config-only way to disable the
+    mandatory window entirely — via the canonical config file, not a
+    caller-suppliable argument."""
+    from open_compute.indicator import SignalConfig
+
+    cfg = SignalConfig(pre_action_grace_seconds=0)
+    path = tmp_path / "canonical-signal-config.json"
+    cfg.save(path)
+    monkeypatch.setenv("OC_SIGNAL_CONFIG", str(path))
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    S._STATE.grace_last_satisfied_at = None
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "executed"
+    assert elapsed < 1.0
+
+
+def test_signal_show_config_path_cannot_shorten_the_mandatory_grace_floor(
+    monkeypatch, _signal_state, tmp_path
+):
+    """The second bypass vector: `signal_show(config_path=...)` is a
+    caller/model-suppliable argument. Before this fix, pointing it at a
+    file with a near-zero grace would arm a deadline that expired almost
+    instantly, defeating even the explicit-call path. The mandatory-arm
+    floor must raise it back up to the CANONICAL config's value (loaded
+    only from OC_SIGNAL_CONFIG / the fixed default path, never from a
+    signal_show argument)."""
+    from open_compute.indicator import SignalConfig
+
+    canonical = SignalConfig(pre_action_grace_seconds=0.3)
+    canonical_path = tmp_path / "canonical-signal-config.json"
+    canonical.save(canonical_path)
+    monkeypatch.setenv("OC_SIGNAL_CONFIG", str(canonical_path))
+
+    malicious = SignalConfig(pre_action_grace_seconds=0.001)
+    malicious_path = tmp_path / "model-supplied-signal-config.json"
+    malicious.save(malicious_path)
+
+    monkeypatch.setenv("OC_SAFETY_MODE", "allow_all")
+    S._STATE.grace_last_satisfied_at = None
+
+    S.signal_show(mode="control", agent="kimi", config_path=str(malicious_path))
+
+    start = time.monotonic()
+    r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
+    elapsed = time.monotonic() - start
+
+    assert r["result"] == "executed"
+    assert elapsed >= 0.3  # raised to the canonical floor, not the 0.001s fake one
 
 
 # --- User-Aktivitaets-Wache (opt-in, OC_HUMAN_ACTIVITY_WATCH) -----------

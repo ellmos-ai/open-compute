@@ -192,6 +192,15 @@ oc capture-series --window "Word" --max-frames 8 --stable-frames 2
 See `SKILL.md` for the full loop protocol, action schema, coordinate guide, and
 environment variable reference.
 
+### Paired observe + clipboard workflow
+
+When the human wants to keep the mouse, keyboard, choices and final publishing
+actions, use the bundled
+[`open-compute-clipboard-companion`](./skills/open-compute-clipboard-companion/SKILL.md)
+skill. The agent keeps the blue `OBSERVE` signal visible, reads the current
+field, and places only the matching text or verified file path on the host
+clipboard. It never clicks, pastes, authenticates or submits in this workflow.
+
 ### Mode B — Autonomous loop with an API backend
 
 The backend is selected by name; `claude` and `openai` are equally supported
@@ -325,28 +334,63 @@ VM** and let the client's tool-permission dialog be the human-in-the-loop. Optio
 `OC_DENY` (comma-separated action types) is a hard deny list.
 
 **Auto-signal (`OC_SIGNAL_AUTO`).** Set it to a `SessionMode` name (e.g.
-`control`) to auto-show the screen-usage overlay before an approved
+`control`) to auto-show the screen-usage *overlay* before an approved
 state-changing tool (`do` / `click_name` / `invoke` / `rec_replay`) actuates. It never overrides an already-visible signal
 (manual or auto, any mode) and never fires from a gate-blocked call or a
-read-only tool. Unset or `off` (the default) disables it; an invalid mode
-name surfaces as `auto_signal_error` in the tool result instead of failing
-the call. See `signal_show`/`signal_hide`/`signal_status` below for the
-manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
+read-only tool. Unset or `off` (the default) disables the *visual* overlay;
+an invalid mode name surfaces as `auto_signal_error` in the tool result
+instead of failing the call. See `signal_show`/`signal_hide`/`signal_status`
+below for the manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
+`OC_SIGNAL_AUTO` only controls whether that overlay is *shown* — since
+Ticket T-20260825-540085216 it no longer controls whether the blocking
+grace wait below applies; that is unconditional now (see next paragraph).
 
-**Pre-action countdown.** An explicit `signal_show` arms the configured grace
-period before the first action or capture. The overlay uses a separate static
-grace color and shows `Start in N Sekunden`, counting down once per second; at
-zero it changes once to the selected mode color. The duration comes from
+**Pre-action grace window — mandatory, not opt-in.** Every gate-relevant
+call (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) waits out a
+configured grace period before its *first* action in a session, whether or
+not `signal_show` was ever called and independent of `OC_SIGNAL_AUTO`. This
+closes a real bypass (Ticket T-20260825-540085216): previously, a caller
+that simply never called `signal_show` skipped the whole window with no
+config change at all — an explicit `signal_show` call armed it, but nothing
+enforced that call happening first. The purpose of this window is user
+protection/transparency, not a model-hurdle it can voluntarily opt out of,
+so the wait itself no longer depends on the model's own cooperation.
+- **Default 4 seconds** (was 20s before this ticket — found too long).
+- **Activity cooldown, default 120 seconds** (`grace_cooldown_seconds`,
+  `OC_SIGNAL_GRACE_COOLDOWN_SECONDS`): once a grace window has been waited
+  out, further calls within the cooldown window skip a new one — a session
+  in continuous use is not interrupted on every single action. `0` disables
+  the cooldown (every call waits out the full grace again, the pre-Ticket
+  behaviour).
+- **The only way to turn the wait off entirely** is `pre_action_grace_seconds: 0`
+  in the *canonical* signal config — `OC_SIGNAL_CONFIG` if set, else
+  `<package>/_state/signal-config.json` if that file exists, else built-in
+  defaults — or the operator-only `OC_SIGNAL_GRACE_SECONDS=0` environment
+  override. Neither is something an
+  MCP tool call can set: `signal_show` does accept a `config_path` argument
+  for pointing at an *alternate* locally-authored file (a legitimate
+  operator feature), but a config loaded that way can never make the
+  effective wait shorter than the canonical config's own value — it can
+  only ever raise it, never lower it below the operator's own floor. If you
+  want a shorter/zero wait, edit the canonical config or set the env
+  override; a per-call argument cannot do it for you.
+
+An explicit `signal_show` still arms and *shows* the countdown the same way
+it always did — the overlay uses a separate static grace color and shows
+`Start in N Sekunden`, counting down once per second; at zero it changes
+once to the selected mode color. The duration comes from
 `pre_action_grace_seconds` (or the higher-precedence
-`OC_SIGNAL_GRACE_SECONDS`), never from a UI-only constant. `0` starts directly
-in the active phase. The JSON signal config also accepts
-`pre_action_grace_color: [r, g, b]` and the localizable
+`OC_SIGNAL_GRACE_SECONDS`), never from a UI-only constant. The JSON signal
+config also accepts `pre_action_grace_color: [r, g, b]` and the localizable
 `pre_action_grace_label` template, which must contain `{seconds}`.
 `signal_status` reports `phase`, `countdown_seconds`, current `color`, and an
 `accessible_label`. The native window title carries the same semantic text and
 emits an accessibility name-change event each second. There is no flashing,
 pulsing, or animated color transition, so disabled Windows animations do not
-remove information and color is never the only cue.
+remove information and color is never the only cue. Note that the *mandatory*
+wait above blocks even when no overlay happens to be visible (`OC_SIGNAL_AUTO`
+unset and `signal_show` never called) — set `OC_SIGNAL_AUTO` too if you also
+want the wait to be visible on screen, not just enforced.
 
 **Signal cleanup and leases.** Every overlay has a TTL (`ttl_seconds` or
 `OC_SIGNAL_TTL`, default 120 seconds). `do`, `click_name`, `invoke`, and `rec_replay` hide it

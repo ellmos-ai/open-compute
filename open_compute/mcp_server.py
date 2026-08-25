@@ -44,10 +44,17 @@ import threading
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import CallToolResult, TextContent
+
+if TYPE_CHECKING:  # pragma: no cover - static-analysis only, zero runtime cost
+    # Keeps this module's "import-light" property (indicator.py is otherwise
+    # only ever imported lazily, inside the functions that need it) while
+    # still giving type checkers/linters a real name to resolve for the
+    # string-quoted annotations below (Ticket T-20260825-540085216).
+    from .indicator import SignalConfig
 
 from . import mcp_i18n
 from .actions import Action, ActionType
@@ -116,6 +123,13 @@ class _ServerState:
         # the overlay (re-)appears; the first gate-relevant tool call after
         # that blocks until the deadline passes or the kill switch fires.
         self.grace_deadline: float | None = None
+        # Ticket T-20260825-540085216 (bypass hardening): monotonic timestamp
+        # of the last time a gate-relevant tool call passed a satisfied grace
+        # window (waited it out, or found it within the activity cooldown).
+        # ``None`` means "never satisfied in this process" -- the very next
+        # gate-relevant call must always arm+wait. Read/written only via
+        # ``_await_grace_period``/``_ensure_mandatory_grace_armed``.
+        self.grace_last_satisfied_at: float | None = None
         # Human-activity watch (opt-in, OC_HUMAN_ACTIVITY_WATCH): lazily
         # built so platforms without ctypes/win32 never touch it.
         self.activity_classifier: Any = None
@@ -404,29 +418,144 @@ def _start_grace_period(seconds: float) -> None:
         _STATE.grace_deadline = time.monotonic() + seconds if seconds > 0 else None
 
 
+def _canonical_signal_config() -> "SignalConfig":
+    """Load the operator's own signal config from the canonical path only.
+
+    Deliberately takes no ``config_path`` argument and never consults one a
+    caller supplied to ``signal_show`` — that per-call ``config_path`` is a
+    legitimate operator feature (point at an alternate, still locally
+    authored file) but must never become the thing that decides whether the
+    *mandatory* grace window applies. Only ``OC_SIGNAL_CONFIG`` (an operator
+    environment variable, not an MCP tool argument) or the fixed default
+    path can change what this loads. Falls back to built-in defaults
+    (4.0s grace, 120s cooldown) when no config file exists yet.
+    """
+    from .indicator import SignalConfig
+
+    path = _signal_config_path()
+    return SignalConfig.load(path) if path is not None else SignalConfig()
+
+
+def _resolve_grace_seconds(cfg: "SignalConfig") -> float:
+    """``pre_action_grace_seconds`` with the ``OC_SIGNAL_GRACE_SECONDS``
+    operator override — shared by ``signal_show`` and the mandatory path so
+    both always agree on the same number."""
+    seconds = cfg.pre_action_grace_seconds
+    env = os.environ.get("OC_SIGNAL_GRACE_SECONDS", "").strip()
+    if env:
+        try:
+            candidate = float(env)
+            if math.isfinite(candidate):
+                seconds = max(0.0, candidate)
+        except ValueError:
+            pass  # an unusable override must not break the overlay
+    return seconds
+
+
+def _resolve_grace_cooldown_seconds(cfg: "SignalConfig") -> float:
+    """``grace_cooldown_seconds`` with the ``OC_SIGNAL_GRACE_COOLDOWN_SECONDS``
+    operator override, mirroring ``_resolve_grace_seconds``."""
+    seconds = cfg.grace_cooldown_seconds
+    env = os.environ.get("OC_SIGNAL_GRACE_COOLDOWN_SECONDS", "").strip()
+    if env:
+        try:
+            candidate = float(env)
+            if math.isfinite(candidate):
+                seconds = max(0.0, candidate)
+        except ValueError:
+            pass
+    return seconds
+
+
+def _ensure_mandatory_grace_armed() -> None:
+    """Arm the pre-action grace window even when nobody ever called
+    ``signal_show`` and ``OC_SIGNAL_AUTO`` is unset (Ticket
+    T-20260825-540085216 — bypass hardening).
+
+    Root cause this closes: previously, ``_await_grace_period`` only ever
+    blocked if *something else* had already armed ``grace_deadline`` — a
+    manual ``signal_show`` call, or the opt-in auto-signal path (off by
+    default). A caller that simply never called ``signal_show`` skipped the
+    safety window entirely, with no config change required — the window's
+    stated purpose (user protection/transparency) must not be something a
+    model can silently opt itself out of. This function makes arming the
+    default; only the operator's own canonical config can suppress it, via
+    ``pre_action_grace_seconds: 0`` (the documented "0 = off" switch,
+    already 0 = off before this ticket) — never a model-suppliable
+    argument.
+
+    Second bypass this closes: ``signal_show`` accepts a caller-supplied
+    ``config_path`` (a legitimate operator feature — point at an alternate,
+    still locally authored file). Nothing stopped a model from writing its
+    own tiny config (``pre_action_grace_seconds: 0`` or a near-zero value)
+    and passing that path to ``signal_show`` to arm a deadline that expires
+    almost immediately. This function does not just check "is *something*
+    armed" — it enforces a FLOOR: the remaining wait is raised (never
+    shortened) to at least the canonical config's grace seconds if it falls
+    short. A legitimately *longer* explicit grace (operator's own
+    ``config_path`` to a stricter profile) is left untouched; only a
+    shorter-than-canonical one gets raised. An explicit-``signal_show``
+    grace of exactly 0 clears ``grace_deadline`` to ``None`` in
+    ``_start_grace_period`` already, so it is handled the same way as
+    "nothing armed yet".
+
+    A no-op (arms nothing / raises nothing) when: the already-armed
+    deadline already meets or exceeds the canonical floor, the grace was
+    satisfied within the configured activity cooldown (Ticket part 1b —
+    continuous use inside the cooldown window does not reopen the window),
+    or ``pre_action_grace_seconds <= 0`` in the canonical config (Ticket
+    part 1c — the operator's explicit "off").
+    """
+    # Config load (file I/O) stays outside the lock, matching
+    # _show_signal_indicator's existing style — only the state check-and-set
+    # below needs the lock.
+    cfg = _canonical_signal_config()
+    seconds = _resolve_grace_seconds(cfg)
+    if seconds <= 0:
+        return
+    cooldown = _resolve_grace_cooldown_seconds(cfg)
+    with _STATE.signal_lock:
+        now = time.monotonic()
+        floor_deadline = now + seconds
+        if _STATE.grace_deadline is not None and _STATE.grace_deadline >= floor_deadline:
+            return  # already armed for at least the canonical duration
+        last = _STATE.grace_last_satisfied_at
+        if last is not None and cooldown > 0 and now - last < cooldown:
+            return
+        _STATE.grace_deadline = floor_deadline
+
+
+def _mark_grace_satisfied() -> None:
+    with _STATE.signal_lock:
+        _STATE.grace_last_satisfied_at = time.monotonic()
+
+
 def _await_grace_period() -> dict | None:
     """Block out any armed pre-action grace window; the kill switch wins.
 
     Returns the abort result dict if the kill switch fires (before or
-    during the wait), else ``None`` once it is safe to proceed — grace
-    elapsed, or never armed (the overlay was never shown / OC config keeps
-    the classic zero-delay behaviour). Never blocks at all unless a
-    `signal_show` (manual or auto) actually armed a deadline, so every
-    existing caller that never touches signal_show is unaffected.
+    during the wait), else ``None`` once it is safe to proceed. Since
+    Ticket T-20260825-540085216, this ALWAYS attempts to arm a mandatory
+    grace window first (see ``_ensure_mandatory_grace_armed``) unless the
+    operator's own config or a recent activity cooldown says otherwise —
+    it no longer depends on a prior ``signal_show`` call, manual or auto.
     """
     blocked = _kill_switch_blocked()
     if blocked is not None:
         return blocked
+    _ensure_mandatory_grace_armed()
     while True:
         with _STATE.signal_lock:
             deadline = _STATE.grace_deadline
         if deadline is None:
+            _mark_grace_satisfied()
             return None
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             with _STATE.signal_lock:
                 if _STATE.grace_deadline == deadline:
                     _STATE.grace_deadline = None
+            _mark_grace_satisfied()
             return None
         time.sleep(min(_GRACE_POLL_SECONDS, remaining))
         blocked = _kill_switch_blocked()
@@ -1687,18 +1816,12 @@ def _show_signal_indicator(
         cfg = SignalConfig.load(path)
 
     hotkey = abort_hotkey or cfg.abort_hotkey
-    grace_seconds = cfg.pre_action_grace_seconds
     # OC_SIGNAL_GRACE_SECONDS is the highest-precedence override, same escape
     # hatch as OC_SIGNAL_IDLE_HIDE — operators (and tests) can dial the
-    # countdown to 0 without hand-writing a signal-config.json.
-    env_grace = os.environ.get("OC_SIGNAL_GRACE_SECONDS", "").strip()
-    if env_grace:
-        try:
-            candidate = float(env_grace)
-            if math.isfinite(candidate):
-                grace_seconds = max(0.0, candidate)
-        except ValueError:
-            pass  # an unusable override must not break the overlay
+    # countdown to 0 without hand-writing a signal-config.json. Shared with
+    # the mandatory-arm path (_ensure_mandatory_grace_armed) so both always
+    # agree on the same number.
+    grace_seconds = _resolve_grace_seconds(cfg)
     abort_reasons = tuple(cfg.abort_reasons)
     session_mode = SessionMode(mode)
     mode_cfg = cfg.for_mode(session_mode)

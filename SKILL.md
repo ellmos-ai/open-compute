@@ -390,4 +390,10 @@ pip install -e ".[local]"
 
 ## Verwandte Teilskills
 
+> **Mitgelieferter Skill `open-compute-clipboard-companion`**
+> (`skills/open-compute-clipboard-companion/SKILL.md`): gemeinsamer Live-Modus,
+> in dem der Mensch die Oberfläche bedient und der Agent unter blauem
+> `OBSERVE`-Signal ausschließlich feldbezogene Texte oder Dateipfade in die
+> Zwischenablage legt.
+
 > **Externer Skill `clirec`** (`https://github.com/ellmos-ai/clirec`): Aufnahmekanal — Maus/Tastatur-Demos als `.clirec` aufnehmen und adaptiv abspielen. In open-compute bleibt `oc rec` als lazy geladener Kompatibilitäts-Shim.

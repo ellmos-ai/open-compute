@@ -219,8 +219,20 @@ class SignalConfig:
     abort_hotkey: str | None = None
     # Karenzzeit vor der ersten zustandsaendernden Aktion / dem ersten Screenshot
     # einer Sitzung (Not-Aus-Feature, Ticket T-20260818-895473048). 0 = sofort,
-    # kein Countdown.
-    pre_action_grace_seconds: float = 20.0
+    # kein Countdown -- das ist die einzige Abschaltung, die zaehlt: sie steht
+    # in dieser Datei (User-Config), nicht in einem vom Modell waehlbaren
+    # Aufrufparameter (Ticket T-20260825-540085216, Bypass-Haertung).
+    # Default 4.0s (Bereich 3-5s laut Ticket, 4.0 als Mittelwert) -- vorher
+    # 20.0s, vom User als zu lang empfunden.
+    pre_action_grace_seconds: float = 4.0
+    # Aktivitaets-Cooldown (Ticket T-20260825-540085216, Teil 1b): innerhalb
+    # dieses Zeitraums nach einer bereits abgewarteten/erfuellten Karenzzeit
+    # erscheint KEIN neues Fenster erneut -- erst danach wieder. 0 = Cooldown
+    # aus (jede Aktion wartet wieder die volle Karenzzeit ab, altes Verhalten).
+    # Getrennt von pre_action_grace_seconds, damit beide unabhaengig
+    # einstellbar bleiben (kurze Karenz + langer Cooldown ist z.B. sinnvoll
+    # fuer haeufige, kurze Aktionsfolgen).
+    grace_cooldown_seconds: float = 120.0
     # Eigene, statische Farbe und textliche (also nicht nur farbliche)
     # Kennzeichnung der Vorlaufphase. Der Platzhalter ist verpflichtend, damit
     # eine Konfiguration den Countdown nicht versehentlich unsichtbar macht.
@@ -243,6 +255,11 @@ class SignalConfig:
             or self.pre_action_grace_seconds < 0
         ):
             raise ValueError("pre_action_grace_seconds must be finite and >= 0")
+        if (
+            not math.isfinite(self.grace_cooldown_seconds)
+            or self.grace_cooldown_seconds < 0
+        ):
+            raise ValueError("grace_cooldown_seconds must be finite and >= 0")
         self.pre_action_grace_color = _validate_color(self.pre_action_grace_color)
         self.pre_action_grace_label = _validate_grace_label_template(
             self.pre_action_grace_label
@@ -284,7 +301,8 @@ class SignalConfig:
             modes=modes,
             thickness=int(data.get("thickness", 6)),
             abort_hotkey=str(hotkey) if hotkey else None,
-            pre_action_grace_seconds=float(data.get("pre_action_grace_seconds", 20.0)),
+            pre_action_grace_seconds=float(data.get("pre_action_grace_seconds", 4.0)),
+            grace_cooldown_seconds=float(data.get("grace_cooldown_seconds", 120.0)),
             pre_action_grace_color=_validate_color(
                 data.get("pre_action_grace_color", DEFAULT_PRE_ACTION_GRACE_COLOR)
             ),
@@ -304,6 +322,7 @@ class SignalConfig:
             "thickness": self.thickness,
             "abort_hotkey": self.abort_hotkey,
             "pre_action_grace_seconds": self.pre_action_grace_seconds,
+            "grace_cooldown_seconds": self.grace_cooldown_seconds,
             "pre_action_grace_color": list(self.pre_action_grace_color),
             "pre_action_grace_label": self.pre_action_grace_label,
             "abort_reasons": list(self.abort_reasons),

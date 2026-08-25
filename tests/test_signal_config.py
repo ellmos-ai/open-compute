@@ -34,10 +34,14 @@ class SpyRenderer:
         return bool(self.calls) and not self.hidden
 
 
-def test_default_config_has_a_20s_grace_and_no_quick_reasons() -> None:
-    """Ticket T-20260818-895473048: 'signal.pre_action_grace_seconds, Default 20'."""
+def test_default_config_has_a_4s_grace_120s_cooldown_and_no_quick_reasons() -> None:
+    """Ticket T-20260825-540085216: default lowered from 20s to 4s (3-5s
+    range, user found 20s too long), plus the new 120s activity cooldown
+    (part 1b) that keeps a continuously-used session from reopening the
+    window on every single action."""
     cfg = SignalConfig()
-    assert cfg.pre_action_grace_seconds == 20.0
+    assert cfg.pre_action_grace_seconds == 4.0
+    assert cfg.grace_cooldown_seconds == 120.0
     assert cfg.pre_action_grace_color == DEFAULT_PRE_ACTION_GRACE_COLOR
     assert cfg.pre_action_grace_label == DEFAULT_PRE_ACTION_GRACE_LABEL
     assert cfg.pre_action_grace_color not in {
@@ -49,6 +53,7 @@ def test_default_config_has_a_20s_grace_and_no_quick_reasons() -> None:
 def test_from_dict_reads_grace_seconds_and_abort_reasons() -> None:
     cfg = SignalConfig.from_dict({
         "pre_action_grace_seconds": 5,
+        "grace_cooldown_seconds": 90,
         "pre_action_grace_color": [12, 34, 56],
         "pre_action_grace_label": "Beginn in {seconds} Sekunden",
         "abort_reasons": [
@@ -58,6 +63,7 @@ def test_from_dict_reads_grace_seconds_and_abort_reasons() -> None:
         ],
     })
     assert cfg.pre_action_grace_seconds == 5.0
+    assert cfg.grace_cooldown_seconds == 90.0
     assert cfg.pre_action_grace_color == (12, 34, 56)
     assert cfg.pre_action_grace_label == "Beginn in {seconds} Sekunden"
     assert cfg.abort_reasons == (
@@ -79,15 +85,31 @@ def test_config_rejects_negative_grace_seconds() -> None:
         SignalConfig(pre_action_grace_seconds=float("inf"))
 
 
+def test_config_rejects_negative_grace_cooldown_seconds() -> None:
+    """Ticket T-20260825-540085216: same finite/>=0 contract as grace itself."""
+    with pytest.raises(ValueError, match="cooldown"):
+        SignalConfig(grace_cooldown_seconds=-1)
+    with pytest.raises(ValueError, match="finite"):
+        SignalConfig(grace_cooldown_seconds=float("inf"))
+
+
 def test_grace_seconds_zero_disables_the_countdown() -> None:
     """0 must stay legal — the operator's escape hatch for 'no delay'."""
     cfg = SignalConfig(pre_action_grace_seconds=0)
     assert cfg.pre_action_grace_seconds == 0
 
 
+def test_grace_cooldown_seconds_zero_disables_the_cooldown() -> None:
+    """0 must stay legal too — every action waits out the full grace again,
+    the pre-Ticket-T-20260825-540085216 behaviour."""
+    cfg = SignalConfig(grace_cooldown_seconds=0)
+    assert cfg.grace_cooldown_seconds == 0
+
+
 def test_config_round_trip_save_load_grace_and_reasons(tmp_path) -> None:
     cfg = SignalConfig.from_dict({
         "pre_action_grace_seconds": 3.5,
+        "grace_cooldown_seconds": 45,
         "pre_action_grace_color": [70, 80, 90],
         "pre_action_grace_label": "Start in {seconds} Sekunden",
         "abort_reasons": ["Später erneut", "Falsches Fenster"],
@@ -97,6 +119,7 @@ def test_config_round_trip_save_load_grace_and_reasons(tmp_path) -> None:
 
     loaded = SignalConfig.load(path)
     assert loaded.pre_action_grace_seconds == 3.5
+    assert loaded.grace_cooldown_seconds == 45.0
     assert loaded.pre_action_grace_color == (70, 80, 90)
     assert loaded.pre_action_grace_label == "Start in {seconds} Sekunden"
     assert loaded.abort_reasons == ("Später erneut", "Falsches Fenster")

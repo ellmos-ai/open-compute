@@ -7,6 +7,47 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **Pre-action grace window is now mandatory, closing a real bypass**
+  (Ticket T-20260825-540085216). Previously, `_await_grace_period` only ever
+  blocked if something had already armed a deadline — an explicit
+  `signal_show` call, or the opt-in auto-signal path (`OC_SIGNAL_AUTO`, off
+  by default). A caller that simply never called `signal_show` skipped the
+  whole safety window with no config change required. Every gate-relevant
+  tool call (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) now
+  arms and waits out the configured grace window unconditionally on the
+  first action of a session, independent of `OC_SIGNAL_AUTO` and of whether
+  `signal_show` was ever called. Only the operator's own canonical signal
+  config (`pre_action_grace_seconds: 0`) or the `OC_SIGNAL_GRACE_SECONDS=0`
+  environment override can disable it — never a tool-call argument.
+- **`signal_show`'s `config_path` argument can no longer shorten the
+  mandatory wait.** It still accepts an alternate, locally-authored config
+  file (a legitimate operator feature), but the mandatory-arm path now
+  enforces a floor derived from the *canonical* config (`OC_SIGNAL_CONFIG` /
+  the fixed default path, never a caller-supplied path) — a `config_path`
+  pointing at a near-zero grace can only ever raise the effective wait back
+  up to the canonical value, never shorten it below it.
+
+### Added
+
+- `SignalConfig.grace_cooldown_seconds` (default 120s, env override
+  `OC_SIGNAL_GRACE_COOLDOWN_SECONDS`): once a grace window has been waited
+  out, further gate-relevant calls within the cooldown skip a new one — a
+  session in continuous use is not interrupted on every single action. `0`
+  disables the cooldown (every call waits out the full grace again).
+- Bundled `open-compute-clipboard-companion` skill for paired live sessions:
+  the human retains all GUI and publication actions while the agent observes
+  and prepares field-specific clipboard content.
+
+### Changed
+
+- `SignalConfig.pre_action_grace_seconds` default lowered from 20.0s to
+  4.0s (Ticket T-20260825-540085216, part 1a — the user found the initial
+  20s wait too long; 4s sits in the requested 3-5s range).
+
 ## [0.9.0] - 2026-08-21
 
 Visible pre-action countdown and accessibility release for ticket

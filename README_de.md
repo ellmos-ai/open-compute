@@ -200,6 +200,16 @@ oc capture-series --window "Word" --max-frames 8 --stable-frames 2
 Vollständiges Loop-Protokoll, Aktions-Schema, Koordinaten-Leitfaden und
 Umgebungsvariablen: `SKILL.md`.
 
+### Gemeinsames Beobachten mit Zwischenablage
+
+Wenn der Mensch Maus, Tastatur, Auswahl und den letzten Veröffentlichungsschritt
+behalten möchte, nutze den mitgelieferten Skill
+[`open-compute-clipboard-companion`](./skills/open-compute-clipboard-companion/SKILL.md).
+Der Agent hält das blaue `OBSERVE`-Signal sichtbar, erkennt das aktuelle Feld
+und legt nur den passenden Text oder einen verifizierten Dateipfad in die
+Zwischenablage. In diesem Ablauf klickt er nicht, fügt nicht ein, authentifiziert
+sich nicht und reicht nichts ein.
+
 ### Modus B — Autonomer Loop mit einem API-Backend
 
 Das Backend wird über den Namen gewählt; `claude` und `openai` sind
@@ -338,29 +348,68 @@ Human-in-the-Loop nutzen. Optional ist `OC_DENY` (kommagetrennte Aktionstypen) e
 harte Deny-Liste.
 
 **Auto-Signal (`OC_SIGNAL_AUTO`).** Auf einen `SessionMode`-Namen setzen (z. B.
-`control`), damit das Bildschirm-Signal vor der Ausführung eines freigegebenen
+`control`), damit das Bildschirm-*Overlay* vor der Ausführung eines freigegebenen
 zustandsändernden Tools (`do` / `click_name` / `invoke` / `rec_replay`) erscheint. Ein bereits sichtbares
 Signal (manuell oder automatisch gesetzt, egal in welchem Modus) wird nie
 überschrieben; ein vom Gate geblockter Aufruf oder ein read-only-Tool löst nie
-aus. Unset oder `off` (Standard) deaktiviert das Feature; ein ungültiger
-Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt den Call
-scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status` für die
-manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
+aus. Unset oder `off` (Standard) deaktiviert das *sichtbare* Overlay; ein
+ungültiger Modus-Name erscheint als `auto_signal_error` im Tool-Ergebnis, statt
+den Call scheitern zu lassen. Siehe `signal_show`/`signal_hide`/`signal_status`
+für die manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
+`OC_SIGNAL_AUTO` steuert nur, ob das Overlay *angezeigt* wird — seit Ticket
+T-20260825-540085216 steuert es NICHT mehr, ob die blockierende Wartezeit
+unten gilt; die ist jetzt bedingungslos (siehe nächster Absatz).
 
-**Vorlauf-Countdown.** Ein ausdrückliches `signal_show` startet die
-konfigurierte Karenzzeit vor der ersten Aktion oder Aufnahme. Das Overlay nutzt
-eine eigene statische Vorlauffarbe und zeigt `Start in N Sekunden`; es zählt
-sekündlich herunter und wechselt bei null genau einmal zur gewählten Modusfarbe.
-Die Dauer stammt aus `pre_action_grace_seconds` beziehungsweise dem
-höherrangigen `OC_SIGNAL_GRACE_SECONDS`, niemals aus einer nur für die Anzeige
-fest codierten Zahl. `0` startet direkt in der aktiven Phase. Die JSON-
-Signalkonfiguration akzeptiert außerdem `pre_action_grace_color: [r, g, b]` und
-die lokalisierbare Vorlage `pre_action_grace_label`, die `{seconds}` enthalten
-muss. `signal_status` meldet `phase`, `countdown_seconds`, die aktuelle `color`
-und ein `accessible_label`. Der native Fenstertitel trägt denselben semantischen
+**Vorlauf-Fenster — pflichtig, nicht optional.** Jeder gate-relevante Aufruf
+(`do` / `click_name` / `invoke` / `rec_replay` / `capture`) wartet vor seiner
+*ersten* Aktion einer Sitzung eine konfigurierte Karenzzeit ab — unabhängig
+davon, ob `signal_show` je aufgerufen wurde, und unabhängig von
+`OC_SIGNAL_AUTO`. Das schließt einen realen Umgehungsweg (Ticket
+T-20260825-540085216): bisher konnte ein Aufrufer die gesamte Karenzzeit
+ohne jede Konfigurationsänderung umgehen, indem er `signal_show` schlicht nie
+aufrief — ein ausdrückliches `signal_show` bewaffnete die Karenzzeit zwar,
+aber nichts erzwang, dass dieser Aufruf zuerst geschieht. Der Zweck dieses
+Fensters ist Nutzerschutz/Transparenz, keine Modell-Hürde, die es freiwillig
+umgehen kann — die Wartezeit selbst hängt daher nicht mehr von der
+Mitwirkung des Modells ab.
+- **Standard 4 Sekunden** (vorher 20s — vom User als zu lang empfunden).
+- **Aktivitäts-Cooldown, Standard 120 Sekunden** (`grace_cooldown_seconds`,
+  `OC_SIGNAL_GRACE_COOLDOWN_SECONDS`): Ist eine Karenzzeit einmal abgewartet,
+  überspringen weitere Aufrufe innerhalb des Cooldowns ein neues Fenster —
+  eine durchgehend genutzte Sitzung wird nicht bei jeder einzelnen Aktion
+  unterbrochen. `0` deaktiviert den Cooldown (jede Aktion wartet wieder die
+  volle Karenzzeit ab, das Verhalten von vor diesem Ticket).
+- **Die einzige echte Abschaltung** ist `pre_action_grace_seconds: 0` in der
+  *kanonischen* Signalkonfiguration — `OC_SIGNAL_CONFIG`, falls gesetzt,
+  sonst `<Paket>/_state/signal-config.json` falls diese Datei existiert,
+  sonst die eingebauten Standardwerte — oder die nur dem Betreiber
+  zugängliche Umgebungsvariable `OC_SIGNAL_GRACE_SECONDS=0`. Keines von
+  beiden ist über einen MCP-Tool-Aufruf setzbar: `signal_show` akzeptiert
+  zwar ein `config_path`-Argument, um auf eine *alternative*, weiterhin
+  lokal verfasste Datei zu zeigen (ein legitimes Betreiber-Feature) — aber
+  eine so geladene Konfiguration kann die wirksame Wartezeit nie unter den
+  Wert der kanonischen Konfiguration drücken, sondern nur anheben. Wer eine
+  kürzere/keine Wartezeit will, ändert die kanonische Konfiguration oder
+  setzt die Umgebungsvariable — ein Aufrufparameter kann das nicht.
+
+Ein ausdrückliches `signal_show` bewaffnet und *zeigt* den Countdown weiterhin
+wie bisher — das Overlay nutzt eine eigene statische Vorlauffarbe und zeigt
+`Start in N Sekunden`; es zählt sekündlich herunter und wechselt bei null
+genau einmal zur gewählten Modusfarbe. Die Dauer stammt aus
+`pre_action_grace_seconds` beziehungsweise dem höherrangigen
+`OC_SIGNAL_GRACE_SECONDS`, niemals aus einer nur für die Anzeige fest
+codierten Zahl. Die JSON-Signalkonfiguration akzeptiert außerdem
+`pre_action_grace_color: [r, g, b]` und die lokalisierbare Vorlage
+`pre_action_grace_label`, die `{seconds}` enthalten muss. `signal_status`
+meldet `phase`, `countdown_seconds`, die aktuelle `color` und ein
+`accessible_label`. Der native Fenstertitel trägt denselben semantischen
 Text und sendet sekündlich ein Accessibility-Namensereignis. Es gibt kein
 Blinken, Pulsieren oder animiertes Überblenden; deaktivierte Windows-Animationen
 entfernen daher keine Information und Farbe ist nie das einzige Signal.
+Die *pflichtige* Wartezeit oben blockiert auch dann, wenn kein Overlay
+sichtbar ist (`OC_SIGNAL_AUTO` unset und `signal_show` nie aufgerufen) —
+zusätzlich `OC_SIGNAL_AUTO` setzen, wenn die Wartezeit auch sichtbar sein
+soll, nicht nur erzwungen wird.
 
 **Signal-Cleanup und Leases.** Jedes Overlay hat eine TTL (`ttl_seconds` oder
 `OC_SIGNAL_TTL`, Standard 120 Sekunden). `do`, `click_name`, `invoke` und `rec_replay`
