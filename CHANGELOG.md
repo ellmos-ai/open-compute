@@ -9,6 +9,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`note_observation` tool + work-together mode** (Ticket
+  T-20260825-767105130). New MCP tool: a model-to-human short observation
+  line, written to a small, non-modal, always-on-top notes window
+  (`ObservationOverlay` in `indicator.py`, modeled on `TkAbortChannel` but
+  fire-and-forget instead of blocking) — the mirror image of `chat`
+  (human-to-model). Never gated by the safety policy or the pre-action
+  grace window (not a state-changing action). New bundled skill
+  `open-compute-work-together`: a three-part spectator/assist mode —
+  (1) the notes window above as a low-noise "what does the machine see"
+  channel, (2) the existing `open-compute-clipboard-companion` skill for
+  the clipboard half (referenced, not duplicated), (3) a narrowly scoped
+  micro-takeover — one `type` call on a field the human has already
+  visibly focused, then immediate return to observation. The Ticket
+  T-20260825-540085216 activity cooldown already keeps a follow-up
+  micro-takeover from re-triggering the grace window, with no new
+  special-casing needed.
+
 ### Security
 
 - **Pre-action grace window is now mandatory, closing a real bypass**

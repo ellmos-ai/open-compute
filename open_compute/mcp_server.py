@@ -134,6 +134,12 @@ class _ServerState:
         # built so platforms without ctypes/win32 never touch it.
         self.activity_classifier: Any = None
         self.activity_adapter: Any = None
+        # Model->human notes window (Ticket T-20260825-767105130, work-
+        # together mode). Independent lifecycle from the action-signal
+        # overlay above -- it is a session-long "diary", not something that
+        # should flicker open/closed on every do()/click_name() call the
+        # way signal_hide() does for the border overlay.
+        self.observation_overlay: Any = None
 
     def executor(self) -> Any:
         """Return the resident LocalExecutor, creating it lazily (Windows/mss)."""
@@ -2259,6 +2265,59 @@ def signal_abort(context: str = "", channel: str = "tk") -> dict:
     return {"abort_message": _prompt_channel(channel, context)}
 
 
+@mcp.tool(description=mcp_i18n.tool_description("note_observation", _LANG))
+def note_observation(text: str = "", close: bool = False) -> dict:
+    """Model-to-human short observation, written to a non-modal notes window.
+
+    The mirror image of `chat` (human-to-model): this is model-to-human,
+    fire-and-forget, no reply expected, never blocks. Meant for the
+    work-together mode's "what does the machine see, in words" channel
+    (Ticket T-20260825-767105130) -- a narrow, glanceable window instead of
+    a noisy console log. Never touches the desktop/input, so it is not
+    gated by the safety policy or the pre-action grace window (see `do`) --
+    it is not a state-changing action.
+
+    Independent lifecycle from the action-signal overlay (`signal_show`/
+    `signal_hide`): it opens lazily on first use and stays open across many
+    calls -- a session-long log, not something meant to flicker with every
+    `do`/`click_name` turn. Call again with `close=true` to hide it
+    explicitly; it is also torn down on server shutdown.
+
+    Args:
+        text: One short observation line. Ignored when `close=true`.
+        close: Hide the window instead of writing a line.
+    """
+    if close:
+        overlay = _STATE.observation_overlay
+        if overlay is not None:
+            overlay.hide()
+        return {"visible": False}
+
+    text = str(text).strip()
+    if not text:
+        raise ValueError("text must not be empty (pass close=true to hide instead)")
+
+    overlay = _STATE.observation_overlay
+    if overlay is None:
+        from .indicator import ObservationOverlay
+
+        overlay = ObservationOverlay()
+        _STATE.observation_overlay = overlay
+    overlay.show()
+    overlay.note(text)
+    return {"visible": overlay.is_visible(), "noted": text}
+
+
+def _hide_observation_overlay() -> None:
+    """atexit cleanup — mirrors `_release_held_input`'s registration below."""
+    overlay = _STATE.observation_overlay
+    if overlay is not None:
+        try:
+            overlay.hide()
+        except Exception:  # pragma: no cover - shutdown must never raise
+            pass
+
+
 @mcp.tool(description=mcp_i18n.tool_description("chat", _LANG))
 def chat(channel: str = "tk", context: str = "", shot: bool = False) -> dict:
     """Human-to-model message about screen content (+ optional screenshot).
@@ -2358,10 +2417,12 @@ def main() -> None:
     # Register once, at the single entry point: an atexit hook registered at
     # import (or per call) would stack up on repeated imports.
     atexit.register(_release_held_input)
+    atexit.register(_hide_observation_overlay)
     try:
         mcp.run(transport="stdio")
     finally:
         signal_hide()
+        _hide_observation_overlay()
         _release_held_input()
 
 

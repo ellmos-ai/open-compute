@@ -88,3 +88,12 @@ Computer-Control-Kanal erweitert werden.
 
 In allen Fällen: nichts mehr kopieren, Signal ausblenden und den letzten sicher
 erkannten Stand melden.
+
+## Verwandte Skills
+
+- **`open-compute-work-together`**: der breitere dreiteilige Modus, der
+  diesen Skill für seine Zwischenablage-Hälfte referenziert und zusätzlich
+  ein Sichtfenster (`note_observation`) sowie eine eng begrenzte
+  Mikro-Übernahme (ein einziger `type`-Aufruf auf ein bereits vom Menschen
+  fokussiertes Feld) erlaubt. Dieser Skill hier bleibt die STRENGERE
+  Variante — nutze ihn, wenn ausdrücklich KEINE Übernahme gewünscht ist.

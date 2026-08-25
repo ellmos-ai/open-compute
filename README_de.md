@@ -210,6 +210,26 @@ und legt nur den passenden Text oder einen verifizierten Dateipfad in die
 Zwischenablage. In diesem Ablauf klickt er nicht, fügt nicht ein, authentifiziert
 sich nicht und reicht nichts ein.
 
+### Work-Together-Modus (Zuschauer + eng begrenzte Mikro-Übernahme)
+
+Für einen umfassenderen, dreiteiligen gemeinsamen Modus (Ticket
+T-20260825-767105130) den mitgelieferten Skill
+[`open-compute-work-together`](./skills/open-compute-work-together/SKILL.md)
+nutzen: (1) `note_observation` schreibt kurze, allgemeinverständliche
+Beobachtungen in ein kleines, nicht-modales, immer-oben-liegendes
+Notizfenster (das Gegenstück zu `chat`) — ein rauschfreier Blick auf „was
+sieht die Maschine" statt eines vollen Konsolenlogs; (2) die Zwischenablage-
+Hälfte von oben, referenziert statt neu gebaut; (3) eine eng begrenzte
+**Mikro-Übernahme** — nachdem der Mensch selbst sichtbar ein Feld
+fokussiert hat, darf der Agent genau einen `type`-Aufruf (optional mit
+einem vorherigen, bestätigenden `left_click` auf dasselbe Feld) ausführen,
+um es zu befüllen, und gibt sofort zurück — nie eine Kette weiterer
+Aktionen ohne neue, sichtbare Fokussierung durch den Menschen. Der
+Aktivitäts-Cooldown des pflichtigen Vorlauf-Fensters (siehe unten) sorgt
+dabei bereits von selbst dafür, dass eine folgende Mikro-Übernahme kein
+neues Wartefenster auslöst — ohne dass dieser Skill dafür eine eigene
+Ausnahme bräuchte.
+
 ### Modus B — Autonomer Loop mit einem API-Backend
 
 Das Backend wird über den Namen gewählt; `claude` und `openai` sind
@@ -278,8 +298,9 @@ open-compute-mcp          # stdio-Server (Console-Script)
 **Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
 `invoke` (semantisches UIA-Zielen) · `list_windows` · `get_screen_size` ·
 `watch_dir` · `push_status` · `rec_replay` · `signal_show` / `signal_hide` /
-`signal_status` / `signal_abort` (Human-in-the-Loop-Bildschirmsignal) · `chat` ·
-`talk` (Push-to-Talk). Koordinaten normiert 0..1;
+`signal_status` / `signal_abort` (Human-in-the-Loop-Bildschirmsignal) ·
+`chat` (Mensch→Modell) · `note_observation` (Modell→Mensch, nicht-modales
+Notizfenster) · `talk` (Push-to-Talk). Koordinaten normiert 0..1;
 `list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
 kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
 

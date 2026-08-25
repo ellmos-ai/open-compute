@@ -201,6 +201,23 @@ skill. The agent keeps the blue `OBSERVE` signal visible, reads the current
 field, and places only the matching text or verified file path on the host
 clipboard. It never clicks, pastes, authenticates or submits in this workflow.
 
+### Work-together mode (spectator + narrow assist)
+
+For a richer three-part paired mode (Ticket T-20260825-767105130), use the
+bundled
+[`open-compute-work-together`](./skills/open-compute-work-together/SKILL.md)
+skill: (1) `note_observation` writes short, plain-language observations to a
+small, non-modal, always-on-top notes window (the mirror of `chat`) — a
+low-noise view of "what the machine sees" instead of a busy console log; (2)
+the clipboard half above, referenced rather than duplicated; (3) a narrowly
+scoped **micro-takeover** — after the human has visibly focused a field
+themselves, the agent may issue exactly one `type` (optionally preceded by
+one confirming `left_click` on that same field) call to fill it, then
+returns control immediately, never chaining further actions without a fresh,
+visible focus from the human. The activity cooldown from the mandatory
+pre-action grace window (see below) already keeps a follow-up micro-takeover
+from re-triggering a new wait on its own, with no special-casing needed.
+
 ### Mode B — Autonomous loop with an API backend
 
 The backend is selected by name; `claude` and `openai` are equally supported
@@ -270,7 +287,8 @@ open-compute-mcp          # stdio server (console script)
 `click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
 `get_screen_size` · `watch_dir` · `push_status` · `rec_replay` · `signal_show` /
 `signal_hide` / `signal_status` / `signal_abort` (human-in-the-loop screen
-signal) · `chat` · `talk` (push-to-talk). Coordinates are
+signal) · `chat` (human-to-model) · `note_observation` (model-to-human,
+non-modal notes window) · `talk` (push-to-talk). Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
 

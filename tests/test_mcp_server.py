@@ -115,9 +115,9 @@ def _tool_names():
 def test_tools_registered():
     assert _tool_names() == [
         "capture", "chat", "click_name", "do", "get_screen_size", "invoke",
-        "list_windows", "push_status", "rec_replay", "signal_abort",
-        "signal_hide", "signal_show", "signal_status", "talk", "tree",
-        "watch_dir",
+        "list_windows", "note_observation", "push_status", "rec_replay",
+        "signal_abort", "signal_hide", "signal_show", "signal_status",
+        "talk", "tree", "watch_dir",
     ]
 
 
@@ -337,6 +337,32 @@ class _FakeOverlay:
         return self.visible
 
 
+class _FakeObservationOverlay:
+    """Stand-in for ObservationOverlay -- same public seam (show/note/hide/
+    is_visible), no real Tk window (this codebase never spins up a real
+    tkinter window in tests, see TkAbortChannel's _FakePromptChannel below;
+    the real overlay's _run() carries its own `pragma: no cover`)."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.lines: list[str] = []
+        self.visible = False
+        self.shown_count = 0
+
+    def show(self):
+        self.visible = True
+        self.shown_count += 1
+
+    def note(self, text):
+        self.lines.append(text)
+
+    def hide(self):
+        self.visible = False
+
+    def is_visible(self):
+        return self.visible
+
+
 class _FakePromptChannel:
     message = "fake message"
 
@@ -372,6 +398,15 @@ def _reset_signal_state():
     S._STATE.grace_last_satisfied_at = time.monotonic()
     S._STATE.activity_classifier = None
     S._STATE.activity_adapter = None
+    # Ticket T-20260825-767105130 (note_observation): a leaked fake/real
+    # overlay from one test must not leak into the next.
+    overlay = S._STATE.observation_overlay
+    if overlay is not None:
+        try:
+            overlay.hide()
+        except Exception:
+            pass
+    S._STATE.observation_overlay = None
 
 
 @pytest.fixture
@@ -610,6 +645,90 @@ def test_signal_abort_uses_channel(monkeypatch, _signal_state):
     monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
     result = S.signal_abort(context="ctx")
     assert result == {"abort_message": "fake message"}
+
+
+# --- note_observation (Ticket T-20260825-767105130, work-together mode) --
+
+def test_note_observation_creates_overlay_on_first_call(monkeypatch, _signal_state):
+    import open_compute.indicator as oc_indicator
+
+    monkeypatch.setattr(oc_indicator, "ObservationOverlay", _FakeObservationOverlay)
+    assert S._STATE.observation_overlay is None
+
+    r = S.note_observation(text="cursor is over the Name field")
+
+    assert r == {"visible": True, "noted": "cursor is over the Name field"}
+    overlay = S._STATE.observation_overlay
+    assert isinstance(overlay, _FakeObservationOverlay)
+    assert overlay.lines == ["cursor is over the Name field"]
+    assert overlay.shown_count == 1
+
+
+def test_note_observation_reuses_the_same_overlay_across_calls(
+    monkeypatch, _signal_state
+):
+    fake = _FakeObservationOverlay()
+    S._STATE.observation_overlay = fake
+
+    S.note_observation(text="first")
+    S.note_observation(text="second")
+
+    assert fake.lines == ["first", "second"]
+    assert fake.shown_count == 2  # show() is idempotent in the real class,
+    # called every time but only actually starts a thread once -- the fake
+    # just counts calls, that idempotency is the real class's own job.
+
+
+def test_note_observation_close_hides_without_a_new_line(monkeypatch, _signal_state):
+    fake = _FakeObservationOverlay()
+    fake.visible = True
+    S._STATE.observation_overlay = fake
+
+    r = S.note_observation(close=True)
+
+    assert r == {"visible": False}
+    assert fake.visible is False
+    assert fake.lines == []  # close=true must not also write a line
+
+
+def test_note_observation_rejects_blank_text(_signal_state):
+    with pytest.raises(ValueError, match="empty"):
+        S.note_observation(text="   ")
+
+
+def test_note_observation_never_waits_even_on_a_fresh_session(
+    monkeypatch, _signal_state
+):
+    """The core "not gated" claim in the tool's own docstring: unlike
+    do/click_name/invoke/rec_replay/capture, this must never trigger the
+    mandatory pre-action grace window (Ticket T-20260825-540085216) --
+    it never touches the desktop, so gating it would be senseless noise."""
+    import open_compute.indicator as oc_indicator
+
+    monkeypatch.setenv("OC_SIGNAL_GRACE_SECONDS", "5")
+    monkeypatch.setattr(oc_indicator, "ObservationOverlay", _FakeObservationOverlay)
+    S._STATE.grace_last_satisfied_at = None  # genuinely fresh session
+
+    start = time.monotonic()
+    S.note_observation(text="no wait expected")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 1.0
+    assert S._STATE.grace_deadline is None  # never armed by this call
+
+
+def test_hide_observation_overlay_helper_is_idempotent(_signal_state):
+    """Exercises the atexit/finally cleanup helper directly."""
+    fake = _FakeObservationOverlay()
+    fake.visible = True
+    S._STATE.observation_overlay = fake
+
+    S._hide_observation_overlay()
+    assert fake.visible is False
+
+    S._hide_observation_overlay()  # second call, still nothing raises
+    S._STATE.observation_overlay = None
+    S._hide_observation_overlay()  # no overlay at all, still nothing raises
 
 
 def test_chat_returns_message_and_shot(monkeypatch, _signal_state, tmp_path):

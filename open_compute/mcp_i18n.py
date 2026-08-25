@@ -157,6 +157,14 @@ _TOOLS: dict[str, dict[str, str]] = {
         "ru": "Голосовая заметка push-to-talk: удерживайте клавишу, говорите, отпустите — записывает WAV в _session/ (winmm MCI, без зависимостей, Windows). STT/TTS остаются на стороне модели; возвращается путь к WAV. Блокируется на время ожидания / записи удержания клавиши.",
         "zh": "按键通话语音便条：按住按键、说话、松开 — 将 WAV 写入 _session/（winmm MCI，零依赖，Windows）。STT/TTS 由模型侧负责；返回 WAV 路径。在等待/录制按键期间会阻塞。",
     },
+    "note_observation": {
+        "en": "Model-to-human short observation line, written to a small always-on-top notes window (never blocks, no reply expected — the mirror of `chat()`). Never touches the desktop/input; not gated by the safety policy or the pre-action grace window. Opens the window on first use; call again with `close=true` to hide it.",
+        "de": "Modell-zu-Mensch-Kurzbeobachtung, geschrieben in ein kleines, immer-oben-liegendes Notizfenster (blockiert nie, erwartet keine Antwort — das Gegenstück zu `chat()`). Rührt nie den Desktop/die Eingabe an; weder von der Sicherheitsrichtlinie noch vom Vorlauf-Fenster gegatet. Öffnet das Fenster beim ersten Gebrauch; erneuter Aufruf mit `close=true` blendet es aus.",
+        "es": "Línea de observación corta del modelo al humano, escrita en una pequeña ventana de notas siempre visible (nunca bloquea, no espera respuesta — es el espejo de `chat()`). Nunca toca el escritorio ni la entrada; no está sujeta a la política de seguridad ni a la ventana de espera previa a la acción. Abre la ventana en el primer uso; llama de nuevo con `close=true` para ocultarla.",
+        "ja": "モデルから人間への短い観察メモ。常に最前面に表示される小さなノートウィンドウに書き込みます（決してブロックせず、返信も期待しません — `chat()` の鏡像です）。デスクトップや入力には一切触れません。セーフティポリシーにも、アクション前の猶予期間にもゲートされません。初回呼び出しでウィンドウを開きます。再度 `close=true` で呼び出すと非表示になります。",
+        "ru": "Короткая заметка-наблюдение от модели человеку, записывается в маленькое всегда-поверх-всех окно заметок (никогда не блокирует, ответа не ожидается — зеркальное отражение `chat()`). Никогда не касается рабочего стола или ввода; не проверяется политикой безопасности и не ждёт окна задержки перед действием. Открывает окно при первом вызове; повторный вызов с `close=true` скрывает его.",
+        "zh": "模型向人类发送的简短观察记录，写入一个小型的、始终置顶的记事窗口（从不阻塞，也不期待回复 —— 是 `chat()` 的镜像）。绝不触碰桌面或输入；既不受安全策略的门控，也不受操作前等待窗口的门控。首次调用时打开窗口；再次调用并传入 `close=true` 可将其隐藏。",
+    },
 }
 
 

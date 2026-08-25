@@ -24,6 +24,7 @@ import json
 import math
 import os
 from pathlib import Path
+import queue
 from string import Formatter
 import sys
 import tempfile
@@ -513,6 +514,140 @@ class TkAbortChannel:
         root.geometry(f"+{x}+{y}")
         root.mainloop()
         return result["text"]
+
+
+@dataclass
+class ObservationOverlay:
+    """Small, non-modal, always-on-top notes window — model writes, human
+    reads (Ticket T-20260825-767105130, work-together mode, Baustein B).
+
+    The mirror image of :class:`TkAbortChannel`: that one is human->model
+    (blocks, asks a question, returns an answer); this one is model->human
+    (fire-and-forget, never blocks, never asks anything). "Rauschfreier
+    Sichtkanal" per the ticket — a narrow, glanceable window the human can
+    read alongside whatever else they are doing, instead of a noisy console
+    log that is hard to read in parallel with real window work.
+
+    tkinter's ``mainloop()`` is blocking, so — unlike ``TkAbortChannel``,
+    which is only ever used from a dedicated abort-handling call — this
+    overlay runs its own ``Tk`` root on a **dedicated background thread**
+    that stays alive across many :meth:`note` calls; the MCP tool call
+    (``note_observation``) must return immediately, not wait for the human.
+    New lines cross the thread boundary through a plain :class:`queue.Queue`
+    (tkinter widgets are not safe to touch from another thread), drained by
+    ``root.after()`` polling roughly every 100ms — the same "communicate via
+    a thread-safe primitive, never touch Tk state directly" discipline
+    :class:`WindowsBorderOverlay` already uses for its cursor-ring thread.
+
+    Best-effort no-focus-steal (Windows): the previously foreground window
+    is restored right after the Tk window is created, so opening/growing
+    the overlay does not pull keyboard focus away from whatever application
+    the human is actively using. This is a best effort, not a guarantee —
+    plain tkinter has no reliable cross-platform "create without ever
+    taking focus" primitive; a true guarantee would need the same
+    ctypes/WS_EX_NOACTIVATE-level approach as ``WindowsBorderOverlay``,
+    which is more machinery than this ticket's "klein halten" calls for.
+    """
+
+    title: str = "Open Compute — Beobachtungen"
+    max_lines: int = 200
+    poll_interval_ms: int = 100
+    start_timeout_seconds: float = 5.0
+
+    def __post_init__(self) -> None:
+        self._queue: queue.Queue[str] = queue.Queue()
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._started_ok = False
+        self.error: BaseException | None = None
+
+    def show(self) -> None:
+        """Start the overlay thread if not already running. Idempotent."""
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._ready.clear()
+        self._started_ok = False
+        self.error = None
+        self._thread = threading.Thread(
+            target=self._run, name="oc-observation-overlay", daemon=True
+        )
+        self._thread.start()
+        self._ready.wait(timeout=self.start_timeout_seconds)
+        if self.error is not None:
+            raise self.error
+
+    def note(self, text: str) -> None:
+        """Queue one line for the overlay. No-op on blank text."""
+        text = text.strip()
+        if not text:
+            return
+        self._queue.put(text)
+
+    def hide(self) -> None:
+        """Stop the overlay thread and destroy the window. Idempotent."""
+        if self._thread is None:
+            return
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+        self._thread = None
+
+    def is_visible(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def _run(self) -> None:  # pragma: no cover - exercised via a fake in tests
+        try:
+            import tkinter as tk
+
+            prev_hwnd = None
+            if sys.platform == "win32":
+                import ctypes
+
+                prev_hwnd = ctypes.windll.user32.GetForegroundWindow()
+
+            root = tk.Tk()
+            root.title(self.title)
+            root.attributes("-topmost", True)
+            root.resizable(True, True)
+            root.geometry("360x220+40+40")
+            text_widget = tk.Text(root, wrap="word", state="disabled")
+            text_widget.pack(fill="both", expand=True, padx=6, pady=6)
+            root.protocol("WM_DELETE_WINDOW", self._stop.set)
+
+            if prev_hwnd:
+                # Restore focus to whatever the human was using — this new
+                # window otherwise takes it just by being created.
+                ctypes.windll.user32.SetForegroundWindow(prev_hwnd)
+
+            def _poll() -> None:
+                if self._stop.is_set():
+                    root.destroy()
+                    return
+                appended = False
+                while True:
+                    try:
+                        line = self._queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    text_widget.configure(state="normal")
+                    text_widget.insert("end", line + "\n")
+                    overflow = int(text_widget.index("end-1c").split(".")[0]) - self.max_lines
+                    if overflow > 0:
+                        text_widget.delete("1.0", f"{overflow + 1}.0")
+                    text_widget.configure(state="disabled")
+                    appended = True
+                if appended:
+                    text_widget.see("end")
+                root.after(self.poll_interval_ms, _poll)
+
+            self._started_ok = True
+            self._ready.set()
+            root.after(self.poll_interval_ms, _poll)
+            root.mainloop()
+        except BaseException as exc:  # noqa: BLE001 - surfaced via .error, never crashes the caller's thread
+            self.error = exc
+            self._ready.set()
 
 
 @dataclass

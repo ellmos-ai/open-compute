@@ -396,4 +396,12 @@ pip install -e ".[local]"
 > `OBSERVE`-Signal ausschließlich feldbezogene Texte oder Dateipfade in die
 > Zwischenablage legt.
 
+> **Mitgelieferter Skill `open-compute-work-together`**
+> (`skills/open-compute-work-together/SKILL.md`, Ticket T-20260825-767105130):
+> dreiteiliger, breiterer Zuschauer-Helfer-Modus — Sichtfenster
+> (`note_observation`, rauschfreier Beobachtungskanal, das Gegenstück zu
+> `chat`), die Zwischenablage-Hälfte von oben (referenziert) sowie eine eng
+> begrenzte Mikro-Übernahme (genau ein `type`-Aufruf auf ein bereits vom
+> Menschen fokussiertes Feld, sofortige Rückgabe).
+
 > **Externer Skill `clirec`** (`https://github.com/ellmos-ai/clirec`): Aufnahmekanal — Maus/Tastatur-Demos als `.clirec` aufnehmen und adaptiv abspielen. In open-compute bleibt `oc rec` als lazy geladener Kompatibilitäts-Shim.
