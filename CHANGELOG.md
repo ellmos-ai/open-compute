@@ -277,6 +277,21 @@ kill switch:
   the action it is attached to. `OC_SIGNAL_AUTO=off` (or unset, the
   default) disables the feature. Shared logic factored out of `signal_show`
   into `_show_signal_indicator()`; 12 new tests in `tests/test_mcp_server.py`.
+### Added (Profile-filtered MCP perception, 2026-08-31)
+
+- Added strict, provider-agnostic filter profiles in
+  `open_compute/perception_filter.py`: semantic-first UIA focus packets with
+  hard character/element/value budgets, selection digest fallback, bounded
+  visual lenses, excluded GUI names/windows, and tool/action allowlists.
+- Added MCP tools `observe_filtered` and `capture_filtered`. Raw UIA trees stay
+  local to the filter call; visual capture is clamped to the declared lens and
+  excluded overlapping windows are blanked before the image is returned.
+- `do(profile=...)` now rejects any action outside the supplied profile before
+  the existing SafetyPolicy gate and executor.
+- Added localized tool descriptions in en/de/es/ja/ru/zh and 8 focused tests,
+  including exact excluded-window pixel blanking at the lens boundary.
+  Verified full suite after integration with the current safety baseline:
+  672 passed, 1 skipped.
 
 ### Fixed (Maintainer verification, 2026-08-01)
 

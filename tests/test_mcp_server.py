@@ -114,10 +114,10 @@ def _tool_names():
 
 def test_tools_registered():
     assert _tool_names() == [
-        "capture", "chat", "click_name", "do", "get_screen_size", "invoke",
-        "list_windows", "note_observation", "push_status", "rec_replay",
-        "signal_abort", "signal_hide", "signal_show", "signal_status",
-        "talk", "tree", "watch_dir",
+        "capture", "capture_filtered", "chat", "click_name", "do", "get_screen_size", "invoke",
+        "list_windows", "note_observation", "observe_filtered", "push_status",
+        "rec_replay", "signal_abort", "signal_hide", "signal_show",
+        "signal_status", "talk", "tree", "watch_dir",
     ]
 
 
@@ -127,8 +127,121 @@ def test_do_schema_exposes_params():
     props = (do.inputSchema or {}).get("properties", {})
     assert {
         "action", "actions", "mode", "expected_window", "coordinate_frame",
-        "observation_id", "keep_signal",
+        "observation_id", "keep_signal", "profile",
     } <= set(props)
+
+
+def test_filtered_observation_uses_the_profile_before_returning_uia(monkeypatch):
+    monkeypatch.setattr(S, "tree", lambda **_kwargs: [
+        {
+            "name": "Focused field",
+            "role": "Edit",
+            "value": "bounded",
+            "rect_px": [400, 300, 120, 40],
+            "center_norm": [0.5, 0.5],
+            "visible": True,
+            "depth": 3,
+        },
+        {
+            "name": "Far away",
+            "role": "Button",
+            "value": "",
+            "rect_px": [900, 700, 80, 30],
+            "center_norm": [0.95, 0.95],
+            "visible": True,
+            "depth": 3,
+        },
+    ])
+    packet = S.observe_filtered(
+        profile={
+            "profileId": "test-profile",
+            "maxElements": 4,
+            "maxCharacters": 800,
+            "textLimit": 80,
+            "valuePolicy": "focused-only",
+            "selectionLimit": 20,
+            "focusRadius": 0.2,
+            "visualLens": {"width": 400, "height": 400},
+            "allowFullscreen": False,
+            "excludeElementNameContains": ["Cowork Companion"],
+            "excludeWindowTitleContains": ["Cowork Protocol Companion"],
+            "allowedTools": ["observe_filtered", "capture_filtered", "signal_show", "signal_hide", "signal_status", "do"],
+            "allowedActionTypes": ["mouse_move", "left_click"],
+        },
+        focus={"kind": "follow-me", "x": 0.5, "y": 0.5, "selectedText": ""},
+    )
+    assert [item["name"] for item in packet["elements"]] == ["Focused field"]
+    assert packet["metrics"]["sourceElements"] == 2
+
+
+def test_filtered_capture_uses_only_the_profile_lens(monkeypatch):
+    captured = []
+    monkeypatch.setattr(S, "get_screen_size", lambda: {
+        "virtual_desktop": {"left": 0, "top": 0, "width": 1920, "height": 1080},
+        "monitors": [],
+        "platform": "win32",
+    })
+    monkeypatch.setattr(S, "list_windows", lambda: [
+        {
+            "title": "Cowork Protocol Companion",
+            "rect": {"left": 900, "top": 300, "width": 500, "height": 700},
+        },
+        {
+            "title": "FormBuilder Studio",
+            "rect": {"left": 0, "top": 0, "width": 1000, "height": 900},
+        },
+    ])
+    monkeypatch.setattr(
+        S,
+        "_capture_screen_region_png",
+        lambda region, redactions: captured.append({"region": region, "redactions": redactions}) or b"png",
+    )
+    image = S.capture_filtered(
+        profile={
+            "profileId": "test-profile",
+            "maxElements": 4,
+            "maxCharacters": 800,
+            "textLimit": 80,
+            "valuePolicy": "focused-only",
+            "selectionLimit": 20,
+            "focusRadius": 0.2,
+            "visualLens": {"width": 400, "height": 400},
+            "allowFullscreen": False,
+            "excludeElementNameContains": ["Cowork Companion"],
+            "excludeWindowTitleContains": ["Cowork Protocol Companion"],
+            "allowedTools": ["observe_filtered", "capture_filtered", "signal_show", "signal_hide", "signal_status", "do"],
+            "allowedActionTypes": ["mouse_move", "left_click"],
+        },
+        focus={"kind": "follow-me", "x": 0.5, "y": 0.5, "selectedText": ""},
+    )
+    assert image.data == b"png"
+    assert captured == [{
+        "region": {
+            "left": 760,
+            "top": 340,
+            "width": 400,
+            "height": 400,
+            "virtualDesktop": {"left": 0, "top": 0, "width": 1920, "height": 1080},
+        },
+        "redactions": [{"left": 900, "top": 300, "width": 500, "height": 700}],
+    }]
+
+
+def test_filtered_capture_blanks_only_the_excluded_window_intersection():
+    rgb = bytearray(4 * 3 * 3)
+    S._blank_rgb_intersections(
+        rgb,
+        {"left": 10, "top": 20, "width": 4, "height": 3},
+        [{"left": 11, "top": 21, "width": 2, "height": 1}],
+        bytes((1, 2, 3)),
+    )
+
+    pixels = [tuple(rgb[index:index + 3]) for index in range(0, len(rgb), 3)]
+    assert pixels == [
+        (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+        (0, 0, 0), (1, 2, 3), (1, 2, 3), (0, 0, 0),
+        (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+    ]
 
 
 def test_capture_returns_image():

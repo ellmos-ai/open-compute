@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-564%20passed-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-672%20passed-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--08--16-blue)](CHANGELOG.md)
@@ -283,7 +283,8 @@ pip install "open-compute[mcp,local,uia,wgc] @ git+https://github.com/ellmos-ai/
 open-compute-mcp          # stdio server (console script)
 ```
 
-**Tools:** `capture` · `do` (single or batch canonical actions) · `tree` ·
+**Tools (19):** `capture` · `observe_filtered` · `capture_filtered` · `do`
+(single or batch canonical actions) · `tree` ·
 `click_name` · `invoke` (UIA semantic targeting) · `list_windows` ·
 `get_screen_size` · `watch_dir` · `push_status` · `rec_replay` · `signal_show` /
 `signal_hide` / `signal_status` / `signal_abort` (human-in-the-loop screen
@@ -291,6 +292,33 @@ signal) · `chat` (human-to-model) · `note_observation` (model-to-human,
 non-modal notes window) · `talk` (push-to-talk). Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
+
+**Profile-filtered perception.** Hosts that need token economy can send one
+strict use-case profile to `observe_filtered` and `capture_filtered`. Filtering
+happens locally before model delivery: UIA semantics near the declared focus
+come first, text/value/element counts have hard budgets, visual escalation is a
+bounded lens, and named windows such as a host chat can be blanked where they
+overlap that lens. Unknown profile fields, tools or action types fail closed.
+`do(profile=...)` also rejects actions outside the same allowlist. Example:
+
+```json
+{
+  "profileId": "form-cowork-v1",
+  "semanticFirst": true,
+  "maxElements": 12,
+  "maxCharacters": 1200,
+  "textLimit": 120,
+  "valuePolicy": "focused-only",
+  "selectionLimit": 160,
+  "focusRadius": 0.18,
+  "visualLens": {"width": 400, "height": 400},
+  "allowFullscreen": false,
+  "excludeElementNameContains": ["Cowork Companion", "ChatGPT", "Claude"],
+  "excludeWindowTitleContains": ["Cowork Companion", "ChatGPT", "Claude"],
+  "allowedTools": ["observe_filtered", "capture_filtered", "signal_show", "signal_hide", "signal_status", "do"],
+  "allowedActionTypes": ["mouse_move", "left_click", "type", "key", "scroll", "wait"]
+}
+```
 
 **Hardware-composited windows (`wgc` extra).** A GDI grab of a DirectX window —
 Roblox Studio, Blender, a GPU-accelerated browser — does not fail; it quietly
@@ -666,7 +694,7 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **647 passed, 1 skipped** (2026-08-21).
+installs pytest. Current full-suite state: **672 passed, 1 skipped** (2026-08-31).
 
 ---
 

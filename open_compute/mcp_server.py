@@ -70,6 +70,13 @@ from .preclick import (
     coordinate_frame_from_executor,
     execute_with_preclick,
 )
+from .perception_filter import (
+    FilterProfile,
+    excluded_window_rectangles,
+    filter_uia_elements,
+    resolve_visual_region,
+    validate_profiled_actions,
+)
 from .safety import Decision, SafetyPolicy
 
 _LANG = mcp_i18n.current_language()
@@ -959,6 +966,129 @@ def capture(window: str | None = None) -> Any:
     )
 
 
+def _require_profile_tool(profile: FilterProfile, tool: str) -> None:
+    if tool not in profile.allowed_tools:
+        raise PermissionError(
+            f"tool {tool!r} is outside filter profile {profile.profile_id!r}"
+        )
+
+
+def _require_profile_window(profile: FilterProfile, window: str | None) -> None:
+    if window is None:
+        return
+    folded = window.casefold()
+    if any(value.casefold() in folded for value in profile.exclude_window_title_contains):
+        raise PermissionError(
+            f"window {window!r} is excluded by filter profile {profile.profile_id!r}"
+        )
+
+
+def _capture_screen_region_png(
+    region: dict[str, Any], redactions: list[dict[str, int]]
+) -> bytes:
+    """Capture one physical region and blank excluded-window intersections locally."""
+
+    try:
+        import mss
+        import mss.tools
+    except ImportError as exc:
+        raise RuntimeError(
+            "Filtered capture requires open-compute[local] (mss)."
+        ) from exc
+
+    capture_rect = {
+        "left": int(region["left"]),
+        "top": int(region["top"]),
+        "width": int(region["width"]),
+        "height": int(region["height"]),
+    }
+    with mss.mss() as sct:
+        shot = sct.grab(capture_rect)
+        rgb = bytearray(shot.rgb)
+
+    _blank_rgb_intersections(rgb, capture_rect, redactions)
+    return mss.tools.to_png(bytes(rgb), (capture_rect["width"], capture_rect["height"]))
+
+
+def _blank_rgb_intersections(
+    rgb: bytearray,
+    capture_rect: dict[str, int],
+    redactions: list[dict[str, int]],
+    fill: bytes = bytes((248, 241, 228)),
+) -> None:
+    """Blank only excluded-window pixels that intersect the captured lens."""
+
+    width = capture_rect["width"]
+    height = capture_rect["height"]
+    if len(rgb) != width * height * 3 or len(fill) != 3:
+        raise ValueError("filtered RGB buffer does not match its capture rectangle")
+    for redaction in redactions:
+        x0 = max(capture_rect["left"], redaction["left"])
+        y0 = max(capture_rect["top"], redaction["top"])
+        x1 = min(
+            capture_rect["left"] + width,
+            redaction["left"] + redaction["width"],
+        )
+        y1 = min(
+            capture_rect["top"] + height,
+            redaction["top"] + redaction["height"],
+        )
+        if x0 >= x1 or y0 >= y1:
+            continue
+        row_fill = fill * (x1 - x0)
+        local_x = x0 - capture_rect["left"]
+        for absolute_y in range(y0, y1):
+            local_y = absolute_y - capture_rect["top"]
+            start = (local_y * width + local_x) * 3
+            rgb[start:start + len(row_fill)] = row_fill
+
+
+@mcp.tool(description=mcp_i18n.tool_description("observe_filtered", _LANG))
+def observe_filtered(
+    profile: dict,
+    focus: dict,
+    window: str | None = None,
+) -> dict:
+    """Return locally filtered UIA semantics under a host-supplied profile.
+
+    The raw UIA tree never leaves this server call.  The profile selects the
+    focus radius, character and element budgets, values, excluded GUI names and
+    allowed capabilities.  Use this before requesting any image.
+    """
+
+    resolved = FilterProfile.from_dict(profile)
+    _require_profile_tool(resolved, "observe_filtered")
+    _require_profile_window(resolved, window)
+    raw = tree(
+        window=window,
+        max_elements=min(200, max(resolved.max_elements * 8, resolved.max_elements)),
+        depth=8,
+    )
+    return filter_uia_elements(raw, focus=focus, profile=resolved)
+
+
+@mcp.tool(description=mcp_i18n.tool_description("capture_filtered", _LANG))
+def capture_filtered(profile: dict, focus: dict) -> Image:
+    """Return only the profile's bounded visual lens, with excluded windows blanked."""
+
+    resolved = FilterProfile.from_dict(profile)
+    _require_profile_tool(resolved, "capture_filtered")
+    screen = get_screen_size()
+    virtual_desktop = screen.get("virtual_desktop")
+    if virtual_desktop is None:
+        raise RuntimeError("Filtered capture requires a Windows virtual desktop")
+    region = resolve_visual_region(
+        profile=resolved,
+        focus=focus,
+        virtual_desktop=virtual_desktop,
+    )
+    redactions = excluded_window_rectangles(list_windows(), resolved)
+    return Image(
+        data=_capture_screen_region_png(region, redactions),
+        format="png",
+    )
+
+
 @mcp.tool(description=mcp_i18n.tool_description("list_windows", _LANG))
 def list_windows() -> list[dict]:
     """List the open top-level windows, foreground first.
@@ -1095,6 +1225,7 @@ def do(
     coordinate_frame: dict | None = None,
     observation_id: str | None = None,
     keep_signal: bool = False,
+    profile: dict | None = None,
 ) -> dict:
     """Execute one canonical action, or a batch (macro) of them, on the desktop.
 
@@ -1128,6 +1259,8 @@ def do(
             every coordinate action and consumed by exactly one action.
         keep_signal: Keep a visible signal after this call. False by default so
             abort/error/turn-end cleanup cannot leave an orphan overlay.
+        profile: Optional filter profile. When supplied, the tool and every
+            requested action type must be explicitly allowed by that profile.
 
     Returns: a status dict; for a batch, `count` of executed actions. On a gated
     action the batch stops and reports which index blocked.
@@ -1143,6 +1276,10 @@ def do(
             signal_hide()
         raise ValueError("`actions` must be a non-empty list")
     try:
+        if profile is not None:
+            resolved_profile = FilterProfile.from_dict(profile)
+            _require_profile_tool(resolved_profile, "do")
+            validate_profiled_actions(items, resolved_profile)
         parsed = [_parse_action(a) for a in items]
     except Exception:
         if not keep_signal:

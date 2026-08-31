@@ -37,6 +37,14 @@ _TOOLS: dict[str, dict[str, str]] = {
         "ru": "Делает снимок локального экрана и возвращает его как PNG-изображение. С параметром `window` захватывает только это окно (только Windows).",
         "zh": "截取本地屏幕并以 PNG 图像返回。指定 `window` 时仅截取该窗口（仅限 Windows）。",
     },
+    "capture_filtered": {
+        "en": "Capture only the visual lens allowed by a host-supplied filter profile and blank excluded windows before returning the PNG.",
+        "de": "Erfasst nur die vom Host-Filterprofil erlaubte visuelle Linse und blendet ausgeschlossene Fenster vor der PNG-Rückgabe aus.",
+        "es": "Captura solo la lente visual permitida por un perfil de filtro del host y oculta las ventanas excluidas antes de devolver el PNG.",
+        "ja": "ホスト指定のフィルタープロファイルで許可された視覚レンズのみを撮影し、除外ウィンドウを塗りつぶしてから PNG を返します。",
+        "ru": "Захватывает только визуальную область, разрешённую профилем фильтра хоста, и скрывает исключённые окна перед возвратом PNG.",
+        "zh": "仅截取主机提供的过滤配置所允许的视觉区域，并在返回 PNG 前遮蔽排除的窗口。",
+    },
     "do": {
         "en": "Execute a safety-gated desktop action. Coordinates require a one-shot observation_id and issued window descriptor/token; type/key/activation require exact window binding.",
         "de": "Führt eine Safety-geprüfte Desktop-Aktion aus. Koordinaten brauchen eine einmalige observation_id und einen ausgegebenen Fensterdeskriptor/Token; Text, Tasten und Aktivierung eine exakte Fensterbindung.",
@@ -68,6 +76,14 @@ _TOOLS: dict[str, dict[str, str]] = {
         "ja": "Windows のアクセシビリティツリー（UIA）を使ってウィンドウの UI 要素を一覧表示します。各要素にはクリック用の正規化された中心座標が付きます。",
         "ru": "Перечисляет элементы интерфейса окна через дерево специальных возможностей Windows (UIA), каждый с нормализованной координатой центра для клика.",
         "zh": "通过 Windows 辅助功能树（UIA）列出窗口的 UI 元素，每个元素带有用于点击的归一化中心坐标。",
+    },
+    "observe_filtered": {
+        "en": "Filter the local UIA tree around the declared focus using a strict host profile; return only bounded relevant semantics and metrics.",
+        "de": "Filtert den lokalen UIA-Baum anhand eines strikten Hostprofils um den erklärten Fokus; gibt nur begrenzte relevante Semantik und Metriken zurück.",
+        "es": "Filtra el árbol UIA local alrededor del foco declarado mediante un perfil estricto del host; devuelve solo semántica relevante acotada y métricas.",
+        "ja": "厳格なホストプロファイルで指定フォーカス周辺のローカル UIA ツリーを絞り込み、制限された関連セマンティクスと指標のみを返します。",
+        "ru": "Фильтрует локальное дерево UIA вокруг заданного фокуса по строгому профилю хоста; возвращает только ограниченную релевантную семантику и метрики.",
+        "zh": "使用严格的主机配置过滤声明焦点周围的本地 UIA 树，仅返回有界的相关语义和指标。",
     },
     "click_name": {
         "en": "Resolve an exact-first UIA target inside a required issued window, reject ambiguity/weak matches, and safely click it; returns score/alternatives.",

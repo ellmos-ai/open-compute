@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-08-16
+## Last-checked: 2026-08-31
 
 ## What it does
 
@@ -59,6 +59,11 @@ uses.
   and `MockExecutor` (fully implemented).
 - `perception.py` -- `ScreenshotPerception` (implemented); Set-of-Marks /
   accessibility / DOM providers (STUBS).
+- `perception_filter.py` -- strict host-supplied token profiles for semantic-first
+  UIA packets, focus-centered visual lenses, excluded-window blanking, and
+  tool/action allowlists. (fully implemented + tested)
+- `mcp_server.py` -- 18 native tools, including `observe_filtered` and
+  `capture_filtered`; `do(profile=...)` enforces the same action allowlist.
 - `.github/workflows/tests.yml` -- mock-only pytest and compile check on
   Python 3.10, 3.11, and 3.12.
 
@@ -104,6 +109,11 @@ Every action passes a central policy gate before execution. Default mode is
 `confirm` (risky actions require confirmation). Computer-use is powerful; run
 real backends in an isolated VM/container, keep a human in the loop, and treat
 on-screen content as untrusted (prompt-injection risk).
+
+Profile-filtered MCP perception is a local pre-model boundary, not a model
+instruction. Profiles are strict, may forbid fullscreen, bound semantic and
+visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
+Current full-suite state: 533 passed, 1 skipped (2026-08-31).
 
 ## License
 

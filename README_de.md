@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-564%20bestanden-success)](tests)
+[![Pytest Passed](https://img.shields.io/badge/tests-672%20bestanden-success)](tests)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
 [![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--08--16-blue)](CHANGELOG.md)
@@ -295,7 +295,8 @@ pip install "open-compute[mcp,local,uia,wgc] @ git+https://github.com/ellmos-ai/
 open-compute-mcp          # stdio-Server (Console-Script)
 ```
 
-**Tools:** `capture` · `do` (Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
+**Tools (19):** `capture` · `observe_filtered` · `capture_filtered` · `do`
+(Einzel- oder Batch-Aktionen) · `tree` · `click_name` ·
 `invoke` (semantisches UIA-Zielen) · `list_windows` · `get_screen_size` ·
 `watch_dir` · `push_status` · `rec_replay` · `signal_show` / `signal_hide` /
 `signal_status` / `signal_abort` (Human-in-the-Loop-Bildschirmsignal) ·
@@ -303,6 +304,34 @@ open-compute-mcp          # stdio-Server (Console-Script)
 Notizfenster) · `talk` (Push-to-Talk). Koordinaten normiert 0..1;
 `list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
 kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
+
+**Profilgefilterte Wahrnehmung.** Hosts mit Fokus auf Tokenökonomie geben
+`observe_filtered` und `capture_filtered` ein striktes Einsatzprofil mit. Die
+Filterung läuft lokal vor der Modellzustellung: UIA-Semantik nahe dem erklärten
+Fokus kommt zuerst, Text/Werte/Elemente haben harte Budgets, visuelle Eskalation
+bleibt eine begrenzte Linse und benannte Fenster wie ein Host-Chat werden in der
+Linse ausgeblendet. Unbekannte Profilfelder, Tools oder Aktionstypen scheitern
+geschlossen. Auch `do(profile=...)` weist Aktionen außerhalb derselben
+Allowlist zurück. Beispiel:
+
+```json
+{
+  "profileId": "form-cowork-v1",
+  "semanticFirst": true,
+  "maxElements": 12,
+  "maxCharacters": 1200,
+  "textLimit": 120,
+  "valuePolicy": "focused-only",
+  "selectionLimit": 160,
+  "focusRadius": 0.18,
+  "visualLens": {"width": 400, "height": 400},
+  "allowFullscreen": false,
+  "excludeElementNameContains": ["Cowork Companion", "ChatGPT", "Claude"],
+  "excludeWindowTitleContains": ["Cowork Companion", "ChatGPT", "Claude"],
+  "allowedTools": ["observe_filtered", "capture_filtered", "signal_show", "signal_hide", "signal_status", "do"],
+  "allowedActionTypes": ["mouse_move", "left_click", "type", "key", "scroll", "wait"]
+}
+```
 
 **Hardware-komponierte Fenster (`wgc`-Extra).** Ein GDI-Grab eines DirectX-Fensters —
 Roblox Studio, Blender, ein GPU-beschleunigter Browser — schlägt nicht fehl; es
@@ -698,7 +727,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**647 bestanden, 1 übersprungen** (2026-08-21).
+**672 bestanden, 1 übersprungen** (2026-08-31).
 
 ---
 
