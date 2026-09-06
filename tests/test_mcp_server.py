@@ -261,6 +261,32 @@ def test_capture_serializes_through_fastmcp():
     assert any(isinstance(item, ImageContent) for item in result.content)
 
 
+def test_capture_tool_has_no_output_schema():
+    """``capture()`` builds and returns its own ``CallToolResult`` with a raw,
+    unwrapped ``structuredContent`` dict (see the two ``return CallToolResult(``
+    sites above). FastMCP only skips output-schema generation/validation for a
+    tool when its return type annotation is exactly ``CallToolResult`` --
+    that's the whole point of the annotation, not a stylistic choice.
+
+    T-20260905-467485001: with the return type annotated ``-> Any`` instead,
+    FastMCP still auto-generates a ``{"result": ...}`` output schema for the
+    tool and validates ``structuredContent`` against it on every real call --
+    which the unwrapped dict never satisfies. That failure mode does not show
+    up through ``S.mcp.call_tool()``/the in-memory transport used elsewhere in
+    this file (both passed even with the bug reintroduced, for reasons not
+    fully understood -- exact dependency resolution of the ``mcp`` SDK's own
+    transitive deps looked like the likely culprit); it was only reproduced via
+    a real stdio round trip against the exact resolution `uvx` performs in
+    production (``mcp==1.29.1``): every ``capture`` call came back with
+    ``isError=True`` and ``"validation error for captureOutput: result Field
+    required"``. Assert the schema directly instead of the failure mode, so
+    this test does not depend on which transitive ``mcp``/pydantic versions
+    happen to be installed.
+    """
+    tool = S.mcp._tool_manager.get_tool("capture")
+    assert tool.fn_metadata.output_schema is None
+
+
 def test_click_confirm_gates_by_default():
     r = S.do(action={"type": "left_click", "x": 0.5, "y": 0.3}, **_PRECLICK)
     assert r["result"] == "needs_confirmation"

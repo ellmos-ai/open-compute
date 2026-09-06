@@ -905,7 +905,7 @@ def _capture_window_png(window: str | dict[str, Any]) -> bytes:
 
 
 @mcp.tool(description=mcp_i18n.tool_description("capture", _LANG))
-def capture(window: str | None = None) -> Any:
+def capture(window: str | None = None) -> CallToolResult:
     """Return one-shot observation metadata followed by a PNG image.
 
     Look at the image, then choose exactly one coordinate action. Pass the
