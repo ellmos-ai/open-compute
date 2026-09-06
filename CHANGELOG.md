@@ -67,6 +67,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   4.0s (Ticket T-20260825-540085216, part 1a — the user found the initial
   20s wait too long; 4s sits in the requested 3-5s range).
 
+### Fixed
+
+- **`capture` failed every real call with "validation error for
+  captureOutput: result Field required"** (Ticket T-20260905-467485001).
+  `capture()` builds and returns its own `CallToolResult` with a raw,
+  unwrapped `structuredContent` dict, but was annotated `-> Any`. FastMCP
+  only skips output-schema generation/validation for a tool when its return
+  type annotation is exactly `CallToolResult`; with `-> Any` it still
+  auto-generates a `{"result": ...}` schema and validates
+  `structuredContent` against it, which the unwrapped meta dict never
+  satisfies. Reproduced against `mcp==1.29.1` via a real stdio round trip
+  (matching the `uvx`-based production launch); fixed by annotating
+  `capture() -> CallToolResult`.
+- Server instructions (all six languages) now tell the calling agent to
+  call `signal_show` before its first GUI action of a session, so the
+  visible on-screen control indicator is not only opt-in via
+  `OC_SIGNAL_AUTO`/an explicit call the agent has to remember unprompted.
+
 ## [0.9.0] - 2026-08-21
 
 Visible pre-action countdown and accessibility release for ticket
