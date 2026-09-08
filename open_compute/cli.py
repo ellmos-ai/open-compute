@@ -99,6 +99,10 @@ import sys
 import tempfile
 import textwrap
 import time as _time
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from .safety import SafetyPolicy
 
 from .preclick import (
     PreClickVerificationError,
@@ -688,10 +692,13 @@ def cmd_capture_series(args: list[str]) -> None:
 
     scope = f"window:{ns.window}" if ns.window else "fullscreen"
     if ns.window:
-        capture_fn = lambda: _capture_window_bytes(ns.window)
+        def capture_fn():
+            return _capture_window_bytes(ns.window)
     else:
         executor = _load_local_executor(0)
-        capture_fn = lambda: executor.screenshot().screenshot
+
+        def capture_fn():
+            return executor.screenshot().screenshot
     try:
         result = capture_until_stable(
             capture_fn,

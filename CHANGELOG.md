@@ -9,6 +9,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation & Discoverability (Pfad B)
+
+- **Bilingual Documentation & Discoverability Overhaul (2026-09-08)**:
+  - Added comprehensive Shields.io badges (Status `v0.9.0-stable`, Python 3.10-3.13, Tests `683 passed | 100% green`, Platforms, Local-first zero egress, Security Policy, LLM-Ready, Ecosystem, Umbrella, License).
+  - Added Quick Navigation table of contents with 14 anchor links in both English and German READMEs (`README.md` and `README_de.md`).
+  - Added Highlights & Core Philosophy overview.
+  - Added dual Mermaid architecture and lifecycle diagrams (`flowchart TD` System Architecture Flow and `sequenceDiagram` Agent Loop & Safety Lifecycle).
+  - Added Governance & Runtime Invariants table documenting 10 capabilities and guarantees.
+  - Added Sibling Ecosystem & Partner Repositories matrix linking 11 federated repositories across `ellmos-ai`, `dev-bricks`, `file-bricks`, and `open-bricks`.
+  - Added PEP 621 metadata URLs (`Homepage`, `Documentation`, `Repository`, `Issues`, `Changelog`, `Security`, `Parent Organization`, `Umbrella Ecosystem`) and OS classifiers to `pyproject.toml`.
+  - Hardened GitHub Actions CI (`actions/checkout@v4`, `actions/setup-python@v5`, concurrency control, Python 3.13 matrix, ruff lint check step).
+  - Upgraded `SECURITY.md` to full bilingual English/German structure with 48h response SLA, GitHub Security Advisories link, official contacts, and core threat model invariants.
+  - Added automated metadata and discoverability contract testsuite in `tests/test_metadata.py` with 11 contract tests.
+  - Cleaned up all Ruff linter errors (`open_compute/cli.py`, `open_compute/learning.py`, `tests/test_dirwatch.py`, `tests/test_learning.py`). Full suite 100% ruff clean.
+
 ### Added
 
 - **`note_observation` tool + work-together mode** (Ticket

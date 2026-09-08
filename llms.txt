@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-08-31
+## Last-checked: 2026-09-08
 
 ## What it does
 
@@ -65,7 +65,7 @@ uses.
 - `mcp_server.py` -- 18 native tools, including `observe_filtered` and
   `capture_filtered`; `do(profile=...)` enforces the same action allowlist.
 - `.github/workflows/tests.yml` -- mock-only pytest and compile check on
-  Python 3.10, 3.11, and 3.12.
+  Python 3.10, 3.11, 3.12, and 3.13 with ruff lint check and concurrency control.
 
 ## Backend matrix
 
@@ -113,7 +113,7 @@ on-screen content as untrusted (prompt-injection risk).
 Profile-filtered MCP perception is a local pre-model boundary, not a model
 instruction. Profiles are strict, may forbid fullscreen, bound semantic and
 visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
-Current full-suite state: 533 passed, 1 skipped (2026-08-31).
+Current full-suite state: 683 passed, 2 skipped (100% green, 2026-09-08).
 
 ## License
 

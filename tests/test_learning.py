@@ -147,24 +147,24 @@ class TestActionOutcome:
 class TestLesson:
     def test_construction_defaults(self):
         from open_compute.learning import Lesson
-        l = Lesson(lesson="Test lesson")
-        assert l.lesson == "Test lesson"
-        assert l.tags == []
-        assert l.ts > 0
+        lesson_obj = Lesson(lesson="Test lesson")
+        assert lesson_obj.lesson == "Test lesson"
+        assert lesson_obj.tags == []
+        assert lesson_obj.ts > 0
 
     def test_to_dict_round_trip(self):
         from open_compute.learning import Lesson
-        l = Lesson(lesson="App Z: UIA unreliable", tags=["word", "invoke"])
-        d = l.to_dict()
+        lesson_obj = Lesson(lesson="App Z: UIA unreliable", tags=["word", "invoke"])
+        d = lesson_obj.to_dict()
         l2 = Lesson.from_dict(d)
         assert l2.lesson == "App Z: UIA unreliable"
         assert l2.tags == ["word", "invoke"]
 
     def test_from_dict_defaults(self):
         from open_compute.learning import Lesson
-        l = Lesson.from_dict({})
-        assert l.lesson == ""
-        assert l.tags == []
+        lesson_obj = Lesson.from_dict({})
+        assert lesson_obj.lesson == ""
+        assert lesson_obj.tags == []
 
 
 # ---------------------------------------------------------------------------
@@ -356,9 +356,9 @@ class TestAddLesson:
     def test_add_lesson_returns_lesson(self, tmp_path):
         from open_compute.learning import LearningManager, Lesson
         mgr = LearningManager(state_dir=tmp_path)
-        l = mgr.add_lesson("App Z: UIA unreliable", tags=["word"])
-        assert isinstance(l, Lesson)
-        assert l.lesson == "App Z: UIA unreliable"
+        lesson_obj = mgr.add_lesson("App Z: UIA unreliable", tags=["word"])
+        assert isinstance(lesson_obj, Lesson)
+        assert lesson_obj.lesson == "App Z: UIA unreliable"
 
     def test_add_lesson_appends_to_memory(self, tmp_path):
         from open_compute.learning import LearningManager
@@ -495,8 +495,8 @@ class TestLoadLessonsCap:
         path = tmp_path / "lessons.jsonl"
         lines = []
         for i in range(20):
-            l = Lesson(lesson=f"Lesson {i}", tags=[])
-            lines.append(_json.dumps(l.to_dict()))
+            item = Lesson(lesson=f"Lesson {i}", tags=[])
+            lines.append(_json.dumps(item.to_dict()))
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         mgr = LearningManager(state_dir=tmp_path, max_lessons=5)
         assert len(mgr.lessons) == 5
@@ -509,7 +509,7 @@ class TestLoadLessonsCap:
         mgr.add_lesson("First")
         mgr.add_lesson("Second")
         mgr2 = LearningManager(state_dir=tmp_path)
-        texts = [l.lesson for l in mgr2.lessons]
+        texts = [entry.lesson for entry in mgr2.lessons]
         assert "First" in texts
         assert "Second" in texts
 

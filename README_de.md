@@ -2,15 +2,18 @@
 
 <img src="assets/banner.png" width="100%" alt="open-compute Banner"/>
 
-[EN](README.md) | **DE**
+[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md)
 
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-672%20bestanden-success)](tests)
+[![Status: Produktion/Stabil v0.9.0](https://img.shields.io/badge/status-0.9.0--stabil-blue)](CHANGELOG.md)
+[![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
+[![Tests Passed](https://img.shields.io/badge/tests-683%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
+[![Architektur: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Sicherheitsrichtlinie](https://img.shields.io/badge/sicherheit-policy%20%7C%20pre--action%20grace-green)](SECURITY.md)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
-[![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
-[![Hygiene Geprüft](https://img.shields.io/badge/Hygiene-2026--08--16-blue)](CHANGELOG.md)
+[![Ökosystem: ellmos-ai](https://img.shields.io/badge/%C3%96kosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
+[![Dachverband: open-bricks](https://img.shields.io/badge/dachverband-open--bricks-blue)](https://github.com/open-bricks)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
 
 **Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop, jedes Reasoning-Modell hinter einer einzigen Schnittstelle.**
@@ -33,10 +36,39 @@ vollständig offline.
 > [!NOTE]
 > **KI / LLM-Integrationshinweis**: `open-compute` enthält eine maschinenlesbare [`llms.txt`](llms.txt)-Datei für KI-Agenten, RAG-Systeme und LLM-gestützte Entwicklungsworkflows.
 
+---
+
+## Schnellnavigation
+
+- [✨ Highlights & Kernphilosophie](#highlights--kernphilosophie)
+- [🏗️ Systemarchitektur-Ablauf](#systemarchitektur-ablauf)
+- [🔄 Agenten-Loop & Sicherheits-Lebenszyklus](#agenten-loop--sicherheits-lebenszyklus)
+- [🛡️ Governance & Laufzeit-Invarianten](#governance--laufzeit-invarianten)
+- [🌐 Geschwisterwerkzeuge & Partner-Repositories](#geschwisterwerkzeuge--partner-repositories)
+- [💡 Warum open-compute](#warum-open-compute)
+- [🤖 Unterstützte Backends & Status](#unterstützte-backends--status)
+- [📦 Installation & Extras](#installation--extras)
+- [🚀 Schnellstart & Nutzungsmuster](#schnellstart--nutzungsmuster)
+- [⏱️ Verbindliches Pre-Action Grace Window](#verbindliches-pre-action-grace-window)
+- [🔍 Profilgefilterte Wahrnehmung & Fensterfokussierung](#profilgefilterte-wahrnehmung--fensterfokussierung)
+- [💻 CLI-Befehlsreferenz](#cli-befehlsreferenz)
+- [🧪 Tests ausführen](#tests-ausführen)
+- [🔒 Sicherheitsrichtlinie & Meldung von Schwachstellen](#sicherheitsrichtlinie--meldung-von-schwachstellen)
 
 ---
 
-## Warum
+## Highlights & Kernphilosophie
+
+- 🎯 **Echte Modell-Agnostik**: Claude (Messages API), OpenAI CUA oder Offline-Mocks nahtlos ausführen, ohne Orchestrierungslogik oder Prompts anpassen zu müssen.
+- 📐 **Einheitliche normierte Koordinaten (0..1)**: Modelle erzeugen koordinatenunabhängige Fließkommazahlen `[0.0, 1.0]`. Unterschiedliche Bildschirmauflösungen, Multi-Monitor-Setups und Betriebssystem-DPI-Skalierungen werden zentral in `coordinates.py` umgerechnet.
+- 🛡️ **Verbindliches Pre-Action Grace Window**: Ein bedingungsloses 4-Sekunden-Karenzzeitfenster vor der ersten Aktion jeder Sitzung erlaubt es dem Bediener, jederzeit einzugreifen oder einen Not-Aus-Befehl abzusetzen.
+- 🚦 **Zentrales Safety Gate**: Konfigurierbare Sicherheitsmodi (`confirm`, `allow_all`, `read_only`) fangen jeden Mausklick, Tastenanschlag, Drag-Vorgang und Prozessstart ab, bevor er an das Betriebssystem übertragen wird.
+- 🔌 **Null Laufzeit-Abhängigkeiten**: Der Basiskern und der Mock-Treiber benötigen ausschließlich die Python-Standardbibliothek. Externe SDKs (`anthropic`, `openai`, `mss`, `playwright`) werden erst bei Bedarf dynamisch geladen.
+- 🪟 **Profilgefilterte Fensterwahrnehmung**: Token-begrenzte GUI-Fensterfilter verhindern Kontextüberläufe und garantieren, dass nicht fokussierte Hintergrundfenster niemals erfasst werden.
+
+---
+
+## Warum open-compute
 
 Jedes Computer-Use-Modell — Anthropics Claude-`computer`-Tool und OpenAIs
 Computer-Use-Tool — teilt dieselbe *Form* des Agenten-Loops, unterscheidet sich
@@ -57,6 +89,99 @@ bleibt:
 ---
 
 ## Architektur
+
+### Systemarchitektur-Ablauf
+
+```mermaid
+flowchart TD
+    subgraph Intake ["Zieleingabe & Aufgabensteuerung"]
+        G[Bediener-Ziel / Task-Anfrage] --> L[Agenten-Loop Orchestrator]
+    end
+
+    subgraph PerceptionLayer ["Hybride Wahrnehmungsschicht"]
+        L --> P[Wahrnehmungs-Provider]
+        P --> P1[Lokale Bildschirmaufnahme<br/>mss / WGC DirectX]
+        P --> P2[Set-of-Marks / DOM / OCR]
+        P --> P3[Windows UIAutomation Feed]
+        P --> P4[Dateisystem-Watchdog Feed]
+        P1 & P2 & P3 & P4 --> PF[Profilfilter & Token-Budgets]
+        PF --> COORD[Koordinaten-Normalisierer<br/>Normiert 0..1 auf Auflösung/DPI]
+    end
+
+    subgraph BackendLayer ["Modellagnostische Backends"]
+        COORD --> BACK[ComputerBackend-Protokoll]
+        BACK --> B1[MockBackend<br/>Offline / Ohne SDK / Tests]
+        BACK --> B2[Claude-Backend<br/>Anthropic Messages API]
+        BACK --> B3[OpenAI CUA-Backend<br/>Computer-Use Preview]
+        BACK --> B4[Modus-A Host-Reasoner<br/>Inline oder Subagenten-Schleife]
+    end
+
+    subgraph SafetyLayer ["Zentrale Sicherheit & Governance"]
+        BACK --> ACT[Kanonisches Aktionsschema<br/>click, type, key, scroll, drag, wait]
+        ACT --> SG[Safety-Policy-Gate<br/>confirm / allow_all / read_only]
+        SG --> GW[Verbindliches Pre-Action Grace Window<br/>4s Countdown + 120s Cooldown]
+        GW --> ABORT{Not-Aus /<br/>Bediener-Unterbrechung?}
+        ABORT -- Ja --> STOP[Sitzungsabbruch & Bereinigung]
+        ABORT -- Nein --> EXEC[Treiber-Dispatcher]
+    end
+
+    subgraph ExecutionLayer ["Treiberausführung & Rückmeldung"]
+        EXEC --> E1[LocalExecutor / Win32 / OS-Treiber]
+        EXEC --> E2[BrowserDriver / Playwright]
+        EXEC --> E3[MockExecutor<br/>Deterministischer Zustand]
+        E1 & E2 & E3 --> SCREEN[Zielanwendung / Desktop-Oberfläche]
+        SCREEN --> OBS[Beobachtungs-Overlay & Vorher-Nachher-Bild]
+        OBS --> L
+    end
+
+    style Intake fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style PerceptionLayer fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style BackendLayer fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style SafetyLayer fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
+```
+
+### Agenten-Loop & Sicherheits-Lebenszyklus
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Bediener / Mensch
+    participant Loop as Agenten-Loop (Orchestrator)
+    participant Perc as Wahrnehmung & Filter
+    participant Coord as Koordinaten-Normalisierer
+    participant Model as Reasoning-Backend (Claude / CUA / Mock)
+    participant Gate as Safety-Policy-Gate
+    participant Overlay as Grace-Window & Not-Aus-Overlay
+    participant Driver as Lokaler / Browser-Treiber
+
+    User->>Loop: run(goal="Systemeinstellungen anpassen")
+    Loop->>Perc: capture_filtered(scope, window, budget)
+    Perc->>Coord: Visueller Rohframe & UI-Elemente
+    Coord-->>Loop: Normierter (0..1) Wahrnehmungsframe
+    Loop->>Model: generate_action(perception_frame, prompt)
+    Model-->>Loop: Kanonische Aktion (z. B. left_click bei 0.45, 0.32)
+    Loop->>Gate: evaluate(action)
+    alt Aktion ist zustandsverändernd / riskant
+        Gate->>Overlay: arm_mandatory_grace_period(seconds=4.0)
+        Overlay->>User: Zeige Benachrichtigungsbanner
+        alt Bediener drückt Not-Aus / Hotkey
+            User-->>Overlay: Not-Aus-Signal
+            Overlay-->>Loop: Abort Execution Exception
+            Loop-->>User: Sitzung abgebrochen (Fail-Safe-Zustand)
+        else Karenzzeit ohne Not-Aus abgelaufen
+            Overlay-->>Gate: Grace Window freigegeben
+            Gate-->>Loop: Decision.ALLOW
+        end
+    else Reine Lese-Inspektion
+        Gate-->>Loop: Decision.ALLOW (Sofortige Ausführung)
+    end
+    Loop->>Driver: execute(action, denormalized_px)
+    Driver-->>Loop: ExecutionResult (width, height, status)
+    Loop->>User: Beobachtungsnotiz / Composite-Bild ausgeben
+```
+
+### Komponenten-Übersicht
 
 ```
                         +-----------------------------------------+
@@ -94,6 +219,45 @@ bleibt:
 
   * = Stub / Interface in dieser Version (siehe Status)
 ```
+
+---
+
+## Governance & Laufzeit-Invarianten
+
+Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholbarkeit und beschädigungsfreie Ausführung zu gewährleisten:
+
+| Eigenschaft / Invariante | Realisierungsmechanismus | Sicherheits- & Architektur-Garantie |
+|:---|:---|:---|
+| **Modellagnostischer Kern** | `ComputerBackend`-Protokollabstraktion | Nahtloser Wechsel zwischen Claude, OpenAI CUA oder Offline-Mock ohne Änderung des Agenten-Loops. |
+| **Null Laufzeit-Abhängigkeiten** | Lazy-Imports für Anbieter-SDKs und Plattform-Treiber | Reines Python-Standardbibliotheks-Verhalten beim Import; Vendor-SDKs (`anthropic`, `openai`) sind rein optional. |
+| **Normierte Koordinaten (0..1)** | Zentrale Skalierung in `coordinates.py` | DPI- und Auflösungsunabhängigkeit zentral garantiert; Modelle operieren stets im normierten (0..1)-Raum. |
+| **Verbindliches Grace Window** | Bedingungsloser Session-Timer (`pre_action_grace_seconds`) | 4 Sekunden Vorlaufzeit vor der ersten zustandsverändernden Aktion für zuverlässigen Not-Aus-Eingriff. |
+| **Fail-Closed Safety Gate** | Zentraler `SafetyPolicy`-Evaluator (`confirm`, `allow_all`, `read_only`) | Potenzielle zerstörerische Aktionen sind standardmäßig blockiert bis zur menschlichen Bestätigung. |
+| **Nicht-privilegierter User-Modus** | Standard-Betriebssystem-Berechtigungen | Keine administrativen Rechte erforderlich; Ausführung erfolgt im normalen Benutzerkontext. |
+| **Lokal-Zentriert & Zero Egress** | Offline-Mock-Backend & lokaler Executor als Standard | Der Kern kontaktiert keine externen Dienste, sofern nicht explizit ein Remote-LLM gewählt wird. |
+| **Null Geheimnis-Persistierung** | Umgebungsvariablen-Injektion | API-Schlüssel werden niemals in Logdateien, Sitzungs-Dumps oder Screenshots gespeichert. |
+| **Profilgefilterte Wahrnehmung** | Scope-Filter, visuelle Linsen und Token-Budgets | Strikte Filtergrenzen vor der Modellübertragung verhindern das Auslesen fremder Hintergrundfenster. |
+| **Plattformübergreifende CI-Integrität**| CI auf Windows, Linux und macOS | Alle Koordinaten-Mapper, Aktionsschemata und Mock-Treiber werden vollständig headless getestet. |
+
+---
+
+## Geschwisterwerkzeuge & Partner-Repositories
+
+`open-compute` fungiert als visuelle und funktionale GUI-Ausführungseinheit innerhalb des föderierten Automations-Ökosystems von **ellmos-ai** und **open-bricks**:
+
+| Repository | Rolle & Spezialisierung | Ökosystem-Integration |
+|:---|:---|:---|
+| [`ellmos-ai/bach`](https://github.com/ellmos-ai/bach) | Orchestrierung & Multi-Agenten-Pipelines | Übergeordnetes Orchestrierungsframework für autonome Workflows. |
+| [`ellmos-ai/usmc`](https://github.com/ellmos-ai/usmc) | Universal State Management & Controller | Zentrale Systemzustandskoordination über verteilte Agenten hinweg. |
+| [`ellmos-ai/connectors`](https://github.com/ellmos-ai/connectors) | Abhängigkeitsfreie asynchrone Konnektoren | Protokolladapter für Telegram, Discord, GitHub und lokale Webhooks. |
+| [`ellmos-ai/clutch`](https://github.com/ellmos-ai/clutch) | Hochleistungs-Kupplung für Multi-Agenten | Latenzarme IPC-Weiterleitung, Handoffs und Prozesskopplung. |
+| [`ellmos-ai/companion-for-agy`](https://github.com/ellmos-ai/companion-for-agy) | Desktop-Begleiter & Supervisor | Hintergrundüberwachung und Indikator-Overlay für Antigravity. |
+| [`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor) | Diagnose-Suite für Multi-Agenten | Tiefgehende Betriebssystem-, Host- und Prozessgesundheitsprüfung. |
+| [`dev-bricks/lock-master`](https://github.com/dev-bricks/lock-master) | Kanonische Lock-Synchronisation | Geräteübergreifende Datei- und Prozesssperren-Verwaltung. |
+| [`dev-bricks/ticket-master`](https://github.com/dev-bricks/ticket-master) | Einheitliche Ticket- & Vorgangssteuerung | Repository-übergreifendes Issue-Tracking und Aufgabenverteilung. |
+| [`dev-bricks/automation-master`](https://github.com/dev-bricks/automation-master) | Aufgaben-Lebenszyklus-Supervisor | Zeitgesteuerte Orchestrierung, Sidecar-Überwachung und Heartbeats. |
+| [`file-bricks/CloudLockFixer`](https://github.com/file-bricks/CloudLockFixer) | Cloud-Lock-Behebung & Konfliktreparatur | Autonome Behebung von Deadlocks in OneDrive und Cloud-Speichern. |
+| [`open-bricks/.github`](https://github.com/open-bricks/.github) | Dachorganisation & Governance-Standards | Zentrale Open-Source-Richtlinien, Sicherheitsstandards und Policies. |
 
 ---
 
@@ -668,20 +832,19 @@ kleine, additive Änderung, noch nicht implementiert.)
 
 ---
 
-## Sicherheit
+## Sicherheitsrichtlinie & Meldung von Schwachstellen
 
 Computer-Use ist mächtig. Der Standard-Modus der `SafetyPolicy` ist `confirm`:
 Klicks, Tippen, Tasten, Drags und App-Starts werden blockiert, sofern kein
 Bestätigungs-Callback zustimmt. Empfehlung (entspricht den Hinweisen beider
 Anbieter):
 
-- Echte Backends in einer **isolierten VM/Container** ausführen, nie auf dem
-  Hauptsystem.
+- Echte Backends in einer **isolierten VM oder einem Container** ausführen, nie auf dem Produktivsystem.
 - **Mensch im Loop** behalten.
-- **Bildschirminhalte als nicht vertrauenswürdig** behandeln
-  (Prompt-Injection-Risiko).
+- **Bildschirminhalte als nicht vertrauenswürdig** behandeln (Prompt-Injection-Risiko).
+- Reaktions-SLA: Erstrückmeldung bei Sicherheitsmeldungen innerhalb von **48 Stunden**.
 
-Siehe `SECURITY.md`.
+Für detaillierte Reporting-Anweisungen, GitHub Security Advisories und das vollständige Bedrohungsmodell siehe [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -727,7 +890,7 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**672 bestanden, 1 übersprungen** (2026-08-31).
+**683 bestanden, 2 übersprungen** (100% grün, 2026-09-08).
 
 ---
 

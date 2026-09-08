@@ -515,8 +515,8 @@ class LearningManager:
         Returns:
             The created :class:`Lesson`.
         """
-        l = Lesson(lesson=lesson, tags=list(tags or []))
-        self.lessons.append(l)
+        item = Lesson(lesson=lesson, tags=list(tags or []))
+        self.lessons.append(item)
         # Trim in-memory list
         if len(self.lessons) > self._max_lessons:
             self.lessons = self.lessons[-self._max_lessons:]
@@ -524,12 +524,12 @@ class LearningManager:
         # Append to JSONL
         try:
             with self._lessons_path().open("a", encoding="utf-8") as f:
-                f.write(json.dumps(l.to_dict(), ensure_ascii=False) + "\n")
+                f.write(json.dumps(item.to_dict(), ensure_ascii=False) + "\n")
             _trim_jsonl_tail(self._lessons_path(), self._max_lessons_history)
         except Exception:  # noqa: BLE001
             pass
 
-        return l
+        return item
 
     def _load_lessons(self) -> None:
         """Load the most recent max_lessons from the JSONL file."""
@@ -562,7 +562,7 @@ class LearningManager:
         """
         if tag is None:
             return list(self.lessons)
-        return [l for l in self.lessons if tag in l.tags]
+        return [item for item in self.lessons if tag in item.tags]
 
     # ------------------------------------------------------------------
     # Integration: apply profile dosages to a FeedManager

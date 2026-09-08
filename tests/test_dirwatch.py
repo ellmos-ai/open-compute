@@ -285,6 +285,7 @@ class TestDirwatchPolling:
         # May be modified or could be detected as create if mtime precision is low;
         # key assertion: at least one event was emitted
         assert len(obs.elements) >= 1
+        assert roles
 
     def test_deleted_event(self, tmp_path: Path) -> None:
         from open_compute.feeds.dirwatch import DirwatchFeed
@@ -440,8 +441,8 @@ class TestWatchDirCLIParsing:
         import io
         from open_compute.feeds.dirwatch import DirwatchFeed
 
-        with patch.object(DirwatchFeed, "start") as mock_start, \
-             patch.object(DirwatchFeed, "stop") as mock_stop, \
+        with patch.object(DirwatchFeed, "start"), \
+             patch.object(DirwatchFeed, "stop"), \
              patch.object(DirwatchFeed, "observe") as mock_obs:
             from open_compute.feeds.base import FeedObservation
             mock_obs.return_value = FeedObservation(

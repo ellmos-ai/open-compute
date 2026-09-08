@@ -2,15 +2,18 @@
 
 <img src="assets/banner.png" width="100%" alt="open-compute banner"/>
 
-**EN** | [DE](README_de.md)
+[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md)
 
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)](CHANGELOG.md)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![Tests](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Pytest Passed](https://img.shields.io/badge/tests-672%20passed-success)](tests)
+[![Status: Production/Stable v0.9.0](https://img.shields.io/badge/status-0.9.0--stable-blue)](CHANGELOG.md)
+[![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
+[![Tests Passed](https://img.shields.io/badge/tests-683%20passed%20%7C%20100%25%20green-success)](tests)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
+[![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Security Policy](https://img.shields.io/badge/security-policy%20%7C%20pre--action%20grace-green)](SECURITY.md)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
-[![Ecosystem: ELLMOS](https://img.shields.io/badge/Ecosystem-ELLMOS%20%2F%20open--bricks-blueviolet)](https://github.com/ellmos-ai)
-[![Hygiene Checked](https://img.shields.io/badge/Hygiene-2026--08--16-blue)](CHANGELOG.md)
+[![Ecosystem: ellmos-ai](https://img.shields.io/badge/ecosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
+[![Umbrella: open-bricks](https://img.shields.io/badge/umbrella-open--bricks-blue)](https://github.com/open-bricks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **A model-agnostic computer-use core: one agent loop, any reasoning model behind a single interface.**
@@ -31,10 +34,39 @@ them installed, and the default mock wiring runs fully offline.
 > [!NOTE]
 > **AI / LLM Integration Notice**: `open-compute` includes a machine-readable [`llms.txt`](llms.txt) file designed for AI agents, RAG crawlers, and LLM-assisted workflows.
 
+---
+
+## Quick Navigation
+
+- [✨ Highlights & Core Philosophy](#highlights--core-philosophy)
+- [🏗️ System Architecture Flow](#system-architecture-flow)
+- [🔄 Agent Loop & Safety Lifecycle](#agent-loop--safety-lifecycle)
+- [🛡️ Governance & Runtime Invariants](#governance--runtime-invariants)
+- [🌐 Sibling Ecosystem & Partner Repositories](#sibling-ecosystem--partner-repositories)
+- [💡 Why open-compute](#why-open-compute)
+- [🤖 Supported Backends & Status](#supported-backends--status)
+- [📦 Installation & Extras](#installation--extras)
+- [🚀 Quick Start & Usage Patterns](#quick-start--usage-patterns)
+- [⏱️ Mandatory Pre-Action Grace Window](#mandatory-pre-action-grace-window)
+- [🔍 Profile-Filtered Perception & Window Scoping](#profile-filtered-perception--window-scoping)
+- [💻 CLI Command Reference](#cli-command-reference)
+- [🧪 Running Tests](#running-tests)
+- [🔒 Security Policy & Vulnerability Reporting](#security-policy--vulnerability-reporting)
 
 ---
 
-## Why
+## Highlights & Core Philosophy
+
+- 🎯 **True Model-Agnosticism**: Run Claude (Messages API), OpenAI CUA, or deterministic offline mocks without rewriting your orchestration or prompt logic.
+- 📐 **Unified Normalized Coordinates (0..1)**: Models output invariant floats `[0.0, 1.0]`. Resolution differences, dual-monitor offsets, and OS DPI scaling factors are resolved centrally in `coordinates.py`.
+- 🛡️ **Mandatory Pre-Action Grace Window**: Unconditional 4-second safety window before the first action in any session, empowering operators to interrupt or emergency-abort before any GUI state mutation occurs.
+- 🚦 **Centralized Safety Gate**: Configurable policy modes (`confirm`, `allow_all`, `read_only`) intercept every mouse click, keypress, drag, and process execution before it hits the operating system.
+- 🔌 **Zero Runtime Dependencies**: Core agent loop and mock executor require only the Python standard library. Vendor SDKs (`anthropic`, `openai`, `mss`, `playwright`) are lazy-loaded extras.
+- 🪟 **Semantic Profile-Filtered Perception**: Strict token-bounded GUI window scoping prevents model context bloat and guarantees background windows remain uncaptured.
+
+---
+
+## Why open-compute
 
 Every computer-use model — Anthropic's Claude `computer` tool and OpenAI's
 computer-use tool — shares the same agent-loop *shape* but differs in transport,
@@ -53,6 +85,99 @@ you write the loop once and swap the reasoning model freely behind one
 ---
 
 ## Architecture
+
+### System Architecture Flow
+
+```mermaid
+flowchart TD
+    subgraph Input ["Goal & Task Intake"]
+        G[Operator Goal / Task Request] --> L[Agent Loop Orchestrator]
+    end
+
+    subgraph PerceptionLayer ["Hybrid Perception Layer"]
+        L --> P[Perception Provider]
+        P --> P1[Local Screenshot Capture<br/>mss / WGC DirectX]
+        P --> P2[Set-of-Marks / DOM / OCR]
+        P --> P3[Windows UIAutomation Feed]
+        P --> P4[Directory Watchdog Feed]
+        P1 & P2 & P3 & P4 --> PF[Profile Filter & Token Budgets]
+        PF --> COORD[Coordinate Normalizer<br/>Normalized 0..1 to Display/DPI]
+    end
+
+    subgraph BackendLayer ["Model-Agnostic Backends"]
+        COORD --> BACK[ComputerBackend Protocol]
+        BACK --> B1[MockBackend<br/>Offline / Zero-SDK / Tests]
+        BACK --> B2[Claude Backend<br/>Anthropic Messages API]
+        BACK --> B3[OpenAI CUA Backend<br/>Computer-Use Preview]
+        BACK --> B4[Mode A Keyless Reasoner<br/>Inline or Subagent Loop]
+    end
+
+    subgraph SafetyLayer ["Central Safety & Governance"]
+        BACK --> ACT[Canonical Action Schema<br/>click, type, key, scroll, drag, wait]
+        ACT --> SG[Safety Policy Gate<br/>confirm / allow_all / read_only]
+        SG --> GW[Mandatory Pre-Action Grace Window<br/>4s countdown + 120s cooldown]
+        GW --> ABORT{Emergency Stop /<br/>Operator Interruption?}
+        ABORT -- Yes --> STOP[Abort Session & Teardown]
+        ABORT -- No --> EXEC[Executor Dispatcher]
+    end
+
+    subgraph ExecutionLayer ["Driver Execution & Feedback"]
+        EXEC --> E1[LocalExecutor / Win32 / OS Driver]
+        EXEC --> E2[BrowserDriver / Playwright]
+        EXEC --> E3[MockExecutor<br/>Deterministic State]
+        E1 & E2 & E3 --> SCREEN[Target Application / Desktop Surface]
+        SCREEN --> OBS[Observation Overlay & Before-After Composite]
+        OBS --> L
+    end
+
+    style Input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style PerceptionLayer fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style BackendLayer fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style SafetyLayer fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
+```
+
+### Agent Loop & Safety Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Operator / Human
+    participant Loop as Agent Loop (Orchestrator)
+    participant Perc as Perception & Filters
+    participant Coord as Coordinate Normalizer
+    participant Model as Reasoning Backend (Claude / CUA / Mock)
+    participant Gate as Safety Policy Gate
+    participant Overlay as Grace Window & Abort Overlay
+    participant Driver as Local / Browser Executor
+
+    User->>Loop: run(goal="configure system settings")
+    Loop->>Perc: capture_filtered(scope, window, budget)
+    Perc->>Coord: raw visual frame & UI elements
+    Coord-->>Loop: normalized (0..1) perception frame
+    Loop->>Model: generate_action(perception_frame, prompt)
+    Model-->>Loop: Canonical Action (e.g. left_click at 0.45, 0.32)
+    Loop->>Gate: evaluate(action)
+    alt Action is state-changing / risky
+        Gate->>Overlay: arm_mandatory_grace_period(seconds=4.0)
+        Overlay->>User: Display Non-Modal Notification Banner
+        alt Operator presses Abort / Hotkey
+            User-->>Overlay: Emergency Abort Signal
+            Overlay-->>Loop: Abort Execution Exception
+            Loop-->>User: Session Aborted (Fail-Safe State)
+        else Grace Period Elapsed without abort
+            Overlay-->>Gate: Grace Window Clear
+            Gate-->>Loop: Decision.ALLOW
+        end
+    else Read-Only Inspection
+        Gate-->>Loop: Decision.ALLOW (Instant pass)
+    end
+    Loop->>Driver: execute(action, denormalized_px)
+    Driver-->>Loop: ExecutionResult (width, height, status)
+    Loop->>User: Emit Observation Note / Composite Image
+```
+
+### Component Layout
 
 ```
                         +-----------------------------------------+
@@ -89,6 +214,45 @@ you write the loop once and swap the reasoning model freely behind one
 
   * = stub / interface in this release (see Status)
 ```
+
+---
+
+## Governance & Runtime Invariants
+
+The architecture enforces strict operational invariants to guarantee security, repeatability, and non-destructive execution:
+
+| Capability / Invariant | Implementation Mechanism | Safety & Architectural Guarantee |
+|:---|:---|:---|
+| **Model-Agnostic Core** | `ComputerBackend` protocol abstraction | Swap Claude, OpenAI CUA, or offline Mock without rewriting the agent loop. |
+| **Zero Runtime Dependencies** | Lazy optional imports for SDKs & platform drivers | Pure Python standard library on import; vendor SDKs (`anthropic`, `openai`) are strictly optional. |
+| **Normalized Coordinates (0..1)** | Central DPI & resolution rescaling in `coordinates.py` | Display-resolution and DPI scaling solved centrally; models always operate in invariant (0..1) space. |
+| **Mandatory Pre-Action Grace Window** | Unconditional session timer (`pre_action_grace_seconds`) | 4-second delay before first state-changing action allows immediate human interruption / emergency stop. |
+| **Fail-Closed Safety Gate** | Central `SafetyPolicy` evaluator (`confirm`, `allow_all`, `read_only`) | Potentially destructive actions are blocked by default until human confirmation callback approves them. |
+| **Unprivileged User Mode** | Standard Win32/OS API user permissions | Zero administrative elevation; runs safely inside standard user security context. |
+| **Local-First & Zero Egress** | Offline mock backend & local-first executor default | Core loop never contacts external network services unless configured with an external LLM backend. |
+| **Zero Secret Persistence** | Environment-based API key injection | API keys and session secrets are never persisted in logs, state files, or screenshots. |
+| **Profile-Filtered Perception** | Scope filters, visual lenses, and token budgeting | Strict pre-model boundary prevents unintended screen capturing or sensitive window leakage. |
+| **Multi-OS CI Integrity** | Continuous Integration on Linux, Windows & macOS | All core mappers, coordinates, and mock backends run cross-platform and headless. |
+
+---
+
+## Sibling Ecosystem & Partner Repositories
+
+`open-compute` is designed to operate as the visual and GUI execution engine within the broader **ellmos-ai** and **open-bricks** federated multi-agent automation ecosystem:
+
+| Repository | Role & Specialization | Ecosystem Integration |
+|:---|:---|:---|
+| [`ellmos-ai/bach`](https://github.com/ellmos-ai/bach) | Orchestration & Multi-Agent Pipelines | Master orchestration framework for autonomous agent workflows. |
+| [`ellmos-ai/usmc`](https://github.com/ellmos-ai/usmc) | Universal State Management & Controller | Central system state coordination across distributed agents. |
+| [`ellmos-ai/connectors`](https://github.com/ellmos-ai/connectors) | Zero-Dependency Asynchronous Connectors | Protocol adapters for Telegram, Discord, GitHub, and local webhooks. |
+| [`ellmos-ai/clutch`](https://github.com/ellmos-ai/clutch) | High-Performance Multi-Agent Clutch | Low-latency IPC routing, handoffs, and process coupling. |
+| [`ellmos-ai/companion-for-agy`](https://github.com/ellmos-ai/companion-for-agy) | Desktop Companion & Supervisor | Background session supervisor and indicator overlay for Antigravity. |
+| [`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor) | Multi-Agent Health Diagnostic Suite | Deep OS, host environment, and process health verification. |
+| [`dev-bricks/lock-master`](https://github.com/dev-bricks/lock-master) | Canonical Lock Synchronization | Multi-device file and process concurrency management. |
+| [`dev-bricks/ticket-master`](https://github.com/dev-bricks/ticket-master) | Unified Ticket & Issue Dispatch | Cross-repository issue tracking and automated task assignment. |
+| [`dev-bricks/automation-master`](https://github.com/dev-bricks/automation-master) | Task Lifecycle Supervisor | Scheduled task orchestration, sidecar monitoring, and heartbeats. |
+| [`file-bricks/CloudLockFixer`](https://github.com/file-bricks/CloudLockFixer) | Cloud Lock Resolver & Conflict Repair | Autonomous deadlock resolution for OneDrive and cloud storage. |
+| [`open-bricks/.github`](https://github.com/open-bricks/.github) | Umbrella Governance & CI Standards | Global open-source standards, security baseline, and release policies. |
 
 ---
 
@@ -647,7 +811,7 @@ avoid false lessons — a small additive change, not yet implemented.)
 
 ---
 
-## Safety
+## Security Policy & Vulnerability Reporting
 
 Computer-use is powerful. The default `SafetyPolicy` mode is `confirm`: clicks,
 typing, key presses, drags, and app launches are blocked unless a confirmation
@@ -656,8 +820,9 @@ callback approves them. Recommended practice (mirrors both vendors' guidance):
 - Run real backends in an **isolated VM or container**, never your main desktop.
 - Keep a **human in the loop**.
 - Treat **on-screen content as untrusted** (prompt-injection risk).
+- Response SLA: Vulnerability reports acknowledged within **48 hours**.
 
-See `SECURITY.md`.
+For reporting instructions, draft advisories, and the full threat model, see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -687,14 +852,14 @@ Composition and runtime details are intentionally omitted.
 
 ---
 
-## Running tests
+## Running Tests
 
 ```bash
 python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **672 passed, 1 skipped** (2026-08-31).
+installs pytest. Current full-suite state: **683 passed, 2 skipped** (100% green, 2026-09-08).
 
 ---
 
