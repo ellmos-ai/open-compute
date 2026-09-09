@@ -45,7 +45,31 @@ _state/
 _archive/
 
 # Multi-Agent Lock-System (lokal, nie committen)
+LOCK.*
+*.lock
 LOCK*.txt
+
+# Multi-Host Sync-Konflikte & Temporärdateien
+*.sync-conflict-*
+*.conflict
+*-CONFLIT-*
+*-conflict-*
+*.sync-temp-*
+
+# Testing, Linting & Coverage Caches
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+wheelhouse/
+.wheel-smoke/
+
+# Temporäre Dateien & Backups
+*.tmp
+*.bak
+*.swp
+*~
+*.log
 
 # Pflegelauf-Protokolle (Pipeline-Material, kein Repo-Inhalt)
 _after-care/

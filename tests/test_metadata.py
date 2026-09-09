@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 import unittest
 
-ROOT = Path(__file__).resolve().parents[4] / "_Local_DEV" / "repos" / "open-compute"
+ROOT = Path(__file__).resolve().parents[1]
 if not ROOT.exists():
     # Fallback to direct path
     ROOT = Path(r"C:\_Local_DEV\repos\open-compute")
@@ -208,6 +208,42 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("concurrency:", ci_text)
         self.assertIn("ruff check .", ci_text)
         self.assertIn('"3.13"', ci_text)
+
+    def test_gitignore_hygiene(self):
+        gitignore_path = ROOT / ".gitignore"
+        self.assertTrue(gitignore_path.exists(), ".gitignore must exist")
+        gi_text = gitignore_path.read_text(encoding="utf-8")
+        # Multi-agent locks
+        self.assertIn("LOCK.*", gi_text)
+        self.assertIn("*.lock", gi_text)
+        self.assertIn("LOCK*.txt", gi_text)
+        # Cloud sync conflicts
+        self.assertIn("*.sync-conflict-*", gi_text)
+        self.assertIn("*.conflict", gi_text)
+        self.assertIn("*-CONFLIT-*", gi_text)
+        self.assertIn("*-conflict-*", gi_text)
+        self.assertIn("*.sync-temp-*", gi_text)
+        # Caches & temps
+        self.assertIn(".ruff_cache/", gi_text)
+        self.assertIn(".coverage", gi_text)
+        self.assertIn("*.tmp", gi_text)
+        self.assertIn("*.bak", gi_text)
+
+    def test_pyproject_pytest_configuration(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn("[tool.pytest.ini_options]", pyproject_text)
+        self.assertIn('testpaths = ["tests"]', pyproject_text)
+        self.assertIn('pythonpath = "."', pyproject_text)
+        self.assertIn('addopts = "-v"', pyproject_text)
+
+    def test_security_policy_umbrella_contact_and_triage(self):
+        sec_text = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        self.assertIn("security@open-bricks.org", sec_text)
+        self.assertIn("security@ellmos.ai", sec_text)
+        self.assertIn("5 business days", sec_text)
+        self.assertIn("5 Werktagen", sec_text)
+        self.assertIn("48 hours", sec_text)
+        self.assertIn("48 Stunden", sec_text)
 
 
 if __name__ == "__main__":

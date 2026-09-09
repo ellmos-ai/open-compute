@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-09-08
+## Last-checked: 2026-09-09
 
 ## What it does
 
@@ -113,7 +113,7 @@ on-screen content as untrusted (prompt-injection risk).
 Profile-filtered MCP perception is a local pre-model boundary, not a model
 instruction. Profiles are strict, may forbid fullscreen, bound semantic and
 visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
-Current full-suite state: 683 passed, 2 skipped (100% green, 2026-09-08).
+Current full-suite state: 686 passed, 2 skipped (100% green, 2026-09-09).
 
 ## License
 

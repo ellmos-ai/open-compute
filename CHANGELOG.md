@@ -9,6 +9,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Repository Hygiene & CI Hardening (Pfad A)
+
+- **Technical Hygiene & Multi-Host Synchronization Hardening (2026-09-09)**:
+  - Hardened `.gitignore` with multi-host cloud-sync conflict patterns (`*.sync-conflict-*`, `*.conflict`, `*-CONFLIT-*`, `*-conflict-*`, `*.sync-temp-*`), multi-agent lock patterns (`LOCK.*`, `*.lock`), testing/linting/packaging caches (`.ruff_cache/`, `.coverage`, `coverage/`, `htmlcov/`, `wheelhouse/`, `.wheel-smoke/`), and temporary files (`*.tmp`, `*.bak`, `*.swp`, `*~`, `*.log`).
+  - Standardized pytest configuration in `pyproject.toml` with `addopts = "-v"`.
+  - Fixed test root resolution in `tests/test_metadata.py` to use portable `Path(__file__).resolve().parents[1]` for cross-platform execution (Ubuntu CI / Windows / macOS).
+  - Extended automated contract tests in `tests/test_metadata.py` with `test_gitignore_hygiene`, `test_pyproject_pytest_configuration`, and `test_security_policy_umbrella_contact_and_triage` (14 contract tests total).
+  - Synchronized Shields.io test status (686 passed | 100% green), security SLA (48h), and code style (Ruff) badges across `README.md` and `README_de.md`.
+  - Updated machine-readable context [`llms.txt`](llms.txt) with current verification timestamp (2026-09-09) and test suite metrics (686 passed, 2 skipped).
+
 ### Documentation & Discoverability (Pfad B)
 
 - **Bilingual Documentation & Discoverability Overhaul (2026-09-08)**:
