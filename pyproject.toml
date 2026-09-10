@@ -59,6 +59,8 @@ Repository = "https://github.com/ellmos-ai/open-compute"
 Issues = "https://github.com/ellmos-ai/open-compute/issues"
 Changelog = "https://github.com/ellmos-ai/open-compute/blob/master/CHANGELOG.md"
 Security = "https://github.com/ellmos-ai/open-compute/blob/master/SECURITY.md"
+"Third-Party Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"
+"Marketing Log" = "https://github.com/ellmos-ai/open-compute/blob/master/MARKETING-LOG.txt"
 "Parent Organization" = "https://github.com/ellmos-ai"
 "Umbrella Ecosystem" = "https://github.com/open-bricks"
 

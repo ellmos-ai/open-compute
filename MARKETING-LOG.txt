@@ -1,15 +1,109 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
-## 2026-07-27 — Discoverability & Marketing Audit
+## 2026-09-10 — Discoverability, Third-Party Licenses, Invariants & Marketing Audit (v0.9.0)
 
-- **Wahlkriterium**: `ellmos-ai/open-compute` wurde gewählt, da es laut `CHECK-REG.txt` zuvor noch nie im Pfad B (Discoverability & Marketing Audit) geprüft wurde (`NEVER`), 100% sauberer Git-Zustand auf Branch `master` vorlag und der 24h-Cooldown-Check bestanden wurde (letzter Remote-Push/Commit `f6fc79c` am 2026-07-26T06:24:15Z vor >27.3h).
-- **Status & Design**: Model-agnostic computer-use core with 435 passing unit tests.
-- **Automatisch umgesetzt**:
-  1. `llms.txt`: Last-checked Datum auf `2026-07-27` aktualisiert.
-  2. `README.md` & `README_de.md`: Pytest Test-Badge auf `435 passed` aktualisiert, Ecosystem Badge (`Ecosystem: ELLMOS / open-bricks`) & Hygiene Badge (`Hygiene: 2026-07-27`) ergänzt.
-  3. `CHANGELOG.md`: Release-Eintrag für Discoverability & Marketing Pass unter `[Unreleased]` ergänzt.
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (letzte Pfad B Prüfung am 2026-08-25 vor 16 Tagen, Ruhezustand 32h > 24h Cooldown). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks, Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.0; 689 automatisierte Unit- und Vertragstests grün (100% pass), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
 
-- **Nicht automatisch abgeschlossen (Empfehlungen für manuelles Marketing & Community Outreach)**:
-  1. **PyPI Package Renaming / Disambiguation**: Da der Name `open-compute` auf PyPI von einem unbezogenen Projekt belegt ist, sollte mittelfristig ein Paketname wie `ellmos-open-compute` oder `open-compute-core` auf PyPI registriert werden, um PyPI-Installationen ohne `git+https` Syntax zu ermöglichen.
-  2. **Computer-Use Video / Animated GIF Demo**: Erstellung eines animated Screencasts (GIF/MP4) der Mock & Claude computer-use backend action execution (Normalized Coordinates, Action Schema Mapper & Safety Policy Gate), um die Visuelle Präsenz auf GitHub & Social Media zu steigern.
-  3. **AI Agent Framework Directories Submissions**: Einreichung von `open-compute` in KI-Agenten-Verzeichnissen (z. B. Glama, Smithery, Awesome-AI-Agents, LobeHub), um die Reichweite des modellunabhängigen Computer-Use Runtimes zu maximieren.
+### 1. Ziel-Personas & Marktsegmente
+
+#### Persona 1: Enterprise AI Agent Engineers & Platform Architects
+- **Profil**: Softwarearchitekten und KI-Entwickler in Unternehmen, die autonome Agenten für Desktop-, Web- und GUI-Workflows konzipieren.
+- **Kernbedürfnis**: Modellunabhängigkeit ohne Vendor-Lock-in. Die Möglichkeit, zwischen Anthropic Claude (Messages API) und OpenAI CUA zu wechseln oder zukünftige Modelle einzubinden, ohne die Aktions- und Orchestrierungslogik neu zu schreiben.
+- **Pain Points**: Proprietäre Koordinatensysteme (DPI-Skalierung, Multi-Monitor-Offsets), unterschiedliche Aktions-Schemas, fehlende einheitliche Governance-Schnittstellen.
+- **Lösung durch open-compute**: Einheitliches kanonisches Aktionsschema (`actions.py`), normierte Koordinaten `0.0..1.0` (`coordinates.py`), zentrale `ComputerBackend`-Schnittstelle und deterministischer `MockBackend`-Modus für CI/CD.
+
+#### Persona 2: Open-Source Agent Developers & AI Researchers
+- **Profil**: Forscher und Open-Source-Entwickler, die Wahrnehmungs- und Aktionsschleifen evaluieren (z. B. Pixel-Vision vs. Set-of-Marks vs. Accessibility-Bäume).
+- **Kernbedürfnis**: Schlanke, transparente Codebasis ohne massive Docker-Overheads oder intransparente Cloud-Dienste; 100% offline testbar.
+- **Pain Points**: Hohe API-Kosten bei der Testentwicklung; komplexe Abhängigkeiten schwergewichtiger Benchmark-Frameworks.
+- **Lösung durch open-compute**: Kern hat **null Laufzeit-Abhängigkeiten** (reine Python-Standardbibliothek); vollständige Offline-Ausführung mit Mocks; flexible Schnittstelle für hybride Perzeption (Screenshots, UIA, Set-of-Marks).
+
+#### Persona 3: Security, Safety & Governance Compliance Officers
+- **Profil**: Sicherheitsverantwortliche und Auditoren, die den Einsatz von Computer-Use-Agenten in operativen Umgebungen freigeben oder überwachen müssen.
+- **Kernbedürfnis**: Gewährleistung von Fail-Safe-Mechanismen, Not-Aus-Funktionalität und strikter Datenschutzkonformität (Zero-Egress).
+- **Pain Points**: Unkontrollierte Aktionen autonomer Agenten auf Betriebssystemebene; unbemerkte Datenabflüsse durch Telemetrie; schwer nachvollziehbare Berechtigungsstufen.
+- **Lösung durch open-compute**: Verbindliches 4-Sekunden `Pre-Action Grace Window` vor jeder zustandsverändernden Aktion; dreistufiges Safety-Policy-Gate (`confirm`, `allow_all`, `read_only`); standardmäßiger 100% Offline-Betrieb (Zero-Egress); unprivilegierter User-Mode (`RunAsInvoker`).
+
+#### Persona 4: Desktop & GUI Automation Specialists (RPA Modernizers)
+- **Profil**: Entwickler, die klassische RPA-Skripte (AutoHotkey, PyAutoGUI, Selenium) durch intelligente, visuelle LLM-gestützte Abläufe modernisieren.
+- **Kernbedürfnis**: Robuste Zielerfassung auf dem Desktop bei variierenden Auflösungen, Schriftgrößen und UI-Themes.
+- **Pain Points**: Spröde Bildabgleiche und feste Pixel-Koordinaten brechen bei OS-Updates oder DPI-Änderungen.
+- **Lösung durch open-compute**: Robuste Reskalierung normierter Koordinaten, Token-budgetierte UIA-Fensterfilterung (`perception_filter.py`) und native CLI-Werkzeuge (`oc capture`, `oc do`, `oc click-name`).
+
+---
+
+### 2. High-Intent Suchbegriffe & SEO-Keywords
+
+- **Englisch (High Intent)**:
+  - `python computer use agent core`
+  - `claude computer use alternative python`
+  - `model agnostic gui automation llm`
+  - `openai cua python runtime`
+  - `normalized coordinates screen automation`
+  - `safe desktop automation agent framework`
+  - `set of marks gui agent python`
+  - `zero egress ai agent runtime`
+  - `uiautomation semantic desktop agent`
+  - `model context protocol computer use server`
+- **Deutsch (Spezifisch)**:
+  - `ki desktop automatisierung python framework`
+  - `computer use agentur runtime open source`
+  - `modellunabhaengige gui agenten steuerung`
+  - `claude computer use lokales framework`
+  - `sichere desktop ki automatisierung fail closed`
+  - `normierte koordinaten bildschirmsteuerung python`
+  - `offline ki agenten loop zero egress`
+
+---
+
+### 3. Alleinstellungsmerkmale (USP) & Wettbewerbsmatrix
+
+| Kriterium | open-compute | Anthropic Reference Demo | OSWorld / Agent-S |
+|:---|:---:|:---:|:---:|
+| **Modell-Agnostizismus** | **Vollständig (Claude, OpenAI, Mock, Mode A)** | Nur Claude Messages API | Mehrere Modelle via Wrapper |
+| **Laufzeit-Abhängigkeiten** | **0 (Reine Python-Standardbibliothek)** | Docker + Python + Node.js | Massive Docker-Images (>20 GB) |
+| **Koordinaten-Standard** | **Zentral normiert (0..1) mit DPI-Rescaling** | Pixel-Koordinaten (1024x768 etc.) | Pixel-basiert mit Skalierungsdrift |
+| **Sicherheits-Gate** | **Zentrales Policy-Gate + 4s Grace Window** | Manuelle Prompt-Warnung | Benchmark-Fokus (ohne Grace Window) |
+| **Datenschutz & Egress** | **100% Offline / Zero-Egress by default** | Cloud-abhängig | Teils Cloud-Telemetrie |
+| **Lizenzmodell** | **MIT (100% Permissiv auditiert)** | MIT / Custom Reference | Verschiedene / Teil-Copyleft |
+| **MCP-Server Integration** | **Nativ integriert (`open-compute-mcp`)** | Nicht integriert | Nicht integriert |
+
+---
+
+### 4. Governance- & Laufzeit-Invarianten (10 Kernregeln)
+
+1. `INV-MOD-01`: **Model-Agnostic Core** — Austauschbarkeit von Claude, OpenAI CUA und Mock ohne Umbau der Orchestrierungsschleife.
+2. `INV-DEP-02`: **Zero Runtime Dependencies** — Kern benötigt ausschließlich die Python-Standardbibliothek; alle Vendor-SDKs sind optionale Extras.
+3. `INV-CRD-03`: **Normalized Coordinates (0..1)** — Alle Modelle arbeiten auf normierten Fließkommazahlen; DPI- und Auflösungskonvertierung erfolgt zentral.
+4. `INV-GRC-04`: **Mandatory Pre-Action Grace Window** — Unwiderrufliches 4-Sekunden-Zeitfenster vor der ersten zustandsverändernden Aktion für menschlichen Abbruch.
+5. `INV-SAF-05`: **Fail-Closed Safety Gate** — Potenziell zerstörerische Aktionen werden im Default-Modus (`confirm`) standardmäßig blockiert bis zur Bestätigung.
+6. `INV-USR-06`: **Unprivileged User Mode** — Volle Funktionalität im Standard-Benutzerkontext (`RunAsInvoker`) ohne administrative Elevation.
+7. `INV-EGR-07`: **Local-First & Zero Egress** — Kein externer Netzwerkverkehr oder Telemetrie im Offline- und Mock-Modus.
+8. `INV-SEC-08`: **Zero Secret Persistence** — API-Schlüssel werden flüchtig verarbeitet und niemals in Logs, Caches oder Screenshots gesichert.
+9. `INV-SCP-09`: **Profile-Filtered Perception** — Striktes Token-Budgeting und Fenster-Scoping verhindern unabsichtliche Hintergrund-Erfassung.
+10. `INV-SLA-10`: **Security Response SLA** — 48-Stunden-Reaktionszeit und 5-Werktage-Triage-Garantie für gemeldete Sicherheitsvorfälle.
+
+---
+
+### 5. Geschwister-Ökosystem & Cross-Linking
+
+`open-compute` ist eng vernetzt mit 11 Geschwister-Repositories:
+- **ellmos-ai**: `bach` (Orchestrierung), `usmc` (Zustandskoordination), `connectors` (Protokoll-Adapter), `clutch` (IPC-Routing), `companion-for-agy` (Desktop-Supervisor), `system-auditor` (Diagnostik).
+- **dev-bricks**: `lock-master` (Multi-Device-Locks), `ticket-master` (Issue-Dispatch), `automation-master` (Task-Lifecycle).
+- **file-bricks**: `CloudLockFixer` (Cloud-Lock-Resolver).
+- **open-bricks**: `open-bricks/.github` (Dachorganisation & Governance-Standards).
+
+---
+
+### 6. Konkrete nächste Schritte & Marketing-Empfehlungen
+
+1. **PyPI Namensraum (`ellmos-open-compute`)**: Da der Name `open-compute` auf PyPI von einem Drittprojekt belegt ist, sollte das Paket offiziell als `ellmos-open-compute` auf PyPI registriert werden, um eine einfache `pip install ellmos-open-compute`-Erfahrung zu gewährleisten.
+2. **Visuelle Demo (Animated SVG / Screencast)**: Ein 30-sekündiges GIF/WebM der normierten Koordinaten-Erfassung, der Grace-Window-Einblendung und der Mock-Ausführung für die GitHub-Startseite erstellen.
+3. **Verzeichnis-Listings**: Einreichung des nativen MCP-Servers bei Glama, Smithery, OpenTools und dem offiziellen Model Context Protocol Verzeichnis.
+
+---
+
+## 2026-07-27 — Discoverability & Marketing Audit (Archivbestand)
+
+- Initialer Discoverability-Pass: llms.txt aktualisiert, Test-Badge auf 435 passed synchronisiert, Unreleased-Changelog angelegt.

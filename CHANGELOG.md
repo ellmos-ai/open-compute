@@ -9,6 +9,33 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation, Marketing & Design (Pfad B - 2026-09-10)
+
+- **Third-Party License Audit & Inventory (`THIRD_PARTY_LICENSES.md`)**:
+  - Authored comprehensive Third-Party Licenses & Transparency Notice documenting runtime boundaries, optional vendor adapters (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`), and QA dependencies (`pytest`, `ruff`, `setuptools`).
+  - Formally guaranteed 100% permissive licensing (MIT, Apache-2.0, BSD-3-Clause, PSFL-2.0, HPND) with zero copyleft viral contamination.
+  - Codified Zero-Egress Privacy Boundary (no network requests in offline/mock execution) and unprivileged user-mode execution (`RunAsInvoker`).
+- **Marketing Audit & Target Personas (`MARKETING-LOG.txt`)**:
+  - Codified 4 distinct target personas: Enterprise AI Agent Engineers & Platform Architects, Open-Source Agent Developers & AI Researchers, Security, Safety & Governance Compliance Officers, and Desktop & GUI Automation Specialists (RPA Modernizers).
+  - Compiled high-intent discovery search keywords across English and German market segments.
+  - Documented Unique Value Propositions (UVPs) vs. vendor demos (Anthropic) and heavy academic benchmark frameworks (OSWorld/Agent-S).
+  - Codified the 10 Governance & Runtime Invariants (`INV-MOD-01` through `INV-SLA-10`).
+- **Bilingual Documentation & Badge Parity (`README.md` & `README_de.md`)**:
+  - Expanded Quick Navigation to 16 points with 100% reciprocal anchor parity between English and German.
+  - Added Third-Party Audited badge linking to `THIRD_PARTY_LICENSES.md`.
+  - Added explicit IDs `INV-MOD-01` through `INV-SLA-10` to the Governance & Runtime Invariants table.
+  - Added dedicated `## Third-Party Licenses & Transparency` (EN) and `## Drittanbieter-Lizenzen & Transparenz` (DE) sections.
+  - Synchronized test metrics across both READMEs to `689 passed, 2 skipped (100% green, 2026-09-10)`.
+- **PEP 621 Metadata URLs (`pyproject.toml`)**:
+  - Added `"Third-Party Licenses"` and `"Marketing Log"` to `[project.urls]`.
+- **Machine-Readable AI Context (`llms.txt`)**:
+  - Synchronized `Last-checked: 2026-09-10`, referenced `THIRD_PARTY_LICENSES.md`, `MARKETING-LOG.txt`, and documented the 10 Governance Invariants.
+- **Contract Test Suite Expansion (`tests/test_metadata.py`)**:
+  - Added automated contract tests for `THIRD_PARTY_LICENSES.md` existence and dependency audit.
+  - Added contract tests for `MARKETING-LOG.txt` persona audits and high-intent discovery keywords.
+  - Added contract tests for PEP 621 project URLs (`Third-Party Licenses` and `Marketing Log`).
+  - Added contract tests for the 10 Governance Invariant IDs (`INV-MOD-01` to `INV-SLA-10`).
+
 ### Repository Hygiene & CI Hardening (Pfad A)
 
 - **Technical Hygiene & Multi-Host Synchronization Hardening (2026-09-09)**:

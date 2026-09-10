@@ -7,12 +7,13 @@
 [![Status: Produktion/Stabil v0.9.0](https://img.shields.io/badge/status-0.9.0--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-686%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-689%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
-[![Architektur: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
-[![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA-green)](SECURITY.md)
+[![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
 [![Code-Stil: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
+[![Drittanbieter: Auditiert](https://img.shields.io/badge/drittanbieter-auditiert%20%7C%20permissiv-blue)](THIRD_PARTY_LICENSES.md)
 [![Ökosystem: ellmos-ai](https://img.shields.io/badge/%C3%96kosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Dachverband: open-bricks](https://img.shields.io/badge/dachverband-open--bricks-blue)](https://github.com/open-bricks)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
@@ -53,8 +54,10 @@ vollständig offline.
 - [⏱️ Verbindliches Pre-Action Grace Window](#verbindliches-pre-action-grace-window)
 - [🔍 Profilgefilterte Wahrnehmung & Fensterfokussierung](#profilgefilterte-wahrnehmung--fensterfokussierung)
 - [💻 CLI-Befehlsreferenz](#cli-befehlsreferenz)
-- [🧪 Tests ausführen](#tests-ausführen)
 - [🔒 Sicherheitsrichtlinie & Meldung von Schwachstellen](#sicherheitsrichtlinie--meldung-von-schwachstellen)
+- [🧪 Tests ausführen](#tests-ausführen)
+- [📜 Drittanbieter-Lizenzen & Transparenz](#drittanbieter-lizenzen--transparenz)
+- [📄 Lizenz](#lizenz)
 
 ---
 
@@ -227,18 +230,18 @@ sequenceDiagram
 
 Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholbarkeit und beschädigungsfreie Ausführung zu gewährleisten:
 
-| Eigenschaft / Invariante | Realisierungsmechanismus | Sicherheits- & Architektur-Garantie |
-|:---|:---|:---|
-| **Modellagnostischer Kern** | `ComputerBackend`-Protokollabstraktion | Nahtloser Wechsel zwischen Claude, OpenAI CUA oder Offline-Mock ohne Änderung des Agenten-Loops. |
-| **Null Laufzeit-Abhängigkeiten** | Lazy-Imports für Anbieter-SDKs und Plattform-Treiber | Reines Python-Standardbibliotheks-Verhalten beim Import; Vendor-SDKs (`anthropic`, `openai`) sind rein optional. |
-| **Normierte Koordinaten (0..1)** | Zentrale Skalierung in `coordinates.py` | DPI- und Auflösungsunabhängigkeit zentral garantiert; Modelle operieren stets im normierten (0..1)-Raum. |
-| **Verbindliches Grace Window** | Bedingungsloser Session-Timer (`pre_action_grace_seconds`) | 4 Sekunden Vorlaufzeit vor der ersten zustandsverändernden Aktion für zuverlässigen Not-Aus-Eingriff. |
-| **Fail-Closed Safety Gate** | Zentraler `SafetyPolicy`-Evaluator (`confirm`, `allow_all`, `read_only`) | Potenzielle zerstörerische Aktionen sind standardmäßig blockiert bis zur menschlichen Bestätigung. |
-| **Nicht-privilegierter User-Modus** | Standard-Betriebssystem-Berechtigungen | Keine administrativen Rechte erforderlich; Ausführung erfolgt im normalen Benutzerkontext. |
-| **Lokal-Zentriert & Zero Egress** | Offline-Mock-Backend & lokaler Executor als Standard | Der Kern kontaktiert keine externen Dienste, sofern nicht explizit ein Remote-LLM gewählt wird. |
-| **Null Geheimnis-Persistierung** | Umgebungsvariablen-Injektion | API-Schlüssel werden niemals in Logdateien, Sitzungs-Dumps oder Screenshots gespeichert. |
-| **Profilgefilterte Wahrnehmung** | Scope-Filter, visuelle Linsen und Token-Budgets | Strikte Filtergrenzen vor der Modellübertragung verhindern das Auslesen fremder Hintergrundfenster. |
-| **Plattformübergreifende CI-Integrität**| CI auf Windows, Linux und macOS | Alle Koordinaten-Mapper, Aktionsschemata und Mock-Treiber werden vollständig headless getestet. |
+| ID | Eigenschaft / Invariante | Realisierungsmechanismus | Sicherheits- & Architektur-Garantie |
+|:---|:---|:---|:---|
+| `INV-MOD-01` | **Modellagnostischer Kern** | `ComputerBackend`-Protokollabstraktion | Nahtloser Wechsel zwischen Claude, OpenAI CUA oder Offline-Mock ohne Änderung des Agenten-Loops. |
+| `INV-DEP-02` | **Null Laufzeit-Abhängigkeiten** | Lazy-Imports für Anbieter-SDKs und Plattform-Treiber | Reines Python-Standardbibliotheks-Verhalten beim Import; Vendor-SDKs (`anthropic`, `openai`) sind rein optional. |
+| `INV-CRD-03` | **Normierte Koordinaten (0..1)** | Zentrale Skalierung in `coordinates.py` | DPI- und Auflösungsunabhängigkeit zentral garantiert; Modelle operieren stets im normierten (0..1)-Raum. |
+| `INV-GRC-04` | **Verbindliches Grace Window** | Bedingungsloser Session-Timer (`pre_action_grace_seconds`) | 4 Sekunden Vorlaufzeit vor der ersten zustandsverändernden Aktion für zuverlässigen Not-Aus-Eingriff. |
+| `INV-SAF-05` | **Fail-Closed Safety Gate** | Zentraler `SafetyPolicy`-Evaluator (`confirm`, `allow_all`, `read_only`) | Potenzielle zerstörerische Aktionen sind standardmäßig blockiert bis zur menschlichen Bestätigung. |
+| `INV-USR-06` | **Nicht-privilegierter User-Modus** | Standard-Betriebssystem-Berechtigungen | Keine administrativen Rechte erforderlich (`RunAsInvoker`); Ausführung erfolgt im normalen Benutzerkontext. |
+| `INV-EGR-07` | **Lokal-Zentriert & Zero Egress** | Offline-Mock-Backend & lokaler Executor als Standard | Der Kern kontaktiert keine externen Dienste, sofern nicht explizit ein Remote-LLM gewählt wird. |
+| `INV-SEC-08` | **Null Geheimnis-Persistierung** | Umgebungsvariablen-Injektion | API-Schlüssel werden niemals in Logdateien, Sitzungs-Dumps oder Screenshots gespeichert. |
+| `INV-SCP-09` | **Profilgefilterte Wahrnehmung** | Scope-Filter, visuelle Linsen und Token-Budgets | Strikte Filtergrenzen vor der Modellübertragung verhindern das Auslesen fremder Hintergrundfenster. |
+| `INV-SLA-10` | **Sicherheits-Reaktions-SLA** | Dedizierte Sicherheitskontakte & Meldeprozess | 48-Stunden-Reaktionszeit und 5-Werktage-Triage-Zusage gemäß `SECURITY.md`. |
 
 ---
 
@@ -891,7 +894,18 @@ python -X utf8 -m pytest -q
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**683 bestanden, 2 übersprungen** (100% grün, 2026-09-08).
+**689 bestanden, 2 übersprungen** (100% grün, 2026-09-10).
+
+---
+
+## Drittanbieter-Lizenzen & Transparenz
+
+`open-compute` verpflichtet sich zu lückenloser Software-Lieferkettentransparenz und dem vollständigen Verzicht auf Copyleft-Lizenzen:
+- **Laufzeit-Kern:** Reine Python-Standardbibliothek (keine externen Abhängigkeiten beim Import erforderlich).
+- **Optionale Adapter:** Alle optionalen Komponenten (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) stehen unter streng permissiven Lizenzen (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
+- **Zero-Egress-Garantie:** Die Offline-Mock-Engine erzeugt keinerlei Netzwerkverkehr. Es sind keinerlei Tracking-, Analyse- oder Telemetriebibliotheken enthalten.
+
+Detaillierte Lizenztexte, Urheberrechtshinweise und Paketgrenzen sind in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) dokumentiert.
 
 ---
 

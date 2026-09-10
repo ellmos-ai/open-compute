@@ -53,8 +53,8 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         anchors_en = re.findall(r"\[([^\]]+)\]\(#([^\)]+)\)", readme_en)
         anchors_de = re.findall(r"\[([^\]]+)\]\(#([^\)]+)\)", readme_de)
 
-        self.assertGreaterEqual(len(anchors_en), 12, "README.md must have >= 12 quick navigation anchor links")
-        self.assertGreaterEqual(len(anchors_de), 12, "README_de.md must have >= 12 quick navigation anchor links")
+        self.assertGreaterEqual(len(anchors_en), 15, "README.md must have >= 15 quick navigation anchor links")
+        self.assertGreaterEqual(len(anchors_de), 15, "README_de.md must have >= 15 quick navigation anchor links")
 
         # Key anchor targets exist in English
         expected_anchors_en = [
@@ -67,7 +67,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "mandatory-pre-action-grace-window",
             "profile-filtered-perception--window-scoping",
             "running-tests",
+            "third-party-licenses--transparency",
             "security-policy--vulnerability-reporting",
+            "license",
         ]
         for anchor in expected_anchors_en:
             self.assertIn(f"#{anchor}", readme_en, f"Anchor #{anchor} must be linked in README.md")
@@ -83,7 +85,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "verbindliches-pre-action-grace-window",
             "profilgefilterte-wahrnehmung--fensterfokussierung",
             "tests-ausf\u00fchren",
+            "drittanbieter-lizenzen--transparenz",
             "sicherheitsrichtlinie--meldung-von-schwachstellen",
+            "lizenz",
         ]
         for anchor in expected_anchors_de:
             self.assertIn(f"#{anchor}", readme_de, f"Anchor #{anchor} must be linked in README_de.md")
@@ -117,6 +121,33 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
         self.assertIn("## Governance & Runtime Invariants", readme_en)
         self.assertIn("## Governance & Laufzeit-Invarianten", readme_de)
+
+        # Invariants IDs INV-MOD-01 to INV-SLA-10 in both READMEs
+        for i in range(1, 11):
+            inv_id = "INV-"
+            if i == 1:
+                inv_id += "MOD-01"
+            elif i == 2:
+                inv_id += "DEP-02"
+            elif i == 3:
+                inv_id += "CRD-03"
+            elif i == 4:
+                inv_id += "GRC-04"
+            elif i == 5:
+                inv_id += "SAF-05"
+            elif i == 6:
+                inv_id += "USR-06"
+            elif i == 7:
+                inv_id += "EGR-07"
+            elif i == 8:
+                inv_id += "SEC-08"
+            elif i == 9:
+                inv_id += "SCP-09"
+            elif i == 10:
+                inv_id += "SLA-10"
+
+            self.assertIn(inv_id, readme_en, f"{inv_id} must be in English README invariants table")
+            self.assertIn(inv_id, readme_de, f"{inv_id} must be in German README invariants table")
 
         # Invariants keywords
         self.assertIn("Model-Agnostic Core", readme_en)
@@ -164,6 +195,8 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "Issues",
             "Changelog",
             "Security",
+            "Third-Party Licenses",
+            "Marketing Log",
             "Parent Organization",
             "Umbrella Ecosystem",
         ]
@@ -244,6 +277,85 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("5 Werktagen", sec_text)
         self.assertIn("48 hours", sec_text)
         self.assertIn("48 Stunden", sec_text)
+
+    def test_third_party_licenses_inventory(self):
+        tpl_path = ROOT / "THIRD_PARTY_LICENSES.md"
+        self.assertTrue(tpl_path.exists(), "THIRD_PARTY_LICENSES.md must exist in repository root")
+        self.assertGreater(tpl_path.stat().st_size, 2000, "THIRD_PARTY_LICENSES.md must be comprehensive (>2000 bytes)")
+
+        tpl_text = tpl_path.read_text(encoding="utf-8")
+        # Ensure permissive licenses are documented
+        self.assertIn("PSFL-2.0", tpl_text)
+        self.assertIn("MIT", tpl_text)
+        self.assertIn("Apache-2.0", tpl_text)
+        self.assertIn("HPND", tpl_text)
+
+        # Core runtime and optional dependencies
+        deps = [
+            "Python Standard Library",
+            "anthropic",
+            "openai",
+            "playwright",
+            "mss",
+            "Pillow",
+            "uiautomation",
+            "windows-capture",
+            "watchdog",
+            "clirec",
+            "mcp",
+            "pytest",
+            "ruff",
+        ]
+        for dep in deps:
+            self.assertIn(dep, tpl_text, f"{dep} must be documented in THIRD_PARTY_LICENSES.md")
+
+        # Zero-egress and user mode guarantees
+        self.assertIn("Zero-Egress", tpl_text)
+        self.assertIn("RunAsInvoker", tpl_text)
+
+    def test_marketing_log_audit_and_personas(self):
+        mkt_path = ROOT / "MARKETING-LOG.txt"
+        self.assertTrue(mkt_path.exists(), "MARKETING-LOG.txt must exist in repository root")
+        self.assertGreater(mkt_path.stat().st_size, 1500, "MARKETING-LOG.txt must be comprehensive (>1500 bytes)")
+
+        mkt_text = mkt_path.read_text(encoding="utf-8")
+        self.assertIn("2026-09-10", mkt_text)
+
+        # 4 distinct personas
+        self.assertIn("Persona 1:", mkt_text)
+        self.assertIn("Persona 2:", mkt_text)
+        self.assertIn("Persona 3:", mkt_text)
+        self.assertIn("Persona 4:", mkt_text)
+
+        # High-intent discovery keywords
+        self.assertIn("High-Intent Suchbegriffe", mkt_text)
+        self.assertIn("python computer use agent", mkt_text)
+        self.assertIn("modellunabhaengige gui agenten", mkt_text)
+
+        # Invariants and UVP
+        self.assertIn("INV-MOD-01", mkt_text)
+        self.assertIn("INV-SLA-10", mkt_text)
+        self.assertIn("Alleinstellungsmerkmale", mkt_text)
+
+    def test_readme_badges_and_parity_metrics(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        # Both must link to THIRD_PARTY_LICENSES.md
+        self.assertIn("THIRD_PARTY_LICENSES.md", readme_en)
+        self.assertIn("THIRD_PARTY_LICENSES.md", readme_de)
+
+        # Both must have third-party badge
+        self.assertIn("third--party-audited", readme_en)
+        self.assertIn("drittanbieter-auditiert", readme_de)
+
+        # Both must have 48h SLA and 5d triage badge
+        self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
+        self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
+
+        # Both must report 689 tests passed
+        self.assertIn("689%20passed", readme_en)
+        self.assertIn("689%20bestanden", readme_de)
 
 
 if __name__ == "__main__":

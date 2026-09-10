@@ -7,12 +7,13 @@
 [![Status: Production/Stable v0.9.0](https://img.shields.io/badge/status-0.9.0--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-686%20passed%20%7C%20100%25%20green-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-689%20passed%20%7C%20100%25%20green-success)](tests)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
-[![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA-green)](SECURITY.md)
+[![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
+[![Third-Party: Audited](https://img.shields.io/badge/third--party-audited%20%7C%20permissive-blue)](THIRD_PARTY_LICENSES.md)
 [![Ecosystem: ellmos-ai](https://img.shields.io/badge/ecosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Umbrella: open-bricks](https://img.shields.io/badge/umbrella-open--bricks-blue)](https://github.com/open-bricks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -51,8 +52,10 @@ them installed, and the default mock wiring runs fully offline.
 - [⏱️ Mandatory Pre-Action Grace Window](#mandatory-pre-action-grace-window)
 - [🔍 Profile-Filtered Perception & Window Scoping](#profile-filtered-perception--window-scoping)
 - [💻 CLI Command Reference](#cli-command-reference)
-- [🧪 Running Tests](#running-tests)
 - [🔒 Security Policy & Vulnerability Reporting](#security-policy--vulnerability-reporting)
+- [🧪 Running Tests](#running-tests)
+- [📜 Third-Party Licenses & Transparency](#third-party-licenses--transparency)
+- [📄 License](#license)
 
 ---
 
@@ -222,18 +225,18 @@ sequenceDiagram
 
 The architecture enforces strict operational invariants to guarantee security, repeatability, and non-destructive execution:
 
-| Capability / Invariant | Implementation Mechanism | Safety & Architectural Guarantee |
-|:---|:---|:---|
-| **Model-Agnostic Core** | `ComputerBackend` protocol abstraction | Swap Claude, OpenAI CUA, or offline Mock without rewriting the agent loop. |
-| **Zero Runtime Dependencies** | Lazy optional imports for SDKs & platform drivers | Pure Python standard library on import; vendor SDKs (`anthropic`, `openai`) are strictly optional. |
-| **Normalized Coordinates (0..1)** | Central DPI & resolution rescaling in `coordinates.py` | Display-resolution and DPI scaling solved centrally; models always operate in invariant (0..1) space. |
-| **Mandatory Pre-Action Grace Window** | Unconditional session timer (`pre_action_grace_seconds`) | 4-second delay before first state-changing action allows immediate human interruption / emergency stop. |
-| **Fail-Closed Safety Gate** | Central `SafetyPolicy` evaluator (`confirm`, `allow_all`, `read_only`) | Potentially destructive actions are blocked by default until human confirmation callback approves them. |
-| **Unprivileged User Mode** | Standard Win32/OS API user permissions | Zero administrative elevation; runs safely inside standard user security context. |
-| **Local-First & Zero Egress** | Offline mock backend & local-first executor default | Core loop never contacts external network services unless configured with an external LLM backend. |
-| **Zero Secret Persistence** | Environment-based API key injection | API keys and session secrets are never persisted in logs, state files, or screenshots. |
-| **Profile-Filtered Perception** | Scope filters, visual lenses, and token budgeting | Strict pre-model boundary prevents unintended screen capturing or sensitive window leakage. |
-| **Multi-OS CI Integrity** | Continuous Integration on Linux, Windows & macOS | All core mappers, coordinates, and mock backends run cross-platform and headless. |
+| ID | Capability / Invariant | Implementation Mechanism | Safety & Architectural Guarantee |
+|:---|:---|:---|:---|
+| `INV-MOD-01` | **Model-Agnostic Core** | `ComputerBackend` protocol abstraction | Swap Claude, OpenAI CUA, or offline Mock without rewriting the agent loop. |
+| `INV-DEP-02` | **Zero Runtime Dependencies** | Lazy optional imports for SDKs & platform drivers | Pure Python standard library on import; vendor SDKs (`anthropic`, `openai`) are strictly optional. |
+| `INV-CRD-03` | **Normalized Coordinates (0..1)** | Central DPI & resolution rescaling in `coordinates.py` | Display-resolution and DPI scaling solved centrally; models always operate in invariant (0..1) space. |
+| `INV-GRC-04` | **Mandatory Pre-Action Grace Window** | Unconditional session timer (`pre_action_grace_seconds`) | 4-second delay before first state-changing action allows immediate human interruption / emergency stop. |
+| `INV-SAF-05` | **Fail-Closed Safety Gate** | Central `SafetyPolicy` evaluator (`confirm`, `allow_all`, `read_only`) | Potentially destructive actions are blocked by default until human confirmation callback approves them. |
+| `INV-USR-06` | **Unprivileged User Mode** | Standard Win32/OS API user permissions | Zero administrative elevation (`RunAsInvoker`); runs safely inside standard user security context. |
+| `INV-EGR-07` | **Local-First & Zero Egress** | Offline mock backend & local-first executor default | Core loop never contacts external network services unless configured with an external LLM backend. |
+| `INV-SEC-08` | **Zero Secret Persistence** | Environment-based API key injection | API keys and session secrets are never persisted in logs, state files, or screenshots. |
+| `INV-SCP-09` | **Profile-Filtered Perception** | Scope filters, visual lenses, and token budgeting | Strict pre-model boundary prevents unintended screen capturing or sensitive window leakage. |
+| `INV-SLA-10` | **Security Response SLA** | Dedicated security contact & vulnerability process | 48-hour response acknowledgment and 5 business days triage guarantee via `SECURITY.md`. |
 
 ---
 
@@ -860,7 +863,18 @@ python -X utf8 -m pytest -q
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **683 passed, 2 skipped** (100% green, 2026-09-08).
+installs pytest. Current full-suite state: **689 passed, 2 skipped** (100% green, 2026-09-10).
+
+---
+
+## Third-Party Licenses & Transparency
+
+`open-compute` commits to complete software supply-chain transparency and zero copyleft contamination:
+- **Core Runtime:** Pure Python standard library (zero third-party code required on import).
+- **Optional Adapters:** All optional dependencies (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) are distributed under strictly permissive licenses (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
+- **Zero-Egress Assurances:** The offline mock engine never emits network traffic. No tracking, analytics, or telemetry libraries are bundled.
+
+For detailed license attributions, copyright notices, and dependency scopes, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ---
 

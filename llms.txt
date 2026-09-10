@@ -7,7 +7,7 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-09-09
+## Last-checked: 2026-09-10
 
 ## What it does
 
@@ -19,14 +19,13 @@ backend swappable. Importing the package never requires a vendor SDK; the
 (mock backend + mock executor) runs fully offline, which is what the test suite
 uses.
 
-## Audience
+## Audience & Personas
 
-- Developers building computer-use / GUI / browser agents who want to swap the
-  reasoning model (Claude, OpenAI, mock) without rewriting the loop, or run
-  keyless via Mode A (host model reasons itself; inline or self-spawned subagent).
-- Researchers comparing pixel-vision vs accessibility/Set-of-Marks perception.
-- Anyone who needs a backend-neutral action schema with one place for DPI /
-  resolution normalization and one place for a confirm-before-risky safety gate.
+- Enterprise AI Agent Engineers & Platform Architects: Model-swappable desktop agents without vendor lock-in.
+- Open-Source Agent Developers & Researchers: Benchmarking vision vs. UIA/DOM with zero-cost deterministic mocks.
+- Security & Compliance Officers: Enforcing mandatory 4s pre-action grace windows, zero telemetry egress, and user-mode execution (`RunAsInvoker`).
+- Desktop Automation & RPA Specialists: Upgrading brittle pixel scripts to normalized-coordinate (0..1) LLM workflows.
+- See `MARKETING-LOG.txt` for in-depth persona profiles, high-intent discovery keywords, and competitive analysis.
 
 ## Architecture
 
@@ -113,7 +112,26 @@ on-screen content as untrusted (prompt-injection risk).
 Profile-filtered MCP perception is a local pre-model boundary, not a model
 instruction. Profiles are strict, may forbid fullscreen, bound semantic and
 visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
-Current full-suite state: 686 passed, 2 skipped (100% green, 2026-09-09).
+Current full-suite state: 689 passed, 2 skipped (100% green, 2026-09-10).
+
+## Governance & Runtime Invariants
+
+1. `INV-MOD-01`: Model-Agnostic Core -- swap Claude, OpenAI, Mock without loop rewrite.
+2. `INV-DEP-02`: Zero Runtime Dependencies -- pure stdlib core on import.
+3. `INV-CRD-03`: Normalized Coordinates (0..1) -- DPI/resolution invariance.
+4. `INV-GRC-04`: Mandatory Pre-Action Grace Window -- 4s delay for emergency stop.
+5. `INV-SAF-05`: Fail-Closed Safety Gate -- confirm before state modifications.
+6. `INV-USR-06`: Unprivileged User Mode -- runs safely under `RunAsInvoker`.
+7. `INV-EGR-07`: Local-First & Zero Egress -- no telemetry or external traffic by default.
+8. `INV-SEC-08`: Zero Secret Persistence -- API keys kept strictly ephemeral.
+9. `INV-SCP-09`: Profile-Filtered Perception -- focus lenses and window scoping.
+10. `INV-SLA-10`: Security SLA -- 48h response and 5 business days triage guarantee.
+
+## Third-Party Licenses & Transparency
+
+All direct, optional, and dev dependencies are strictly permissive (MIT, Apache-2.0,
+BSD-3-Clause, PSFL-2.0, HPND). Zero copyleft dependencies. Full audit documented
+in `THIRD_PARTY_LICENSES.md`.
 
 ## License
 
