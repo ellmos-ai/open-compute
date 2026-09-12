@@ -18,6 +18,7 @@ jobs:
   tests:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +44,7 @@ jobs:
         run: ruff check .
 
       - name: Run mock-only test suite
-        run: python -X utf8 -m pytest -q
+        run: python -X utf8 -m pytest -ra -v
 
       - name: Compile package and tests
         run: python -m compileall -q open_compute tests

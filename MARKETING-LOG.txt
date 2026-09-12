@@ -1,5 +1,16 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-09-12 — Turnusgemäße Repository-Hygiene & CI-Matrix-Härtung (Pfad A)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand >35.4h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-09 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.0; 694 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Hygiene- & Härtungsmaßnahmen**:
+  1. **CI-Workflow-Härtung (`.github/workflows/tests.yml`)**: Job-Timeout `timeout-minutes: 15` eingezogen, Pytest-Aufruf auf standardisierte Flags `python -X utf8 -m pytest -ra -v` harmonisiert.
+  2. **PEP 621 Standard-Metadaten (`pyproject.toml`)**: `"LLM Ready"` URL auf `llms.txt` in `[project.urls]` registriert, Pytest addopts auf `-ra -v` standardisiert.
+  3. **Multi-Host Cloud-Sync & Kanonisches Lock-System Härtung (`.gitignore`)**: Geschützt gegen Multi-Host-Synchronisationskonflikte (`* (kopie)*`, `* (copy)*`, `*-WORKSTATION*`, `*-WORKSTATION-LG*`, `*-ASUS-GEI*`, `*.orig`), kanonische Lock-Dateien (`LOCK`, `LOCK.*`, `LOCK*.txt`, `LOCK.permissions.json`, `uv.lock`, `!package-lock.json`) sowie Build- und Coverage-Caches (`.coverage.*`, `.mypy_cache/`, `.tox/`, `.turbo/`, `.nyc_output/`).
+  4. **Metadaten- & Context-Synchronisation (`llms.txt`, `README.md`, `README_de.md`)**: Last-checked Stempel auf 2026-09-12 gesetzt, Teststatus auf 694 bestanden (100% grün) synchronisiert.
+  5. **Automatisierte Vertragstests (`tests/test_metadata.py`)**: Ausbau um 5 neue Contract-Tests für CI-Timeout, pytest-Flags, LLM-Ready URL, Lock-/Multihost-Defense und Changelog/Marketing-Log Parität (22 Contract-Tests gesamt).
+
 ## 2026-09-10 — Discoverability, Third-Party Licenses, Invariants & Marketing Audit (v0.9.0)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (letzte Pfad B Prüfung am 2026-08-25 vor 16 Tagen, Ruhezustand 32h > 24h Cooldown). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks, Cooldown-Check bestanden.

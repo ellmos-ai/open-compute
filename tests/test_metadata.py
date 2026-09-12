@@ -197,6 +197,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "Security",
             "Third-Party Licenses",
             "Marketing Log",
+            "LLM Ready",
             "Parent Organization",
             "Umbrella Ecosystem",
         ]
@@ -267,7 +268,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("[tool.pytest.ini_options]", pyproject_text)
         self.assertIn('testpaths = ["tests"]', pyproject_text)
         self.assertIn('pythonpath = "."', pyproject_text)
-        self.assertIn('addopts = "-v"', pyproject_text)
+        self.assertIn('addopts = "-ra -v"', pyproject_text)
 
     def test_security_policy_umbrella_contact_and_triage(self):
         sec_text = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
@@ -353,9 +354,61 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 689 tests passed
-        self.assertIn("689%20passed", readme_en)
-        self.assertIn("689%20bestanden", readme_de)
+        # Both must report 694 tests passed
+        self.assertIn("694%20passed", readme_en)
+        self.assertIn("694%20bestanden", readme_de)
+
+    def test_ci_timeout_minutes_and_pytest_flags(self):
+        ci_path = ROOT / ".github" / "workflows" / "tests.yml"
+        self.assertTrue(ci_path.exists(), "tests.yml must exist")
+        ci_text = ci_path.read_text(encoding="utf-8")
+        self.assertIn("timeout-minutes: 15", ci_text)
+        self.assertIn("-ra -v", ci_text)
+
+    def test_pyproject_pep621_llm_ready_and_addopts(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('"LLM Ready" = "https://github.com/ellmos-ai/open-compute/blob/master/llms.txt"', pyproject_text)
+        self.assertIn('addopts = "-ra -v"', pyproject_text)
+
+    def test_gitignore_canonical_locks_and_multihost_defense(self):
+        gitignore_path = ROOT / ".gitignore"
+        self.assertTrue(gitignore_path.exists(), ".gitignore must exist")
+        gi_text = gitignore_path.read_text(encoding="utf-8")
+        # Canonical locks
+        self.assertIn("LOCK\n", gi_text)
+        self.assertIn("LOCK.*", gi_text)
+        self.assertIn("LOCK*.txt", gi_text)
+        self.assertIn("LOCK.permissions.json", gi_text)
+        self.assertIn("uv.lock", gi_text)
+        self.assertIn("!package-lock.json", gi_text)
+        # Multi-host sync conflict patterns
+        self.assertIn("* (kopie)*", gi_text)
+        self.assertIn("* (copy)*", gi_text)
+        self.assertIn("*-WORKSTATION*", gi_text)
+        self.assertIn("*-ASUS-GEI*", gi_text)
+        self.assertIn("*.orig", gi_text)
+        # Caches
+        self.assertIn(".coverage.*", gi_text)
+        self.assertIn(".mypy_cache/", gi_text)
+        self.assertIn(".tox/", gi_text)
+        self.assertIn(".turbo/", gi_text)
+        self.assertIn(".nyc_output/", gi_text)
+
+    def test_changelog_recent_pfad_a_entry(self):
+        changelog_path = ROOT / "CHANGELOG.md"
+        self.assertTrue(changelog_path.exists(), "CHANGELOG.md must exist")
+        cl_text = changelog_path.read_text(encoding="utf-8")
+        self.assertIn("2026-09-12", cl_text)
+        self.assertIn("Pfad A", cl_text)
+        self.assertIn("timeout-minutes: 15", cl_text)
+
+    def test_marketing_log_recent_hygiene_entry(self):
+        mkt_path = ROOT / "MARKETING-LOG.txt"
+        self.assertTrue(mkt_path.exists(), "MARKETING-LOG.txt must exist")
+        mkt_text = mkt_path.read_text(encoding="utf-8")
+        self.assertIn("2026-09-12", mkt_text)
+        self.assertIn("Pfad A", mkt_text)
+        self.assertIn("timeout-minutes: 15", mkt_text)
 
 
 if __name__ == "__main__":

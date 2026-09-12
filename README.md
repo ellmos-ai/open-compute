@@ -7,7 +7,7 @@
 [![Status: Production/Stable v0.9.0](https://img.shields.io/badge/status-0.9.0--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-689%20passed%20%7C%20100%25%20green-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-694%20passed%20%7C%20100%25%20green-success)](tests)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -859,11 +859,11 @@ Composition and runtime details are intentionally omitted.
 ## Running Tests
 
 ```bash
-python -X utf8 -m pytest -q
+python -X utf8 -m pytest -ra -v
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **689 passed, 2 skipped** (100% green, 2026-09-10).
+installs pytest. Current full-suite state: **694 passed, 2 skipped** (100% green, 2026-09-12).
 
 ---
 

@@ -9,6 +9,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Repository Hygiene & CI Hardening (Pfad A - 2026-09-12)
+
+- **CI Workflow Hardening (`.github/workflows/tests.yml`)**:
+  - Implemented `timeout-minutes: 15` on the test job to prevent hanging workflows and resource exhaustion.
+  - Standardized test invocation to `python -X utf8 -m pytest -ra -v` for detailed failure reporting and cross-platform terminal parity.
+- **PEP 621 Metadata URLs & Pytest Standards (`pyproject.toml`)**:
+  - Registered `"LLM Ready"` URL pointing directly to `llms.txt` in `[project.urls]`.
+  - Standardized `addopts = "-ra -v"` in `[tool.pytest.ini_options]` for complete test reporting.
+- **Multi-Host Cloud-Sync & Canonical Lock System Defense (`.gitignore`)**:
+  - Guarded against multi-host conflict files (`* (kopie)*`, `* (copy)*`, `*-WORKSTATION*`, `*-WORKSTATION-LG*`, `*-ASUS-GEI*`, `*.orig`).
+  - Guarded against canonical multi-agent lock files (`LOCK`, `LOCK.*`, `LOCK*.txt`, `LOCK.permissions.json`, `uv.lock`, with explicit `!package-lock.json` exception).
+  - Extended cache and coverage ignore patterns (`.coverage.*`, `.mypy_cache/`, `.tox/`, `.turbo/`, `.nyc_output/`).
+- **AI Context & Documentation Metrics Synchronization (`llms.txt`, `README.md`, `README_de.md`)**:
+  - Synchronized `Last-checked: 2026-09-12` timestamp in `llms.txt`.
+  - Updated test metric badges in `README.md` and `README_de.md` to 694 passed tests (100% green).
+- **Automated Contract Test Suite Expansion (`tests/test_metadata.py`)**:
+  - Expanded contract test suite with 5 new automated verification tests: CI timeout-minutes, pytest flags, PEP 621 LLM-Ready URL, lock & multi-host defense, and changelog/marketing log parity (22 contract tests total, full suite 694 passed, 2 skipped, 100% green).
+
 ### Documentation, Marketing & Design (Pfad B - 2026-09-10)
 
 - **Third-Party License Audit & Inventory (`THIRD_PARTY_LICENSES.md`)**:

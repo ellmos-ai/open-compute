@@ -7,7 +7,7 @@
 [![Status: Produktion/Stabil v0.9.0](https://img.shields.io/badge/status-0.9.0--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-689%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-694%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -889,12 +889,12 @@ Kompositions- und Runtime-Details werden bewusst nicht offengelegt.
 ## Tests ausführen
 
 ```bash
-python -X utf8 -m pytest -q
+python -X utf8 -m pytest -ra -v
 ```
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**689 bestanden, 2 übersprungen** (100% grün, 2026-09-10).
+**694 bestanden, 2 übersprungen** (100% grün, 2026-09-12).
 
 ---
 

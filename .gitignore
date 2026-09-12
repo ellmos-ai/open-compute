@@ -45,22 +45,37 @@ _state/
 _archive/
 
 # Multi-Agent Lock-System (lokal, nie committen)
+LOCK
 LOCK.*
-*.lock
 LOCK*.txt
+LOCK.permissions.json
+*.lock
+uv.lock
+!package-lock.json
 
 # Multi-Host Sync-Konflikte & Temporärdateien
+* (kopie)*
+* (copy)*
+*-WORKSTATION*
+*-WORKSTATION-LG*
+*-ASUS-GEI*
 *.sync-conflict-*
 *.conflict
 *-CONFLIT-*
 *-conflict-*
 *.sync-temp-*
+*.orig
 
 # Testing, Linting & Coverage Caches
 .ruff_cache/
 .coverage
+.coverage.*
 coverage/
 htmlcov/
+.mypy_cache/
+.tox/
+.turbo/
+.nyc_output/
 wheelhouse/
 .wheel-smoke/
 

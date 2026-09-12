@@ -61,6 +61,7 @@ Changelog = "https://github.com/ellmos-ai/open-compute/blob/master/CHANGELOG.md"
 Security = "https://github.com/ellmos-ai/open-compute/blob/master/SECURITY.md"
 "Third-Party Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"
 "Marketing Log" = "https://github.com/ellmos-ai/open-compute/blob/master/MARKETING-LOG.txt"
+"LLM Ready" = "https://github.com/ellmos-ai/open-compute/blob/master/llms.txt"
 "Parent Organization" = "https://github.com/ellmos-ai"
 "Umbrella Ecosystem" = "https://github.com/open-bricks"
 
@@ -75,4 +76,4 @@ include = ["open_compute*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = "."
-addopts = "-v"
+addopts = "-ra -v"
