@@ -2,6 +2,18 @@
 
 ## Feature-Backlog (auch für code-naive Umsetzer geeignet)
 
+- [ ] `test_grace_period_blocks_the_first_action_until_it_elapses` ist flaky.
+  Kontext (2026-09-13, bei T-20260913-677598075 nebenbei gemessen): Der Test faellt
+  etwa in einem von drei Einzellaeufen -- nachgewiesen UNABHAENGIG von den gerade
+  offenen Aenderungen, weil je drei Laeufe mit und ohne sie dasselbe Muster zeigten
+  (1 failed, 2 passed). Er bewacht die verpflichtende Gnadenfrist vor der ersten
+  Aktion, also eine Sicherheitszusicherung (vgl. 9f3a5b6 "make the pre-action grace
+  window mandatory, closing a bypass"). Ein Waechter, der zufaellig rot wird, wird
+  irgendwann ignoriert -- und dann faellt ein echter Bypass nicht mehr auf.
+  Naechster Schritt: die Zeitmessung im Test gegen eine injizierte Uhr tauschen statt
+  gegen Wanduhr/sleep.
+
+
 - [ ] **Safety-Coverage-Test.** Ein Test, der beweist, dass JEDER
   zustandsverändernde MCP-Tool-Handler das Safety-Gate durchläuft (schützt vor
   Gate-Umgehungen wie dem historischen `oc rec replay`-Befund). Wo:
