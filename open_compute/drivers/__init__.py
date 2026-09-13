@@ -14,7 +14,13 @@ open_compute``). Import it directly::
     from open_compute.drivers.local import LocalExecutor
 """
 
-from .base import BrowserDriver, Executor, OSDriver
+from .base import BrowserDriver, Executor, OSDriver, SemanticBrowserDriver
 from .mock import MockExecutor
 
-__all__ = ["Executor", "BrowserDriver", "OSDriver", "MockExecutor"]
+__all__ = [
+    "Executor",
+    "BrowserDriver",
+    "SemanticBrowserDriver",
+    "OSDriver",
+    "MockExecutor",
+]

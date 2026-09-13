@@ -58,6 +58,243 @@
   klassifiziert `changed`/`unchanged`/`unverifiable` und behauptet bei
   `unverifiable` keinen Erfolg.
 
+## Spezifikation: getrennter sichtbarer LLM-Zeiger (T-20260827-586759665)
+
+**Entscheidung dieses Schnitts:** Noch keine produktive Mausautomation. Der
+LLM-Zeiger wird als eigene virtuelle Eingabequelle spezifiziert. Seine Position
+und sein Zustand sind unabhängig vom physischen Nutzerzeiger; ein bloßes
+Bewegen des LLM-Zeigers ist nur eine Overlay-/Planungsoperation. Der bestehende
+`ScreenSignalIndicator` ist kein solcher Zeiger: Sein Ring folgt derzeit per
+`GetCursorPos` dem physischen OS-Zeiger und zeigt Eigentum/Modus an.
+
+### Empirische Anschlussverträge
+
+- `actions.py` speichert Punkte normalisiert; `LocalExecutor` transformiert sie
+  mit Per-Monitor-v2-DPI und `MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK`
+  in `SendInput`. Dieser bestehende Pfad bewegt den OS-Zeiger und darf nicht als
+  virtuelle Bewegung wiederverwendet werden.
+- `session.py` liefert explizite, räumlich und zeitlich begrenzte
+  `ControlLease`s; menschliche Aktivität entzieht die Lease und pausiert.
+  `human_activity.py` erfasst nur Zeitstempel und unterscheidet menschliche,
+  eigene und unbekannte Aktivität ohne Hooks oder Rohdaten.
+- `interaction.py` stellt prozessgebundene Fensterdeskriptoren sowie einmalige
+  Observation-/Window-Token bereit und prüft Fokus vor jedem Textsegment.
+  `preclick.py` bindet koordinatenbasierte Mausaktionen unmittelbar vor dem
+  Dispatch an HWND, PID, Titel und den physischen Capture-Rahmen.
+- `cooperative.py` verlangt `perceive → stabilize → act → verify`, verbietet
+  Screen-/Unknown-Instruktionen als Kontrollautorität, wiederholt keine
+  ungewisse Aktion und schreibt ein inhaltssanitisiertes SHA-256-Kettenaudit.
+- `feeds/uia_windows.py` kann eindeutige Controls über Invoke-, Toggle-,
+  SelectionItem- oder LegacyIAccessible-Pattern semantisch aktivieren, ohne den
+  physischen Zeiger zu bewegen. `BrowserDriver` ist derzeit nur eine
+  Schnittstelle; eine Browserumsetzung ist ein eigener Folgeschritt.
+
+### Normatives Zustands- und Herkunftsmodell
+
+Die Implementierung führt pro virtueller Eingabequelle genau einen
+`PointerSourceState`. Das Modell übernimmt die sinnvollen Begriffe des
+[W3C-WebDriver-Actions-Modells](https://www.w3.org/TR/webdriver2/#actions),
+ersetzt aber keinen bestehenden Open-Compute-Safetyvertrag:
+
+- Identität: stabile `source_id`, `pointer_id`, `session_id`, `lease_id` und
+  monoton steigende `sequence`; keine Vermischung mit Geräte-/OS-Pointer-IDs.
+- Zustand: `phase` (`idle`, `preview`, `armed`, `pressed`, `paused`, `aborted`,
+  `uncertain`), Position, gedrückte virtuelle Buttons und letzter verifizierter
+  Zielzustand. Bei Pause/Abbruch wird der virtuelle Hold-Zustand geleert.
+- Koordinatenrahmen: explizites `frame_kind` (`virtual_desktop_physical_px`,
+  `window_client_physical_px`, `browser_viewport_css_px`), Ursprung, Ausdehnung,
+  DPI-/Scale-Angabe, Monitor-/Viewport-Generation und gebundene Fenster- oder
+  Browsing-Context-Identität. Eine Position ohne aktuellen Rahmen ist ungültig.
+- Herkunft pro Transition: `actor`, `origin`, `channel`, `instruction_id`,
+  `action_id`, `observation_id`, `window_token`, `target_id`, Zeitstempel und
+  `dispatch_kind`. `origin=screen|unknown` darf niemals `armed` oder einen
+  Dispatch erzeugen.
+- Reihenfolge: veraltete, doppelte und lückenhafte Sequenzen werden
+  fail-closed abgewiesen; nach `uncertain` ist keine Wiederholung derselben
+  `action_id` erlaubt. Recovery beginnt mit neuer Observation, neuem Token und
+  neuer Aktion.
+
+Die [W3C Pointer Events](https://www.w3.org/TR/pointerevents3/) liefern
+etablierte Begriffe wie eindeutige Pointer-ID, Pointer-Typ, Primärstatus,
+Buttons und Pointer Capture. Open Compute verwendet diese nur als
+Interoperabilitätsvokabular. Ein Overlay-Pointer ist kein Browser-Pointerevent,
+kein Hardwaregerät und kein Beleg für eine native oder vertrauenswürdige
+Eingabe.
+
+### Dispatch-Grenze: virtuell gegenüber OS-Injektion
+
+| `dispatch_kind` | Wirkung | Physischer Nutzerzeiger | Zulässiger Einsatz |
+|---|---|---|---|
+| `overlay_preview` | LLM-Pointer bewegen/zeichnen; kein Target-Event | unverändert | Beobachten, Planen, Zielvorschau |
+| `browser_semantic` | DOM-/WebDriver-/CDP-Aktion im gebundenen Browsing Context | unverändert | eindeutiges Browserziel, frischer Context-/Observation-Token, verifizierbarer Zustand |
+| `accessibility_semantic` | UIA-/später AX-/AT-SPI-Control-Pattern am gebundenen Element | unverändert | eindeutige unterstützte Semantik; auf Windows zuerst `Invoke`/`Toggle`/`SelectionItem` |
+| `os_input_injection` | Systemweiter Input-Stream, z. B. Windows `SendInput` | kann bewegt/geändert werden | nur explizit autorisierter Fallback, wenn reale Pointer-Ereignisse für das Zielverhalten unvermeidbar sind |
+
+Virtuelle Zielaktivierung darf in Receipts nie als „physischer Klick“ bezeichnet
+werden. Echte OS-Input-Injektion ist erst unvermeidbar, wenn das konkrete Ziel
+weder eine äquivalente Browser-/Anwendungs-API noch ein Accessibility-Pattern
+anbietet und sein Verhalten reale Hover-, Down-/Move-/Up-, Drag-, Canvas-,
+Game- oder andere systemnahe Pointer-Ereignisse verlangt. Microsoft beschreibt
+[`SendInput`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)
+als Einfügen synthetischer Maus-/Tastaturereignisse in den System-Input-Stream;
+der Aufruf unterliegt unter anderem UIPI. Dieser Pfad bleibt standardmäßig aus.
+[Microsoft UI Automation](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-controlpatternsoverview)
+ist dagegen der bevorzugte semantische Desktoppfad, wenn ein passendes
+Control-Pattern angeboten wird.
+
+### Safety-, Fokus-, Capture- und Recovery-Gates
+
+1. **Nutzerpriorität:** Jede sicher als menschlich klassifizierte Aktivität
+   pausiert sofort, invalidiert Lease und ausstehende Pointer-Sequenz und löscht
+   das Overlay. `unknown` erlaubt keinen neuen Dispatch. Eine erneute Freigabe
+   ist immer explizit; es gibt keine zeitbasierte Auto-Wiederaufnahme.
+2. **Pause und Not-Aus:** Pause verhindert neue Transitionen. Not-Aus stoppt vor
+   jedem Dispatch und während langer Sequenzen, löst virtuelle und bei einem
+   späteren Injection-Pfad reale Holds, leert das Overlay und protokolliert den
+   Abbruch. Der offene Panic-Hotkey mit Prozess-Teardown bleibt ein separates
+   Vorab-Gate für produktive Injektion.
+3. **Fokus/Fenster:** Vor semantischer Aktivierung und unmittelbar vor einer
+   Injektion müssen Window-/Context-Token, HWND/PID/Titel, Prozess, Fokus,
+   Zielidentität und Observation frisch und eindeutig sein. Fokus wird nicht
+   stillschweigend gestohlen. Wechsel, Mehrdeutigkeit oder Neustart erzwingen
+   Neu-Beobachtung.
+4. **DPI/Mehrmonitor:** Transformationen erfolgen nur zwischen benannten
+   Rahmen. Negative virtuelle Ursprünge, gemischte DPI, Monitorwechsel,
+   Hotplug, Primärmonitorwechsel und Fensterbewegung erhöhen die
+   Frame-Generation und invalidieren alte Positionen. Kein Clamp auf einen
+   anderen Monitor oder ein anderes Fenster.
+5. **Capture-Darstellung:** Ein `raw_frame` enthält die unveränderte
+   Capturequelle und ein Feld, ob Eigentums-/LLM-Overlay darin technisch
+   enthalten war. Ein `model_frame` darf den LLM-Pointer deterministisch als
+   separate Ebene projizieren und trägt `pointer_projection=true`, `source_id`,
+   Position und Frame-Generation. Projektion wird nie zurück in die Wahrnehmung
+   als Zielinhalt oder Klickbeleg gespeist. Fenster-Capture bleibt Default;
+   weitere Monitore/Nebenfenster erfordern expliziten Scope.
+6. **Abbruch/Recovery:** `applied=None`, Fokusverlust, Tokenwechsel,
+   Targetwechsel, Prozessende oder fehlende Post-Verifikation führen zu
+   `uncertain` und keinem Retry. Cleanup ist idempotent. Recovery startet erst
+   nach Nutzerfreigabe mit frischem Lease, Capture, Ziel und `action_id`.
+
+### Receipt und Audit
+
+Jede Bewegung, Buttontransition und Zielaktivierung erzeugt ein Receipt — auch
+`overlay_preview` und abgewiesene Versuche. Pflichtfelder sind:
+
+`receipt_id`, `source_id`, `session_id`, `lease_id`, `sequence`, `actor`,
+`origin`, `channel`, `instruction_id`, `action_id`, `dispatch_kind`,
+`requested_transition`, `position_before`, `position_after`, `frame`,
+`window_token`, `observation_id`, `target_id`, `focus_before`, `focus_after`,
+`applied` (`true|false|null`), `verified`, `safe_to_retry`, `reason`,
+`user_interrupt`, `cleanup_result`, Zeitstempel sowie vorheriger und eigener
+Audit-Hash. Rohtext, Screenshots, Tastendrücke und private Fensterinhalte
+gehören nicht in das Audit. `position_after` ist beim virtuellen Pfad die
+LLM-Pointerposition, beim Injection-Pfad zusätzlich getrennt von einer
+bestätigten OS-Zeigerposition auszuweisen.
+
+### Phasen und Folgetickets
+
+- [x] **Phase 1 — virtueller Pointer-Kern:**
+  `T-20260829-925104843` — `open_compute/virtual_pointer.py` implementiert die
+  systemagnostische Zustandsmaschine, validierte Frame-/Move-/Press-/Release-
+  Transitionen, eindeutige Provenienz, Replay-/Sequenzschutz, ungewisse
+  Ergebnisse, Cleanup und Nutzerpause hinter expliziten Session-, Ownership-
+  und Audit-Ports. `tests/test_virtual_pointer.py` prüft den Headless-Vertrag;
+  der Kern importiert weder lokale Treiber noch OS-Input-, Capture-, MCP- oder
+  Rendererpfade. Keine Injektion und keine produktive Freigabe.
+- [x] **Phase 2 — Overlay-/Capture-Vertrag und Windows-Hostadapter:**
+  `T-20260829-833036972` — `open_compute/virtual_pointer_overlay.py` ergänzt
+  eine eigene Renderer-Schnittstelle und einen systemagnostischen
+  Callback-Adapter. `open_compute/virtual_pointer_windows.py` ergänzt eine
+  eigene konkrete LLM-Pointer-Fensterinstanz nach der bestehenden Windows-
+  Overlay-Policy: Layered/Topmost/ToolWindow, `WS_EX_TRANSPARENT` plus
+  `HTTRANSPARENT`, `WS_EX_NOACTIVATE`, `SW_SHOWNA`, PMv2-Threadkontext sowie
+  kontrastreiche Kreuz-/Rautenform mit sichtbarem `LLM | actor`-Text. Der
+  Controller verlangt click-through, no-activate, Per-Monitor-v2 sowie Form,
+  Text und Farbe; veraltete Frame-/Topologie-Generationen scheitern geschlossen.
+  Pause, Abbruch, Cleanup, Lease-Ende, Fehler und Hotplug bauen das eigene
+  Fenster ab. Die PNG-Projektion trennt unverändertes
+  `raw_frame`, modellseitige Pointer-Kopie und inhaltsfreies Hash-/Metadaten-
+  `audit_frame`; negative Monitorursprünge und Scale bleiben im expliziten
+  physischen Rahmen. `ScreenSignalIndicator`/`GetCursorPos` wurden nicht
+  verändert oder wiederverwendet. Der Hostadapter liest oder bewegt den
+  physischen Cursor nicht und enthält keine Input-Injektion. Offen bleibt
+  ausschließlich die native visuelle USER-/Hardware-Abnahme auf realen
+  Misch-DPI-/Mehrmonitor-Desktops; keine produktive Freigabe.
+- [x] **Phase 3 — semantische Browser-/Desktop-Aktion (headless):**
+  `T-20260829-714301166` — `open_compute/virtual_target.py` implementiert eine
+  Browser-first-/UIA-second-Portkette ohne OS-Fallback. Ein semantischer
+  Dispatch verbraucht die gebundene Observation-/Window-Token-Kombination
+  einmalig und verlangt exakte Target-, Context-, Frame-, HWND-, PID-,
+  Prozessstart- und Fokusidentität. Der bisherige `BrowserDriver` bot nur
+  `goto`/`execute(Action)`/`close`, und `DomSnapshotProvider` war ein leerer
+  Stub. Deshalb ergänzt `drivers/base.py` den kleinsten abwärtskompatiblen
+  `SemanticBrowserDriver(BrowserDriver)`-Vertrag; der konkrete
+  `BrowserDriverSemanticAdapter` bindet dessen Context-, Exact-Target-,
+  engine-seitige Activate- und Post-State-Methoden und ruft das generische,
+  potenziell koordinatenbasierte `execute(Action)` nie auf. Browserziele sind
+  ausschließlich im expliziten CSS-/DOM-Kontext zulässig; UIA ausschließlich
+  im Desktop-Rahmen über `resolve_detailed(exact=True, min_score=1.0)` und
+  `invoke_target`/Control-Patterns. Fehlende Post-State-Verifikation,
+  Fokuswechsel oder ein ungewisser Adapterausgang werden `uncertain` und sind
+  nie retrybar. Das Receipt nennt die Operation `semantic_activate`, die
+  tatsächliche semantische Route, Quelle, Zielidentität, Binding, Frame,
+  Pre-/Post-State sowie `requested/applied/verified/uncertain/safe_to_retry`;
+  es behauptet keinen physischen Mausklick. Alle konkreten Adaptertests laufen
+  gegen Fake-Treiber; keine reale Browser-/Desktopaktion oder produktive
+  Freigabe. Das Repo liefert weiterhin keinen Playwright-/WebDriver-/CDP-
+  Engine-Treiber; ein solcher Host implementiert nun den belegten semantischen
+  Vertrag statt auf Phase 5 oder Koordinateninput auszuweichen.
+- [x] **Phase 4 — gegateter OS-Injektionsfallback (headless):**
+  `T-20260829-108744993` — `open_compute/virtual_injection.py` ergänzt einen
+  pointer-only Fallback, der in Core und konkretem
+  `WindowsSendInputHostAdapter` standardmäßig deaktiviert ist. Erst ein
+  aktives exaktes Lease, Mensch-vor-Agent-Prüfung, ungelöster Not-Aus,
+  one-shot Observation, unveränderte HWND-/PID-/Prozess-/Fokusbindung,
+  Per-Monitor-v2-/Frame-Generation, Normal-Desktop-/UIPI-Attestierung und die
+  letzte Preclick-Prüfung erzeugen ein aktionsgebundenes one-shot Permit. Der
+  Host prüft dieses Permit erneut und erreicht ausschließlich über eine
+  isolierte, in Tests vollständig ersetzte Funktion den bestehenden
+  `SendInput`-Rand. Das Permit bindet über einen deterministischen Request-
+  Fingerprint auch Position, Transition/Button, vollständige Provenienz und
+  Target sowie HWND/PID/Prozess-/Titel-/Context- und alle Framefelder; eine
+  Mutation vor dem ersten Hostaufruf wird abgewiesen. Zero/partial Return,
+  Adapterausnahme, Secure Desktop, UIPI-
+  Ablehnung, Fokuswechsel und fehlende Post-Verifikation scheitern
+  geschlossen; Ausnahmen nach dem nativen Rand werden `uncertain`, lösen
+  Holds und sind nie retrybar. Der Adapter merkt nur selbst
+  erfolgreich gedrückte Buttons und löst sie bei Abbruch/Fehler, ohne den
+  physischen Zeiger zu lesen. Receipt/Audit führen virtuelle Overlayposition
+  und optional verifizierte OS-Position getrennt. 20 fokussierte Tests plus
+  Pointer-/Overlay-/Target-Regression laufen rein headless; keine native
+  Eingabe wurde ausgeführt. Produktive Aktivierung und visuelle Windows-
+  Hardwareabnahme bleiben Phase 5 bzw. eine separate Freigabe.
+- [ ] **Phase 5 — nutzergeführte Live-Abnahme:**
+  `T-20260829-337036402` (Hardware-/Browser-/Desktop-Matrix; keine autonome
+  Abnahme und keine Release-Autorisierung).
+
+### Verbindliche Testmatrix
+
+| Achse | Mindestszenarien | Muss-Beleg |
+|---|---|---|
+| Kernzustand | Move, Down/Up, Pause, Abort, Cleanup, Replay, Out-of-order, `uncertain` | deterministische Transition und vollständiges Receipt |
+| Herkunft | user, agent, screen, unknown; falsche/stale IDs | eindeutige Quelle; screen/unknown fail-closed |
+| Fokus/Fenster | Fokuswechsel, HWND-/PID-/Titelwechsel, Restart, Z-Order, Mehrdeutigkeit | kein Dispatch mit altem Token |
+| Capture | raw/model, Overlay ein/aus, Fenster/Vollbild, private Nebenfenster | Projektion deklariert; kein Scope-Leak; kein Overlay als Zielbeleg |
+| DPI/Monitore | 100/125/150/200 %, negative Ursprünge, Monitorwechsel, Hotplug | Frame-Generation invalidiert alte Position; kein Clamp |
+| Browser | Context-/Tab-/Viewportwechsel, DOM-Reflow, eindeutiges/mehrdeutiges Ziel | physischer Zeiger unverändert; Post-State verifiziert |
+| Desktop | UIA Invoke/Toggle/Select, fehlendes Pattern, Element-/Prozesswechsel | semantischer Pfad oder explizite Ablehnung; physischer Zeiger unverändert |
+| Nutzerpriorität | Nutzer bewegt/klickt vor Gate, zwischen Gate/Act und während Sequenz | Pause/Lease-Entzug; kein stilles Resume |
+| Injection-Fallback | UIPI/Secure Desktop, Preclick-Mismatch, partial/zero return, Hover/Drag | fail-closed, Holds gelöst, Herkunft und Grund sichtbar |
+| Recovery/Audit | Crash, Lease-Ablauf, Not-Aus, Hash-Manipulation, Retention | idempotentes Cleanup; neue IDs; Kettenprüfung |
+
+**Noch offene Produktentscheidungen (nicht vorwegnehmen):** genaue visuelle
+Form/Größe des LLM-Pointers; ob `model_frame` standardmäßig mit oder ohne
+Pointer-Projektion an das Modell geht; Browseradapter (WebDriver, Playwright
+oder CDP) und plattformübergreifende Accessibility-Reihenfolge; welche
+konkreten Zielklassen einen Injection-Fallback rechtfertigen; separate
+Nutzerfreigabe, Aufsicht und Aufbewahrungsdauer für Live-Receipts. Keine dieser
+Entscheidungen blockiert Phase 1; alle blockieren eine produktive Freigabe.
+
 ## Headless Cooperative-Core-Slice 2026-07-28 [U]
 
 - [x] Mockbare, inhaltfreie Human-Activity-Klassifikation mit bounded

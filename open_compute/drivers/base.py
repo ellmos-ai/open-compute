@@ -13,7 +13,7 @@ Pure standard library.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Mapping, Protocol, runtime_checkable
 
 from ..actions import Action
 from ..perception import Observation
@@ -61,6 +61,58 @@ class BrowserDriver(Protocol):
 
     def close(self) -> None:
         """Tear down the browser context."""
+        ...
+
+
+@runtime_checkable
+class SemanticBrowserDriver(BrowserDriver, Protocol):
+    """DOM/WebDriver/CDP extension used for exact semantic activation.
+
+    The original :class:`BrowserDriver` cannot satisfy the virtual-target
+    contract: its generic ``execute(Action)`` may be coordinate based and has
+    no context, target, or post-state identity.  This narrow extension is the
+    host boundary for a concrete Playwright/WebDriver/CDP implementation.
+
+    Returned mappings contain opaque IDs and SHA-256 state signatures only;
+    they must not contain coordinates or cause pointer input.  Implementations
+    must atomically reject changed/ambiguous contexts and targets.
+    """
+
+    def semantic_context(self) -> Mapping[str, Any]:
+        """Return context/window/observation/frame identity without mutation."""
+        ...
+
+    def resolve_semantic_target(
+        self,
+        *,
+        context_id: str,
+        observation_id: str,
+        window_token: str,
+        target_id: str,
+        query: str,
+        frame: Mapping[str, object],
+        exact: bool,
+    ) -> Mapping[str, Any]:
+        """Resolve exactly one DOM/accessibility target in the bound context."""
+        ...
+
+    def activate_semantic_target(
+        self,
+        *,
+        context_id: str,
+        target_handle: str,
+        action_id: str,
+    ) -> Mapping[str, Any]:
+        """Invoke the engine-side target action, never a coordinate action."""
+        ...
+
+    def semantic_target_state(
+        self,
+        *,
+        context_id: str,
+        target_handle: str,
+    ) -> Mapping[str, Any]:
+        """Read the post-action target state for explicit verification."""
         ...
 
 
