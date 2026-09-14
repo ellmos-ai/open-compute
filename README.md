@@ -4,10 +4,10 @@
 
 [🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md)
 
-[![Status: Production/Stable v0.9.0](https://img.shields.io/badge/status-0.9.0--stable-blue)](CHANGELOG.md)
+[![Status: Production/Stable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-694%20passed%20%7C%20100%25%20green-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-801%20passed%20%7C%20100%25%20green-success)](tests)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -41,6 +41,8 @@ them installed, and the default mock wiring runs fully offline.
 ## Quick Navigation
 
 - [✨ Highlights & Core Philosophy](#highlights--core-philosophy)
+- [🎯 Target Personas & Discoverability](#target-personas--discoverability)
+- [📊 Comparative Matrix vs. Alternatives](#comparative-matrix-vs-alternatives)
 - [🏗️ System Architecture Flow](#system-architecture-flow)
 - [🔄 Agent Loop & Safety Lifecycle](#agent-loop--safety-lifecycle)
 - [🛡️ Governance & Runtime Invariants](#governance--runtime-invariants)
@@ -85,6 +87,49 @@ you write the loop once and swap the reasoning model freely behind one
   every action.
 - A **hybrid perception** interface (screenshot + Set-of-Marks / accessibility /
   DOM), so you can move from pure pixel-vision to semantic targeting later.
+
+---
+
+## Target Personas & Discoverability
+
+`open-compute` is architected to address the operational requirements, privacy boundaries, and precision standards of four primary practitioner personas:
+
+| Persona ID | Target Audience | Primary Need | Key open-compute Architectural Solution |
+|---|---|---|---|
+| `[PERSONA-01]` | **Enterprise AI Agent Engineers & Platform Architects** | Model-swappable desktop agent core without proprietary vendor lock-in or coordinate fragmentation. | Single `ComputerBackend` protocol, unified canonical `Action` schema (`actions.py`), normalized `[0.0, 1.0]` coordinates (`coordinates.py`), and offline `MockBackend`. |
+| `[PERSONA-02]` | **Open-Source Agent Developers & AI Researchers** | Transparent, lightweight core to benchmark perception-action loops without massive Docker images or cloud costs. | Zero mandatory runtime dependencies (pure Python standard library core), deterministic offline test harness, and pluggable hybrid perception feeds. |
+| `[PERSONA-03]` | **Security, Safety & Governance Compliance Officers** | Enforcing human-in-the-loop oversight, emergency aborts, and strict zero-telemetry boundaries for GUI execution. | Mandatory 4-second `Pre-Action Grace Window` (`INV-GRC-04`), 3-tier fail-closed safety gate (`INV-SAF-05`), unprivileged user mode (`INV-USR-06`), and 100% offline zero-egress by default (`INV-EGR-07`). |
+| `[PERSONA-04]` | **Desktop & GUI Automation Specialists (RPA Modernizers)** | Modernizing brittle pixel-based RPA scripts (PyAutoGUI, AutoHotkey) into robust, semantic LLM-driven actions. | DPI-invariant coordinate rescaling, token-budgeted UIA window scoping (`perception_filter.py`), and native CLI utilities (`oc do`, `oc capture`, `oc click-name`). |
+
+### High-Intent Search Queries & Discoverability
+
+To facilitate rapid technical discovery and natural language indexing across open-source catalogs, package registries, and developer search engines:
+
+- `python computer use agent core` — Lightweight model-agnostic computer-use agent runtime in pure Python.
+- `claude computer use alternative python` — Vendor-neutral framework supporting Anthropic Claude, OpenAI CUA, and offline mocks.
+- `model agnostic gui automation llm` — Single agent loop for vision-language models driving desktop and browser interfaces.
+- `normalized coordinates screen automation` — Resolution- and DPI-invariant coordinate normalization (0..1) for AI screen actions.
+- `safe desktop automation agent framework` — Fail-closed safety gate with mandatory 4-second pre-action grace window and operator abort.
+- `set of marks gui agent python` — Hybrid perception combining screenshot vision, Set-of-Marks, and Windows UIAutomation trees.
+
+---
+
+## Comparative Matrix vs. Alternatives
+
+The following matrix evaluates `open-compute` against common alternative architectures across 10 technical dimensions directly tied to its formal governance invariants:
+
+| Technical Dimension | Governance Invariant | open-compute | Anthropic Reference Demo (Docker) | OSWorld / Agent-S Benchmark Frameworks | Classical RPA Tools (PyAutoGUI / Selenium) | Ad-Hoc Scripts / Shell Wrappers |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **Model Agnosticism** | `INV-MOD-01` | **Full (Claude, OpenAI CUA, Mock, Mode A)** | Claude Messages API only | Wrapper-based multi-model | None (No LLM reasoning) | None (Hardcoded logic) |
+| **Runtime Dependencies** | `INV-DEP-02` | **0 (Pure Python Stdlib Core)** | Heavy Docker + Node + Python | Massive Docker image (>20 GB) | Heavy native C extensions & drivers | System-dependent binaries |
+| **Coordinate Normalization** | `INV-CRD-03` | **Unified Normalized 0..1 + central DPI rescaling** | Fixed pixel coordinates (1024x768 etc.) | Pixel-based with scaling drift | Fixed screen pixels (breaks on DPI change) | Hardcoded pixel coordinates |
+| **Pre-Action Grace Window** | `INV-GRC-04` | **Mandatory 4s countdown + 120s cooldown + abort latch** | None (Executes immediately) | None (Benchmark execution) | None (Instant execution) | None |
+| **Fail-Closed Safety Gate** | `INV-SAF-05` | **3-Tier Policy Gate (`confirm`, `allow_all`, `read_only`)** | Advisory prompt warnings only | None (Unrestricted in VM) | None (Blind execution) | None |
+| **Unprivileged Execution** | `INV-USR-06` | **Strict RunAsInvoker (Non-elevated user mode)** | Root in Docker container | Root / Sudo inside virtual machine | Often prompts for Admin elevation | Risk of uncontrolled elevation |
+| **Local-First & Zero Egress** | `INV-EGR-07` | **100% Offline by default (0 sockets in mock/local mode)** | Mandatory cloud connection | Network-enabled VM with telemetry | Local execution, but no privacy policy | Script-dependent |
+| **Zero Secret Persistence** | `INV-SEC-08` | **Ephemeral in-memory API keys; never saved to disk/logs** | Environment variables in container | Configuration files with embedded tokens | Hardcoded plain-text credentials | Plain text environment or scripts |
+| **Semantic Window Scoping** | `INV-SCP-09` | **Token-budgeted UIA filter & background blanking** | Full screen capture only | Full desktop screenshots | Window handle search or full desktop | Naive window focus |
+| **Security & SLA Commitment** | `INV-SLA-10` | **Contractual 48h response & 5-day triage SLA** | Best-effort developer preview | Academic repository (issue backlog) | Community forum / commercial tiers | No security or maintenance SLA |
 
 ---
 

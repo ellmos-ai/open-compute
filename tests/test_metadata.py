@@ -354,9 +354,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 694 tests passed
-        self.assertIn("694%20passed", readme_en)
-        self.assertIn("694%20bestanden", readme_de)
+        # Both must report 801 tests passed
+        self.assertIn("801%20passed", readme_en)
+        self.assertIn("801%20bestanden", readme_de)
 
     def test_ci_timeout_minutes_and_pytest_flags(self):
         ci_path = ROOT / ".github" / "workflows" / "tests.yml"
@@ -409,6 +409,94 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("2026-09-12", mkt_text)
         self.assertIn("Pfad A", mkt_text)
         self.assertIn("timeout-minutes: 15", mkt_text)
+
+    def test_target_personas_bilingual_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        # English Personas and SEO
+        self.assertIn("## Target Personas & Discoverability", readme_en)
+        for persona_id in ["[PERSONA-01]", "[PERSONA-02]", "[PERSONA-03]", "[PERSONA-04]"]:
+            self.assertIn(persona_id, readme_en)
+        self.assertIn("python computer use agent core", readme_en)
+        self.assertIn("claude computer use alternative python", readme_en)
+        self.assertIn("normalized coordinates screen automation", readme_en)
+
+        # German Personas and SEO
+        self.assertIn("## Zielgruppen & Auffindbarkeit", readme_de)
+        for persona_id in ["[PERSONA-01]", "[PERSONA-02]", "[PERSONA-03]", "[PERSONA-04]"]:
+            self.assertIn(persona_id, readme_de)
+        self.assertIn("ki desktop automatisierung python framework", readme_de)
+        self.assertIn("modellunabhaengige gui agenten steuerung", readme_de)
+        self.assertIn("sichere desktop ki automatisierung fail closed", readme_de)
+
+    def test_comparative_matrix_vs_alternatives_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        # English Comparative Matrix
+        self.assertIn("## Comparative Matrix vs. Alternatives", readme_en)
+        self.assertIn("Anthropic Reference Demo", readme_en)
+        self.assertIn("OSWorld / Agent-S Benchmark Frameworks", readme_en)
+        self.assertIn("Classical RPA Tools", readme_en)
+        self.assertIn("Ad-Hoc Scripts", readme_en)
+
+        # German Comparative Matrix
+        self.assertIn("## Vergleichsmatrix gegenüber Alternativen", readme_de)
+        self.assertIn("Anthropic Referenz-Demo", readme_de)
+        self.assertIn("OSWorld / Agent-S Benchmark-Frameworks", readme_de)
+        self.assertIn("Klassische RPA-Tools", readme_de)
+        self.assertIn("Ad-Hoc-Skripte", readme_de)
+
+        # Invariant dimension mapping in both
+        for inv_id in [
+            "INV-MOD-01", "INV-DEP-02", "INV-CRD-03", "INV-GRC-04", "INV-SAF-05",
+            "INV-USR-06", "INV-EGR-07", "INV-SEC-08", "INV-SCP-09", "INV-SLA-10",
+        ]:
+            self.assertIn(inv_id, readme_en)
+            self.assertIn(inv_id, readme_de)
+
+    def test_quick_navigation_slug_parity_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        # Specific slug anchors
+        self.assertIn("#target-personas--discoverability", readme_en)
+        self.assertIn("#zielgruppen--auffindbarkeit", readme_de)
+        self.assertIn("#comparative-matrix-vs-alternatives", readme_en)
+        self.assertIn("#vergleichsmatrix-gegenüber-alternativen", readme_de)
+
+        # Parity in anchor count within the Quick Navigation section
+        nav_en = readme_en.split("## Quick Navigation")[1].split("---")[0]
+        nav_de = readme_de.split("## Schnellnavigation")[1].split("---")[0]
+        anchors_en = re.findall(r"^- \[([^\]]+)\]\(#([^\)]+)\)", nav_en, flags=re.MULTILINE)
+        anchors_de = re.findall(r"^- \[([^\]]+)\]\(#([^\)]+)\)", nav_de, flags=re.MULTILINE)
+        self.assertEqual(len(anchors_en), 18, "README.md Quick Navigation must contain exactly 18 items")
+        self.assertEqual(len(anchors_de), 18, "README_de.md Schnellnavigation must contain exactly 18 items")
+
+    def test_version_and_badge_consistency(self):
+        import open_compute
+        self.assertEqual(open_compute.__version__, "0.9.1")
+
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('version = "0.9.1"', pyproject_text)
+
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+        self.assertIn("status-0.9.1--stable-blue", readme_en)
+        self.assertIn("status-0.9.1--stabil-blue", readme_de)
+
+        llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        self.assertIn("Version: 0.9.1", llms_text)
+        self.assertIn("Last-checked: 2026-09-14", llms_text)
+
+        changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("## [0.9.1] - 2026-09-14", changelog_text)
+
+        licenses_text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
+        self.assertIn("Audited:** 2026-09-14", licenses_text)
+        for inv_id in ["INV-MOD-01", "INV-SLA-10"]:
+            self.assertIn(inv_id, licenses_text)
 
 
 if __name__ == "__main__":

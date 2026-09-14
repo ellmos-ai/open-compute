@@ -7,7 +7,8 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-09-12
+## Last-checked: 2026-09-14
+## Version: 0.9.1 (801 passed automated tests, 100% green)
 
 ## What it does
 
@@ -25,7 +26,8 @@ uses.
 - Open-Source Agent Developers & Researchers: Benchmarking vision vs. UIA/DOM with zero-cost deterministic mocks.
 - Security & Compliance Officers: Enforcing mandatory 4s pre-action grace windows, zero telemetry egress, and user-mode execution (`RunAsInvoker`).
 - Desktop Automation & RPA Specialists: Upgrading brittle pixel scripts to normalized-coordinate (0..1) LLM workflows.
-- See `MARKETING-LOG.txt` for in-depth persona profiles, high-intent discovery keywords, and competitive analysis.
+- Full persona matrix & SEO keywords: see [Target Personas & Discoverability](README.md#target-personas--discoverability) and `MARKETING-LOG.txt`.
+- Technical benchmarks vs. alternatives: see [Comparative Matrix vs. Alternatives](README.md#comparative-matrix-vs-alternatives).
 
 ## Architecture
 

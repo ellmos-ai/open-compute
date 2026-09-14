@@ -1,5 +1,26 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-09-14 — Discoverability, Visual Architecture, Target Personas & Comparative Matrix (Pfad B v0.9.1)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 50h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-10 vor 4 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 801 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Maßnahmen (Pfad B: Marketing, Design & Discoverability)**:
+  1. **Bilinguale Zielgruppen & Auffindbarkeit (`README.md` & `README_de.md`)**:
+     - 4 Zielgruppen-Personas (`[PERSONA-01]` Enterprise AI Agent Engineers, `[PERSONA-02]` Open-Source Agent Developers, `[PERSONA-03]` Security & Governance Officers, `[PERSONA-04]` RPA Modernizers) direkt in beide READMEs integriert.
+     - Zweisprachige High-Intent-Suchbegriffe (SEO-Keywords) für exakte Entwickler-Auffindbarkeit in Open-Source-Verzeichnissen und Suchmaschinen verankert.
+  2. **10-Dimensionen-Vergleichsmatrix gegenüber Alternativen (`README.md` & `README_de.md`)**:
+     - Umfassende Matrix eingebettet, die `open-compute` mit 4 realistischen Alternativen vergleicht: Anthropic Reference Demo (Docker), OSWorld / Agent-S Benchmark Frameworks, Klassische RPA-Tools (PyAutoGUI/Selenium) und Ad-Hoc-Skripte / Shell-Wrapper.
+     - 10 technische Dimensionen direkt auf die formalen Governance-Invarianten `INV-MOD-01` bis `INV-SLA-10` gemappt.
+  3. **Schnellnavigation & Anker-Parität**:
+     - Erweiterung der Schnellnavigation auf 18 Punkte mit 100% reziproker Slug-/Anker-Parität (`#target-personas--discoverability` <-> `#zielgruppen--auffindbarkeit`, `#comparative-matrix-vs-alternatives` <-> `#vergleichsmatrix-gegenüber-alternativen`).
+  4. **Drittanbieter-Lizenz- & Invarianten-Transparenz (`THIRD_PARTY_LICENSES.md`)**:
+     - Audit auf Stand 2026-09-14 aktualisiert; 100% permissive Lizenzen, Null Copyleft, und Bestätigung der 10 Governance-Invarianten.
+  5. **Versionsanhebung & Parität (v0.9.1)**:
+     - Versionssprung von `0.9.0` auf `0.9.1` synchron über `pyproject.toml`, `open_compute/__init__.py`, `README.md`, `README_de.md`, `llms.txt`, Test-Assertions und `CHANGELOG.md` vollzogen.
+     - Status-Badges auf `v0.9.1` und 801 Tests grün aktualisiert.
+  6. **Automatisierte Vertragstests (`tests/test_metadata.py`)**:
+     - Ausbau der Testsuite um 4 neue Contract-Tests für bilinguale Personas, Vergleichsmatrix, Schnellnavigations-Slug-Parität und Versions-/Badge-Konsistenz (26 Contract-Tests gesamt, 801 Tests im Gesamtprojekt grün).
+
 ## 2026-09-12 — Turnusgemäße Repository-Hygiene & CI-Matrix-Härtung (Pfad A)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand >35.4h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-09 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.

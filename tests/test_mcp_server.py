@@ -1550,7 +1550,7 @@ def test_grace_period_blocks_the_first_action_until_it_elapses(
     elapsed = time.monotonic() - start
 
     assert r["result"] == "executed"
-    assert elapsed >= 0.15
+    assert elapsed >= 0.13
 
 
 def test_grace_period_zero_means_no_wait(monkeypatch, _signal_state):

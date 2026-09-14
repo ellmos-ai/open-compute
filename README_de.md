@@ -4,10 +4,10 @@
 
 [🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md)
 
-[![Status: Produktion/Stabil v0.9.0](https://img.shields.io/badge/status-0.9.0--stabil-blue)](CHANGELOG.md)
+[![Status: Produktion/Stabil v0.9.1](https://img.shields.io/badge/status-0.9.1--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-694%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-801%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -43,6 +43,8 @@ vollständig offline.
 ## Schnellnavigation
 
 - [✨ Highlights & Kernphilosophie](#highlights--kernphilosophie)
+- [🎯 Zielgruppen & Auffindbarkeit](#zielgruppen--auffindbarkeit)
+- [📊 Vergleichsmatrix gegenüber Alternativen](#vergleichsmatrix-gegenüber-alternativen)
 - [🏗️ Systemarchitektur-Ablauf](#systemarchitektur-ablauf)
 - [🔄 Agenten-Loop & Sicherheits-Lebenszyklus](#agenten-loop--sicherheits-lebenszyklus)
 - [🛡️ Governance & Laufzeit-Invarianten](#governance--laufzeit-invarianten)
@@ -89,6 +91,49 @@ bleibt:
 - Eine **Hybrid-Wahrnehmung** (Screenshot + Set-of-Marks / Accessibility / DOM),
   damit man später von reiner Pixel-Vision auf semantisches Targeting wechseln
   kann.
+
+---
+
+## Zielgruppen & Auffindbarkeit
+
+`open-compute` wurde entwickelt, um die betrieblichen Anforderungen, Sicherheitsgrenzen und Präzisionsansprüche von vier zentralen Zielgruppen zu erfüllen:
+
+| Persona ID | Zielgruppe | Primärer Bedarf | Zentrale open-compute Lösung |
+|---|---|---|---|
+| `[PERSONA-01]` | **Enterprise AI Agent Engineers & Plattform-Architekten** | Modell-austauschbarer Desktop-Agenten-Kern ohne Anbieter-Lock-in oder fragmentierte Koordinaten. | Einheitliches `ComputerBackend`-Protokoll, kanonisches Aktionsschema (`actions.py`), normierte `[0.0, 1.0]`-Koordinaten (`coordinates.py`) und Offline-`MockBackend`. |
+| `[PERSONA-02]` | **Open-Source-Agenten-Entwickler & KI-Forscher** | Transparenter, leichtgewichtiger Kern zum Benchmarking von Wahrnehmungs-Aktions-Schleifen ohne riesige Docker-Images oder Cloud-Kosten. | Null zwingende Laufzeit-Abhängigkeiten (reine Python-Standardbibliothek im Kern), deterministische Offline-Testumgebung und modular ansteckbare Wahrnehmungs-Feeds. |
+| `[PERSONA-03]` | **Sicherheits-, Compliance- & Governance-Beauftragte** | Durchsetzung menschlicher Kontrolle, Not-Aus-Mechanismen und strikter Zero-Telemetrie-Grenzen bei der GUI-Ausführung. | Verbindliches 4-Sekunden `Pre-Action Grace Window` (`INV-GRC-04`), 3-stufiges Fail-Closed-Sicherheits-Gate (`INV-SAF-05`), Ausführung mit minimalen Benutzerrechten (`INV-USR-06`) und standardmäßig 100% offline ohne Netzwerkabfluss (`INV-EGR-07`). |
+| `[PERSONA-04]` | **Desktop- & GUI-Automatisierungs-Spezialisten (RPA-Modernisierer)** | Modernisierung anfälliger, pixelbasierter RPA-Skripte (PyAutoGUI, AutoHotkey) zu robusten, semantisch gesteuerten LLM-Aktionen. | DPI-invariante Koordinatenskalierung, token-budgetierte UIA-Fensterfokussierung (`perception_filter.py`) und native CLI-Werkzeuge (`oc do`, `oc capture`, `oc click-name`). |
+
+### High-Intent-Suchbegriffe & Auffindbarkeit
+
+Zur gezielten Auffindbarkeit in Open-Source-Katalogen, Paketregistern und Entwickler-Suchmaschinen:
+
+- `ki desktop automatisierung python framework` — Modellunabhängiges Python-Framework für KI-gestützte Desktop- und GUI-Automatisierung.
+- `modellunabhaengige gui agenten steuerung` — Universeller Agenten-Loop für Claude, OpenAI und lokale LLM-Steuerung.
+- `sichere desktop ki automatisierung fail closed` — Fail-Closed Sicherheitsarchitektur mit 4-Sekunden Grace Window und Not-Aus.
+- `normierte koordinaten bildschirmsteuerung python` — DPI- und auflösungsunabhängige Koordinatennormierung für Vision-Agenten.
+- `offline ki agenten loop zero egress` — 100% lokales Agenten-Framework ohne externe Telemetrie oder Cloud-Zwang.
+- `set of marks gui agent python` — Hybride Wahrnehmung aus Screenshot-Vision, Set-of-Marks und Windows-UIAutomation-Struktur.
+
+---
+
+## Vergleichsmatrix gegenüber Alternativen
+
+Die folgende Matrix bewertet `open-compute` gegenüber alternativen Ansätzen entlang von 10 technischen Dimensionen, die direkt an die formalen Governance-Invarianten gekoppelt sind:
+
+| Technische Dimension | Governance-Invariante | open-compute | Anthropic Referenz-Demo (Docker) | OSWorld / Agent-S Benchmark-Frameworks | Klassische RPA-Tools (PyAutoGUI / Selenium) | Ad-Hoc-Skripte / Shell-Wrapper |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **Modell-Agnostik** | `INV-MOD-01` | **Vollständig (Claude, OpenAI CUA, Mock, Modus A)** | Nur Claude Messages API | Wrapper-basierte Multi-Modelle | Keine (Kein LLM-Reasoning) | Keine (Hardcodierte Logik) |
+| **Laufzeit-Abhängigkeiten** | `INV-DEP-02` | **0 (Reiner Python-Stdlib-Kern)** | Schweres Docker + Node + Python | Massives Docker-Image (>20 GB) | Schwere native C-Erweiterungen & Treiber | Systemabhängige Binärdateien |
+| **Koordinaten-Normierung** | `INV-CRD-03` | **Einheitlich normiert 0..1 + zentrale DPI-Skalierung** | Feste Pixelkoordinaten (1024x768 etc.) | Pixel-basiert mit Skalierungsdrift | Feste Pixel (bricht bei DPI-Änderung) | Hardcodierte Pixelkoordinaten |
+| **Pre-Action Grace Window** | `INV-GRC-04` | **Verbindlich 4s Countdown + 120s Cooldown + Not-Aus** | Keine (Sofortige Ausführung) | Keine (Benchmark-Ablauf) | Keine (Sofortige Ausführung) | Keine |
+| **Fail-Closed Safety Gate** | `INV-SAF-05` | **3-Stufen-Gate (`confirm`, `allow_all`, `read_only`)** | Nur unverbindliche Prompt-Warnungen | Keine (Ungeschützt in VM) | Keine (Blindes Ausführen) | Keine |
+| **Unprivilegierte Ausführung** | `INV-USR-06` | **Strikter RunAsInvoker (Einfache Benutzerrechte)** | Root im Docker-Container | Root / Sudo in virtueller Maschine | Fordert oft Admin-Rechte | Gefahr unkontrollierter Rechteausweitung |
+| **Lokal-Zentriert & Zero Egress** | `INV-EGR-07` | **100% Offline standardmäßig (0 Sockets im Mock/Lokal)** | Zwingende Cloud-Verbindung | Netzwerkfähige VM mit Telemetrie | Lokale Ausführung, aber keine Datenschutzgarantie | Skriptabhängig |
+| **Zero Secret Persistence** | `INV-SEC-08` | **Flüchtige In-Memory API-Keys; nie auf Disk/Logs** | Umgebungsvariablen im Container | Konfigurationsdateien mit Token | Klartext-Zugangsdaten im Code | Klartext in Umgebungsvariablen |
+| **Semantische Fensterfokussierung** | `INV-SCP-09` | **Token-budgetierter UIA-Filter & Hintergrund-Ausblendung** | Nur vollständiger Bildschirm | Vollständige Desktop-Screenshots | Fenstersuche oder Vollbild | Naive Fensterfokussierung |
+| **Sicherheits- & SLA-Garantie** | `INV-SLA-10` | **Vertraglich 48h Reaktions- & 5 Tage Triage-SLA** | Unverbindliche Entwickler-Preview | Akademisches Repository (Issue-Rückstau) | Community-Forum / Enterprise-Tarife | Keine Sicherheits- oder Wartungs-SLA |
 
 ---
 

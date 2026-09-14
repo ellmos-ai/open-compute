@@ -1,7 +1,7 @@
 # Third-Party Licenses & Transparency Notice
 
-> **Project:** `ellmos-ai/open-compute`  
-> **Audited:** 2026-09-10  
+> **Project:** `ellmos-ai/open-compute`
+> **Audited:** 2026-09-14
 > **Repository License:** [MIT License](LICENSE)  
 > **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`)
 
@@ -70,6 +70,23 @@ The Pillow library is licensed under the Historical Permission Notice and Discla
 > Copyright (c) 1995-2011 by Fredrik Lundh  
 > Copyright (c) 2010-2026 by Jeffrey A. Clark (Alex) and contributors.  
 > Permission to use, copy, modify, and distribute this software and its documentation for any purpose and without fee is hereby granted, provided that the above copyright notice appear in all copies and that both that copyright notice and this permission notice appear in supporting documentation.
+
+---
+
+## Runtime & Governance Invariants Confirmation
+
+In addition to copyright and license compliance, `open-compute` guarantees adherence to 10 core architectural and runtime invariants verified continuously by automated contract testing:
+
+1. `INV-MOD-01` (Model-Agnostic Core): One unified loop orchestration interface supporting Claude, OpenAI CUA, and deterministic offline mock execution without provider lock-in.
+2. `INV-DEP-02` (Zero Mandatory Runtime Dependencies): The core agent loop, canonical actions, and coordinates require solely the standard Python library; all vendor SDKs are optional lazy extras.
+3. `INV-CRD-03` (Normalized Coordinates 0..1): All model coordinate perceptions and actions operate within the invariant float range `[0.0, 1.0]`, with centralized DPI and multi-monitor rescaling.
+4. `INV-GRC-04` (Mandatory Pre-Action Grace Window): Unconditional 4-second delay before the first mutating GUI action, providing operators with emergency-abort oversight.
+5. `INV-SAF-05` (Fail-Closed Safety Gate): Three-tier policy gate (`confirm`, `allow_all`, `read_only`) intercepting every GUI action before OS dispatch.
+6. `INV-USR-06` (Unprivileged User Mode): Full functionality guaranteed in non-elevated user context (`RunAsInvoker`) without administrative rights.
+7. `INV-EGR-07` (Local-First & Zero Egress): Absolute zero telemetry, external network requests, or analytics when operating in offline/mock mode.
+8. `INV-SEC-08` (Zero Secret Persistence): API keys are maintained strictly in volatile runtime memory and never saved to disk, logs, or state caches.
+9. `INV-SCP-09` (Profile-Filtered Perception): Strict token-budgeted GUI scoping and background-window blanking prevents model context overflow and uncaptured exposure.
+10. `INV-SLA-10` (Contractual Security SLA): 48-hour response time and 5-business-day triage commitment for all reported security vulnerabilities.
 
 ---
 

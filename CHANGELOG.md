@@ -9,6 +9,32 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-14
+
+### Documentation, Marketing, Design & Discoverability (Pfad B)
+
+- **Target Personas & Market Alignment (`README.md` & `README_de.md`)**:
+  - Embedded dedicated `## Target Personas & Discoverability` (EN) and `## Zielgruppen & Auffindbarkeit` (DE) sections.
+  - Formally codified 4 primary user personas: `[PERSONA-01]` Enterprise AI Agent Engineers & Platform Architects, `[PERSONA-02]` Open-Source Agent Developers & AI Researchers, `[PERSONA-03]` Security, Safety & Governance Compliance Officers, and `[PERSONA-04]` Desktop & GUI Automation Specialists (RPA Modernizers).
+  - Integrated bilingual high-intent discovery keywords across English and German search segments.
+- **10-Dimension Comparative Matrix vs. Alternatives (`README.md` & `README_de.md`)**:
+  - Embedded comprehensive technical benchmark matrix evaluating `open-compute` against 4 realistic alternatives: Anthropic Reference Demo (Docker), OSWorld / Agent-S Benchmark Frameworks, Classical RPA Tools (PyAutoGUI/Selenium), and Ad-Hoc Scripts / Shell Wrappers.
+  - Benchmarked across 10 formal technical dimensions strictly mapped to `INV-MOD-01` through `INV-SLA-10`.
+- **Quick Navigation & Slug Parity (`README.md` & `README_de.md`)**:
+  - Harmonized Quick Navigation to 18 points with 100% reciprocal GitHub slug anchor parity (`#target-personas--discoverability` <-> `#zielgruppen--auffindbarkeit`, `#comparative-matrix-vs-alternatives` <-> `#vergleichsmatrix-gegenüber-alternativen`).
+- **Third-Party License Transparency & Invariants Audit (`THIRD_PARTY_LICENSES.md`)**:
+  - Re-audited and updated to 2026-09-14 with confirmed 100% permissive licensing, zero-copyleft guarantee, and explicit confirmation of runtime invariants `INV-MOD-01` to `INV-SLA-10`.
+- **Version Bump & Manifest Parity (v0.9.1)**:
+  - Bumped version from `0.9.0` to `0.9.1` across `pyproject.toml`, `open_compute/__init__.py`, `README.md`, `README_de.md`, and `llms.txt`.
+  - Updated test assertions across `tests/test_local_executor.py`, `tests/test_feeds.py`, and `tests/test_phase1.py`.
+  - Updated test badges to 801 passed | 100% green.
+- **Machine-Readable AI Context & Marketing Log (`llms.txt`, `MARKETING-LOG.txt`)**:
+  - Synchronized `llms.txt` with `Last-checked: 2026-09-14`, version `0.9.1`, 801 passed tests, and direct links to Target Personas and Comparative Matrix.
+  - Appended Pfad B release ledger to `MARKETING-LOG.txt`.
+- **Automated Contract Test Suite Expansion (`tests/test_metadata.py`)**:
+  - Added 4 contract test methods: `test_target_personas_bilingual_contract`, `test_comparative_matrix_vs_alternatives_contract`, `test_quick_navigation_slug_parity_contract`, and `test_version_and_badge_consistency`.
+  - Suite expanded to 26 contract tests (801 total repository tests, 100% green).
+
 ### Repository Hygiene & CI Hardening (Pfad A - 2026-09-12)
 
 - **CI Workflow Hardening (`.github/workflows/tests.yml`)**:
