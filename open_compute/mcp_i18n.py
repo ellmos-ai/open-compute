@@ -158,12 +158,12 @@ _TOOLS: dict[str, dict[str, str]] = {
         "zh": "向人类询问简短的中止原因（控制台或置顶 Tk 输入框）；消息返回给模型。",
     },
     "chat": {
-        "en": "Human-to-model short message about screen content, optionally with a fullscreen screenshot from _session/ (console or topmost Tk box). No model call inside this server — the client answers in its own channel.",
-        "de": "Mensch-zu-Modell-Kurznachricht zum Bildschirminhalt, optional mit Vollbild-Screenshot aus _session/ (Konsole oder topmost Tk-Box). Kein Modell-Aufruf in diesem Server — der Client antwortet in seinem eigenen Kanal.",
-        "es": "Mensaje corto del humano al modelo sobre el contenido de pantalla, opcionalmente con captura de pantalla completa de _session/ (consola o cuadro Tk siempre visible). Sin llamada al modelo en este servidor: el cliente responde en su propio canal.",
-        "ja": "画面内容についての人間からモデルへの短いメッセージ。_session/ の全画面スクリーンショットを任意で添付（コンソールまたは最前面 Tk ボックス）。このサーバーはモデルを呼び出しません — クライアントが自身のチャネルで回答します。",
-        "ru": "Короткое сообщение от человека модели о содержимом экрана, опционально с полноэкранным снимком из _session/ (консоль или поверх-всех Tk-окно). Этот сервер не вызывает модель — клиент отвечает в своём канале.",
-        "zh": "人类就屏幕内容发送给模型的短消息，可选附带 _session/ 中的全屏截图（控制台或置顶 Tk 输入框）。本服务器不调用模型 — 客户端在其自有通道中回复。",
+        "en": "Human-to-model short message about screen content, optionally with a fullscreen screenshot from _session/ (console or topmost Tk box). No model call inside this server — the client answers in its own channel. Optional `choices` render as one-click buttons above the entry; free text stays possible and the reply carries `choice_index`.",
+        "de": "Mensch-zu-Modell-Kurznachricht zum Bildschirminhalt, optional mit Vollbild-Screenshot aus _session/ (Konsole oder topmost Tk-Box). Kein Modell-Aufruf in diesem Server — der Client antwortet in seinem eigenen Kanal. Optionale `choices` erscheinen als 1-Klick-Knöpfe über dem Eingabefeld; Freitext bleibt möglich, die Antwort trägt `choice_index`.",
+        "es": "Mensaje corto del humano al modelo sobre el contenido de pantalla, opcionalmente con captura de pantalla completa de _session/ (consola o cuadro Tk siempre visible). Sin llamada al modelo en este servidor: el cliente responde en su propio canal. Las `choices` opcionales aparecen como botones de un clic sobre el campo; el texto libre sigue disponible y la respuesta incluye `choice_index`.",
+        "ja": "画面内容についての人間からモデルへの短いメッセージ。_session/ の全画面スクリーンショットを任意で添付（コンソールまたは最前面 Tk ボックス）。このサーバーはモデルを呼び出しません — クライアントが自身のチャネルで回答します。 任意の `choices` は入力欄の上にワンクリックのボタンとして表示されます。自由入力も引き続き可能で、応答には `choice_index` が含まれます。",
+        "ru": "Короткое сообщение от человека модели о содержимом экрана, опционально с полноэкранным снимком из _session/ (консоль или поверх-всех Tk-окно). Этот сервер не вызывает модель — клиент отвечает в своём канале. Необязательные `choices` отображаются кнопками в один клик над полем ввода; свободный текст остаётся доступным, а ответ содержит `choice_index`.",
+        "zh": "人类就屏幕内容发送给模型的短消息，可选附带 _session/ 中的全屏截图（控制台或置顶 Tk 输入框）。本服务器不调用模型 — 客户端在其自有通道中回复。 可选的 `choices` 会在输入框上方显示为一键按钮；自由文本仍然可用，回复中带有 `choice_index`。",
     },
     "talk": {
         "en": "Push-to-talk voice note: hold the key, speak, release — writes a WAV to _session/ (winmm MCI, zero-dependency, Windows). STT/TTS stay model-side; the WAV path is returned. Blocks while waiting for / recording the key hold.",

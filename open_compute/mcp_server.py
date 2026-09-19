@@ -42,6 +42,7 @@ import os
 import pathlib
 import threading
 import time
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -1841,7 +1842,35 @@ def _signal_config_path() -> pathlib.Path | None:
     return default if default.exists() else None
 
 
-def _prompt_channel(channel: str, context: str) -> str | None:
+# Bounds for `chat(choices=...)`: a dialog with more buttons than this stops
+# being a glanceable 1-click pick, and a long label blows the fixed-width Tk
+# row apart. Validated here, not in `chat`, so every caller of this seam gets
+# the same check.
+_MAX_PROMPT_CHOICES = 8
+_MAX_PROMPT_CHOICE_LEN = 120
+
+
+def _clean_choices(choices: Sequence[str] | None) -> tuple[str, ...]:
+    """Normalise model-supplied quick-pick options, loudly."""
+
+    if not choices:
+        return ()
+    if isinstance(choices, str) or not isinstance(choices, (list, tuple)):
+        raise ValueError("choices must be a list of strings")
+    cleaned = tuple(str(c).strip() for c in choices if str(c).strip())
+    if len(cleaned) > _MAX_PROMPT_CHOICES:
+        raise ValueError(f"at most {_MAX_PROMPT_CHOICES} choices are supported")
+    for text in cleaned:
+        if len(text) > _MAX_PROMPT_CHOICE_LEN:
+            raise ValueError(
+                f"each choice must be at most {_MAX_PROMPT_CHOICE_LEN} characters"
+            )
+    return cleaned
+
+
+def _prompt_channel(
+    channel: str, context: str, choices: Sequence[str] = ()
+) -> str | None:
     channels = {
         "console": "ConsoleAbortChannel",
         "tk": "TkAbortChannel",
@@ -1849,12 +1878,18 @@ def _prompt_channel(channel: str, context: str) -> str | None:
     }
     if channel not in channels:
         raise ValueError(f"channel must be one of {sorted(channels)}")
+    cleaned = _clean_choices(choices)
+    if cleaned and channel != "tk":
+        raise ValueError("choices need the clickable dialog — use channel='tk'")
     from . import indicator as _indicator_mod
 
     channel_cls = globals().get(channels[channel]) or getattr(
         _indicator_mod, channels[channel]
     )
-    return channel_cls().prompt_reason(context=context)
+    # Only pass `reasons` when there is something to render: the console and
+    # null channels take no such kwarg, and neither do existing test doubles.
+    kwargs = {"reasons": cleaned} if cleaned else {}
+    return channel_cls(**kwargs).prompt_reason(context=context)
 
 
 _SIGNAL_TTL_DEFAULT_SECONDS = 120.0
@@ -2456,14 +2491,26 @@ def _hide_observation_overlay() -> None:
 
 
 @mcp.tool(description=mcp_i18n.tool_description("chat", _LANG))
-def chat(channel: str = "tk", context: str = "", shot: bool = False) -> dict:
+def chat(
+    channel: str = "tk",
+    context: str = "",
+    shot: bool = False,
+    choices: list[str] | None = None,
+) -> dict:
     """Human-to-model message about screen content (+ optional screenshot).
 
     The message comes back as the tool result; this server never calls a
     model itself — the client (the reasoner) answers in its own channel.
+
+    ``choices`` renders one 1-click button per option above the free-text
+    entry (same mechanism as the abort dialog's quick reasons), so the human
+    can pick a hypothesis instead of typing one. Free text stays available
+    either way. With options given, the result carries ``choice_index`` — the
+    position of the picked option, or ``None`` for a free-text answer.
     """
 
-    message = _prompt_channel(channel, context or "Nachricht ans Modell")
+    cleaned = _clean_choices(choices)
+    message = _prompt_channel(channel, context or "Nachricht ans Modell", cleaned)
     shot_path = None
     if shot:
         obs = _STATE.executor().screenshot()
@@ -2474,7 +2521,16 @@ def chat(channel: str = "tk", context: str = "", shot: bool = False) -> dict:
         shot_file = _module_session_dir() / f"chat_{stamp}.png"
         shot_file.write_bytes(data)
         shot_path = str(shot_file)
-    return {"chat_message": message, "screenshot": shot_path}
+    result = {"chat_message": message, "screenshot": shot_path}
+    if cleaned:
+        # ponytail: a click is recognised by its text, so free text that
+        # happens to repeat an option counts as that option — same answer
+        # either way. Threading an index out of the dialog would touch every
+        # channel's return type for no difference in outcome.
+        result["choice_index"] = (
+            cleaned.index(message) if message in cleaned else None
+        )
+    return result
 
 
 @mcp.tool(description=mcp_i18n.tool_description("talk", _LANG))

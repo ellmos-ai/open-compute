@@ -9,6 +9,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`chat(choices=[...])` — pick an option instead of typing it**
+  (Ticket `T-20260919-184978745`): the `chat` tool now takes up to eight
+  options of at most 120 characters, rendered as one-click buttons above the
+  existing free-text entry by the same `TkAbortChannel` mechanism the abort
+  dialog already used for its quick reasons. The result gains `choice_index`
+  (the position picked, `null` for a free-text answer); callers that pass no
+  options see the unchanged result. Options require `channel="tk"` — the
+  console and null channels have nothing to click.
+
 ## [0.9.1] - 2026-09-14
 
 ### Documentation, Marketing, Design & Discoverability (Pfad B)

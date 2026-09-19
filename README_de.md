@@ -431,7 +431,9 @@ T-20260825-767105130) den mitgelieferten Skill
 nutzen: (1) `note_observation` schreibt kurze, allgemeinverständliche
 Beobachtungen in ein kleines, nicht-modales, immer-oben-liegendes
 Notizfenster (das Gegenstück zu `chat`) — ein rauschfreier Blick auf „was
-sieht die Maschine" statt eines vollen Konsolenlogs; (2) die Zwischenablage-
+sieht die Maschine" statt eines vollen Konsolenlogs; die Antwort kommt über
+`chat` zurück, dessen optionale `choices` aus dem Tippen einen Klick machen;
+(2) die Zwischenablage-
 Hälfte von oben, referenziert statt neu gebaut; (3) eine eng begrenzte
 **Mikro-Übernahme** — nachdem der Mensch selbst sichtbar ein Feld
 fokussiert hat, darf der Agent genau einen `type`-Aufruf (optional mit
@@ -442,6 +444,20 @@ Aktivitäts-Cooldown des pflichtigen Vorlauf-Fensters (siehe unten) sorgt
 dabei bereits von selbst dafür, dass eine folgende Mikro-Übernahme kein
 neues Wartefenster auslöst — ohne dass dieser Skill dafür eine eigene
 Ausnahme bräuchte.
+
+Fragen mit Auswahl statt leerem Feld:
+
+```python
+chat(
+    context="Welche Hypothese trifft es?",
+    choices=["Die Liste ist zu lang", "Falsche Sortierung", "Ich finde den Knopf nicht"],
+)
+# -> {"chat_message": "Falsche Sortierung", "choice_index": 1, "screenshot": None}
+```
+
+Bis zu acht Optionen à höchstens 120 Zeichen erscheinen als 1-Klick-Knöpfe
+über dem gewohnten Freitextfeld, das erhalten bleibt — eine getippte Antwort
+kommt einfach mit `choice_index: null` zurück.
 
 ### Modus B — Autonomer Loop mit einem API-Backend
 

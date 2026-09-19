@@ -889,6 +889,74 @@ def test_chat_without_shot(monkeypatch, _signal_state):
     }
 
 
+# --- chat(choices=...) 1-click options (Ticket T-20260919-184978745) -------
+#
+# `test_chat_without_shot` above doubles as the "unchanged without choices"
+# regression guard: `_FakePromptChannel` takes no constructor kwargs at all,
+# so it would blow up with a TypeError the moment chat() started passing
+# `reasons=` unconditionally.
+
+class _ChoiceChannel:
+    """Stand-in for the reason dialog with quick-pick buttons — takes the
+    ``reasons`` kwarg like TkAbortChannel and answers with one of them, the
+    way clicking a button does. ``answer`` overrides it with free text."""
+
+    answer: str | None = None
+
+    def __init__(self, reasons=()):
+        self.reasons = reasons
+        _ChoiceChannel.seen_reasons = reasons
+
+    def prompt_reason(self, *, context):
+        if self.answer is not None:
+            return self.answer
+        return self.reasons[1] if len(self.reasons) > 1 else None
+
+
+def test_chat_choices_returns_clicked_option_and_its_index(
+    monkeypatch, _signal_state
+):
+    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
+    monkeypatch.setattr(_ChoiceChannel, "answer", None, raising=False)
+
+    result = S.chat(channel="tk", choices=["Zu langsam", "Falsches Fenster", "Egal"])
+
+    assert result["chat_message"] == "Falsches Fenster"
+    assert result["choice_index"] == 1
+    # The options reach the dialog as the quick-pick buttons it already knows.
+    assert _ChoiceChannel.seen_reasons == ("Zu langsam", "Falsches Fenster", "Egal")
+
+
+def test_chat_choices_keeps_free_text_answers(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
+    monkeypatch.setattr(_ChoiceChannel, "answer", "etwas ganz anderes", raising=False)
+
+    result = S.chat(channel="tk", choices=["Zu langsam", "Falsches Fenster"])
+
+    assert result["chat_message"] == "etwas ganz anderes"
+    assert result["choice_index"] is None
+
+
+def test_chat_choices_rejects_too_many_or_too_long(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
+    with pytest.raises(ValueError):
+        S.chat(channel="tk", choices=[f"opt {i}" for i in range(9)])
+    with pytest.raises(ValueError):
+        S.chat(channel="tk", choices=["x" * 121])
+
+
+def test_chat_choices_only_for_the_clickable_channel(monkeypatch, _signal_state):
+    with pytest.raises(ValueError):
+        S.chat(channel="console", choices=["a", "b"])
+
+
+def test_chat_tool_schema_exposes_choices():
+    tool = S.mcp._tool_manager.get_tool("chat")
+    prop = (tool.parameters or {}).get("properties", {}).get("choices")
+    assert prop is not None, "chat must expose a `choices` parameter"
+    assert "array" in str(prop), prop
+
+
 def test_talk_uses_injected_recorder(monkeypatch, _signal_state, tmp_path):
     from open_compute.talk import TalkResult
 

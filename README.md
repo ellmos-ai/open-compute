@@ -421,7 +421,8 @@ bundled
 [`open-compute-work-together`](./skills/open-compute-work-together/SKILL.md)
 skill: (1) `note_observation` writes short, plain-language observations to a
 small, non-modal, always-on-top notes window (the mirror of `chat`) — a
-low-noise view of "what the machine sees" instead of a busy console log; (2)
+low-noise view of "what the machine sees" instead of a busy console log — and the answer comes back through `chat`, whose optional
+`choices` turn the reply into one click instead of typing; (2)
 the clipboard half above, referenced rather than duplicated; (3) a narrowly
 scoped **micro-takeover** — after the human has visibly focused a field
 themselves, the agent may issue exactly one `type` (optionally preceded by
@@ -430,6 +431,20 @@ returns control immediately, never chaining further actions without a fresh,
 visible focus from the human. The activity cooldown from the mandatory
 pre-action grace window (see below) already keeps a follow-up micro-takeover
 from re-triggering a new wait on its own, with no special-casing needed.
+
+Asking with options instead of a blank field:
+
+```python
+chat(
+    context="Which hypothesis fits what bothers you here?",
+    choices=["The list is too long", "Wrong sort order", "I cannot find the button"],
+)
+# -> {"chat_message": "Wrong sort order", "choice_index": 1, "screenshot": None}
+```
+
+Up to eight options of at most 120 characters each render as one-click
+buttons above the usual free-text entry, which stays available — a typed
+answer simply comes back with `choice_index: null`.
 
 ### Mode B — Autonomous loop with an API backend
 
