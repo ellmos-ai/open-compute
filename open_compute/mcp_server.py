@@ -72,9 +72,11 @@ from .preclick import (
     execute_with_preclick,
 )
 from .perception_filter import (
+    VISUAL_ESCALATION_MODES,
     FilterProfile,
     excluded_window_rectangles,
     filter_uia_elements,
+    resolve_filter_profile,
     resolve_visual_region,
     validate_profiled_actions,
 )
@@ -1044,20 +1046,39 @@ def _blank_rgb_intersections(
             rgb[start:start + len(row_fill)] = row_fill
 
 
+def _require_escalation_reason(mode: str | None, reason: str) -> None:
+    """Refuse an unjustified image in a watching mode."""
+
+    if mode not in VISUAL_ESCALATION_MODES:
+        return
+    text = reason.strip() if isinstance(reason, str) else ""
+    if not text:
+        raise ValueError(
+            f"mode {mode!r} is text-first: pass `reason` to explain why an image is needed"
+        )
+    if len(text) > 350:
+        raise ValueError("reason must be at most 350 characters")
+
+
 @mcp.tool(description=mcp_i18n.tool_description("observe_filtered", _LANG))
 def observe_filtered(
-    profile: dict,
-    focus: dict,
+    profile: dict | None = None,
+    focus: dict | None = None,
     window: str | None = None,
+    mode: str | None = None,
 ) -> dict:
-    """Return locally filtered UIA semantics under a host-supplied profile.
+    """Return locally filtered UIA semantics under a profile or a named mode.
 
     The raw UIA tree never leaves this server call.  The profile selects the
     focus radius, character and element budgets, values, excluded GUI names and
     allowed capabilities.  Use this before requesting any image.
+
+    Pass either a full ``profile`` or a ``mode`` name — `observe-lite` (the
+    frugal one), `observe-full` or `act` — which pulls the bundled profile of
+    that name.  An explicit profile wins over the mode.
     """
 
-    resolved = FilterProfile.from_dict(profile)
+    resolved = resolve_filter_profile(profile, mode)
     _require_profile_tool(resolved, "observe_filtered")
     _require_profile_window(resolved, window)
     raw = tree(
@@ -1069,10 +1090,22 @@ def observe_filtered(
 
 
 @mcp.tool(description=mcp_i18n.tool_description("capture_filtered", _LANG))
-def capture_filtered(profile: dict, focus: dict) -> Image:
-    """Return only the profile's bounded visual lens, with excluded windows blanked."""
+def capture_filtered(
+    profile: dict | None = None,
+    focus: dict | None = None,
+    mode: str | None = None,
+    reason: str = "",
+) -> Image:
+    """Return only the profile's bounded visual lens, with excluded windows blanked.
 
-    resolved = FilterProfile.from_dict(profile)
+    Takes a full ``profile`` or a ``mode`` name, like `observe_filtered`. In the
+    watching modes an image is an escalation out of a text-only budget, so
+    ``reason`` is required there and the call is refused without one; `act`
+    needs none.
+    """
+
+    _require_escalation_reason(mode, reason)
+    resolved = resolve_filter_profile(profile, mode)
     _require_profile_tool(resolved, "capture_filtered")
     screen = get_screen_size()
     virtual_desktop = screen.get("virtual_desktop")

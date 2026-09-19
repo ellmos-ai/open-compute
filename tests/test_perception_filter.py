@@ -170,3 +170,42 @@ def test_profile_rejects_unneeded_computer_actions_before_the_executor():
     )
     with pytest.raises(PermissionError, match="outside filter profile"):
         validate_profiled_actions([{"type": "launch_app", "app_name": "powershell"}], profile)
+
+
+# --- bundled perception modes (Ticket T-20260919-184978745) ---------------
+
+def test_bundled_modes_load_validate_and_stay_within_their_budgets():
+    from open_compute.perception_filter import PERCEPTION_MODES, load_mode_profile
+
+    assert PERCEPTION_MODES == ("observe-lite", "observe-full", "act")
+    profiles = {name: FilterProfile.from_dict(load_mode_profile(name))
+                for name in PERCEPTION_MODES}
+    lite, full, act = (profiles[name] for name in PERCEPTION_MODES)
+
+    # observe-lite is the frugal one — that is its whole reason to exist.
+    assert lite.max_characters < full.max_characters
+    assert lite.max_elements < full.max_elements
+    assert lite.focus_radius <= full.focus_radius
+
+    # No mode hands out the full screen, and the lens stays the small one.
+    assert not any(profile.allow_fullscreen for profile in profiles.values())
+    assert all(
+        (profile.visual_lens_width, profile.visual_lens_height) == (400, 400)
+        for profile in profiles.values()
+    )
+
+    # Watching is not acting: only `act` may drive the desktop.
+    assert "do" not in lite.allowed_tools
+    assert "do" not in full.allowed_tools
+    assert "do" in act.allowed_tools
+
+    # Assistant windows are redacted in every mode.
+    for profile in profiles.values():
+        assert "Claude" in profile.exclude_window_title_contains
+
+
+def test_unknown_mode_is_rejected():
+    from open_compute.perception_filter import load_mode_profile
+
+    with pytest.raises(ValueError, match="mode"):
+        load_mode_profile("observe-turbo")

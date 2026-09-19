@@ -19,6 +19,17 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   (the position picked, `null` for a free-text answer); callers that pass no
   options see the unchanged result. Options require `channel="tk"` — the
   console and null channels have nothing to click.
+- **Named perception modes `observe-lite` / `observe-full` / `act`**
+  (Ticket `T-20260919-184978745`): `observe_filtered` and `capture_filtered`
+  now take a `mode` name that pulls a bundled profile from
+  `open_compute/profiles/`, so the frugal path no longer requires spelling a
+  full profile object out on every call — which is why plain `capture` won by
+  default. An explicit `profile` still wins. In the two watching modes an
+  image is an escalation and `capture_filtered` refuses without a `reason`;
+  neither of them lists `do`. No mode permits a fullscreen grab and the lens
+  stays 400x400. Measured on a synthetic 40-element tree: focus packet 695
+  characters in `observe-lite`, 1,111 in `observe-full`; a 400x400 lens was
+  7,495 bytes against 190,075 for a 1920x1080 screenshot.
 
 ### Fixed
 

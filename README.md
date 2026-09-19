@@ -548,6 +548,25 @@ overlap that lens. Unknown profile fields, tools or action types fail closed.
 }
 ```
 
+**Named modes.** Spelling a profile out on every call made plain `capture` — a
+full-HD screenshot — the path of least resistance, so the frugal tools went
+unused. `observe_filtered` and `capture_filtered` therefore also take a `mode`
+name that pulls a bundled profile; an explicit `profile` still wins.
+
+| Mode | Elements / characters | Image | `do` |
+|---|---|---|---|
+| `observe-lite` | 8 / 800, focus radius 0.12 | escalation, needs `reason` | no |
+| `observe-full` | 12 / 1200, focus radius 0.18 | escalation, needs `reason` | no |
+| `act` | 12 / 1200 | no reason needed | yes |
+
+No mode allows a fullscreen grab, and the lens is 400x400 in all three. Measured
+on a synthetic 40-element tree: the focus packet is 695 characters in
+`observe-lite` and 1,111 in `observe-full`; a 400x400 lens came to 7,495 bytes
+against 190,075 for a 1920x1080 screenshot. A selection longer than the budget is
+replaced by a digest rather than truncated. The watching modes list `wait` as
+their only action type — a placeholder the schema requires and nothing reaches,
+because `do` is not among their tools.
+
 **Hardware-composited windows (`wgc` extra).** A GDI grab of a DirectX window —
 Roblox Studio, Blender, a GPU-accelerated browser — does not fail; it quietly
 returns an **all-black** rectangle. `capture(window=...)` therefore checks the

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 import math
+from pathlib import Path
 from typing import Any, Iterable
 
 
@@ -62,6 +63,42 @@ _ACTION_TYPES = {
     "activate_window",
 }
 _FOCUS_KINDS = {"follow-me", "click-focus", "fixed-focus"}
+
+# Named perception modes (Ticket T-20260919-184978745). Every filtered call
+# used to need a full profile object spelled out, so plain `capture` — a
+# 1920x1080 screenshot — was the path of least resistance and the frugal tools
+# went unused. A mode name pulls a bundled profile instead, which makes the
+# cheap way the short way.
+PERCEPTION_MODES = ("observe-lite", "observe-full", "act")
+# Watching modes treat an image as an escalation that has to be justified;
+# `act` does not, because acting is its purpose.
+VISUAL_ESCALATION_MODES = frozenset({"observe-lite", "observe-full"})
+_BUNDLED_PROFILE_DIR = Path(__file__).resolve().parent / "profiles"
+
+
+def load_mode_profile(mode: str) -> dict[str, Any]:
+    """Return the bundled filter profile for a named perception mode."""
+
+    if mode not in PERCEPTION_MODES:
+        raise ValueError(f"mode must be one of {list(PERCEPTION_MODES)}")
+    path = _BUNDLED_PROFILE_DIR / f"{mode}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def resolve_filter_profile(
+    profile: dict[str, Any] | None = None, mode: str | None = None
+) -> FilterProfile:
+    """Resolve a caller's profile, or the bundled one for a mode name.
+
+    An explicit profile wins: a host that spells its budget out means it.
+    """
+
+    if profile is not None:
+        return FilterProfile.from_dict(profile)
+    if mode is not None:
+        return FilterProfile.from_dict(load_mode_profile(mode))
+    raise ValueError(f"pass a filter profile or one of these modes: {list(PERCEPTION_MODES)}")
+
 
 
 def _bounded_string(value: Any, label: str, *, maximum: int = 120) -> str:

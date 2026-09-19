@@ -227,6 +227,91 @@ def test_filtered_capture_uses_only_the_profile_lens(monkeypatch):
     }]
 
 
+# --- named perception modes (Ticket T-20260919-184978745) ----------------
+
+def _lens_probe(monkeypatch):
+    """Wire up the three seams a filtered capture touches, as above."""
+    captured: list[dict] = []
+    monkeypatch.setattr(S, "get_screen_size", lambda: {
+        "virtual_desktop": {"left": 0, "top": 0, "width": 1920, "height": 1080},
+        "monitors": [],
+        "platform": "win32",
+    })
+    monkeypatch.setattr(S, "list_windows", lambda: [])
+    monkeypatch.setattr(
+        S,
+        "_capture_screen_region_png",
+        lambda region, redactions: captured.append(region) or b"png",
+    )
+    return captured
+
+
+_FOCUS = {"kind": "follow-me", "x": 0.5, "y": 0.5, "selectedText": ""}
+
+
+def test_capture_filtered_in_a_watching_mode_needs_a_reason(monkeypatch):
+    _lens_probe(monkeypatch)
+    for mode in ("observe-lite", "observe-full"):
+        with pytest.raises(ValueError, match="reason"):
+            S.capture_filtered(mode=mode, focus=_FOCUS)
+
+
+def test_capture_filtered_with_a_reason_uses_the_bundled_lens(monkeypatch):
+    captured = _lens_probe(monkeypatch)
+
+    image = S.capture_filtered(
+        mode="observe-lite", focus=_FOCUS, reason="text does not say which row is selected"
+    )
+
+    assert image.data == b"png"
+    assert (captured[0]["width"], captured[0]["height"]) == (400, 400)
+
+
+def test_capture_filtered_in_act_mode_needs_no_reason(monkeypatch):
+    captured = _lens_probe(monkeypatch)
+    S.capture_filtered(mode="act", focus=_FOCUS)
+    assert (captured[0]["width"], captured[0]["height"]) == (400, 400)
+
+
+def test_observe_filtered_mode_pulls_the_bundled_profile(monkeypatch):
+    monkeypatch.setattr(S, "tree", lambda **kwargs: [])
+
+    packet = S.observe_filtered(mode="observe-lite", focus=_FOCUS)
+
+    assert packet["profileId"] == "open-compute-observe-lite-v1"
+
+
+def test_an_explicit_profile_still_wins_over_the_mode(monkeypatch):
+    monkeypatch.setattr(S, "tree", lambda **kwargs: [])
+
+    packet = S.observe_filtered(
+        mode="observe-lite",
+        profile={
+            "profileId": "caller-profile",
+            "maxElements": 4,
+            "maxCharacters": 800,
+            "textLimit": 80,
+            "valuePolicy": "focused-only",
+            "selectionLimit": 20,
+            "focusRadius": 0.2,
+            "visualLens": {"width": 400, "height": 400},
+            "allowFullscreen": False,
+            "allowedTools": ["observe_filtered", "capture_filtered", "signal_show",
+                             "signal_hide", "signal_status", "do"],
+            "allowedActionTypes": ["mouse_move", "left_click"],
+        },
+        focus=_FOCUS,
+    )
+
+    assert packet["profileId"] == "caller-profile"
+
+
+def test_filtered_tools_still_need_either_a_profile_or_a_mode(monkeypatch):
+    monkeypatch.setattr(S, "tree", lambda **kwargs: [])
+    with pytest.raises(ValueError, match="profile"):
+        S.observe_filtered(focus=_FOCUS)
+
+
 def test_filtered_capture_blanks_only_the_excluded_window_intersection():
     rgb = bytearray(4 * 3 * 3)
     S._blank_rgb_intersections(

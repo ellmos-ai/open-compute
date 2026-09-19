@@ -74,6 +74,10 @@ target-version = "py310"
 [tool.setuptools.packages.find]
 include = ["open_compute*"]
 
+[tool.setuptools.package-data]
+# Bundled perception-mode profiles, loaded by name at runtime.
+open_compute = ["profiles/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

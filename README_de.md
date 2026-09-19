@@ -562,6 +562,27 @@ Allowlist zurück. Beispiel:
 }
 ```
 
+**Benannte Modi.** Weil jeder Aufruf ein ausgeschriebenes Profil brauchte, war
+das schlichte `capture` — ein Vollbild — der Pfad des geringsten Widerstands,
+und die sparsamen Werkzeuge blieben ungenutzt. `observe_filtered` und
+`capture_filtered` nehmen deshalb auch einen `mode`-Namen, der ein
+mitgeliefertes Profil zieht; ein ausdrückliches `profile` gewinnt weiterhin.
+
+| Modus | Elemente / Zeichen | Bild | `do` |
+|---|---|---|---|
+| `observe-lite` | 8 / 800, Fokusradius 0,12 | Eskalation, `reason` nötig | nein |
+| `observe-full` | 12 / 1200, Fokusradius 0,18 | Eskalation, `reason` nötig | nein |
+| `act` | 12 / 1200 | ohne Begründung | ja |
+
+Kein Modus erlaubt ein Vollbild, und die Linse ist in allen dreien 400x400.
+Gemessen an einem synthetischen 40-Element-Baum: Das Fokus-Paket umfasst 695
+Zeichen in `observe-lite` und 1.111 in `observe-full`; eine 400x400-Linse kam
+auf 7.495 Bytes gegenüber 190.075 für einen 1920x1080-Screenshot. Eine Auswahl
+oberhalb des Budgets wird durch einen Digest ersetzt, nicht abgeschnitten. Die
+Beobachtungsmodi führen `wait` als einzigen Aktionstyp — ein Platzhalter, den
+das Schema verlangt und den nichts erreicht, weil `do` nicht zu ihren
+Werkzeugen gehört.
+
 **Hardware-komponierte Fenster (`wgc`-Extra).** Ein GDI-Grab eines DirectX-Fensters —
 Roblox Studio, Blender, ein GPU-beschleunigter Browser — schlägt nicht fehl; es
 liefert still ein **komplett schwarzes** Rechteck. `capture(window=...)` prüft das

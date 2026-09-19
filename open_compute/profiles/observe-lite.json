@@ -1,0 +1,49 @@
+{
+  "profileId": "open-compute-observe-lite-v1",
+  "semanticFirst": true,
+  "maxElements": 8,
+  "maxCharacters": 800,
+  "textLimit": 100,
+  "valuePolicy": "focused-only",
+  "selectionLimit": 160,
+  "focusRadius": 0.12,
+  "visualLens": {
+    "width": 400,
+    "height": 400
+  },
+  "allowFullscreen": false,
+  "excludeElementNameContains": [
+    "Claude",
+    "ChatGPT",
+    "Codex",
+    "Copilot",
+    "Gemini",
+    "Antigravity",
+    "Kimi",
+    "1Password",
+    "Bitwarden",
+    "KeePass"
+  ],
+  "excludeWindowTitleContains": [
+    "Claude",
+    "ChatGPT",
+    "Codex",
+    "Copilot",
+    "Gemini",
+    "Antigravity",
+    "Kimi",
+    "1Password",
+    "Bitwarden",
+    "KeePass"
+  ],
+  "allowedTools": [
+    "observe_filtered",
+    "capture_filtered",
+    "signal_show",
+    "signal_hide",
+    "signal_status"
+  ],
+  "allowedActionTypes": [
+    "wait"
+  ]
+}
