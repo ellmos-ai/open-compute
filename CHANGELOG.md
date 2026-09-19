@@ -20,6 +20,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   options see the unchanged result. Options require `channel="tk"` — the
   console and null channels have nothing to click.
 
+### Fixed
+
+- **Silent MCP server death after `note_observation`**
+  (Ticket `T-20260919-184978745`): the observation overlay creates its Tk root
+  on a dedicated thread, but nothing freed it there. Tk widgets and their root
+  reference each other, so only the cyclic GC can collect them — from whatever
+  thread happens to run it, which Tcl answers with `Tcl_AsyncDelete: async
+  handler deleted by the wrong thread`, an `abort()` that kills the process
+  with no traceback and no log line. Reproduced by 20 `note_observation` calls
+  in one process. The window now lives in its own frame (`_run_window`) so the
+  overlay thread can collect it on the way out.
+
 ## [0.9.1] - 2026-09-14
 
 ### Documentation, Marketing, Design & Discoverability (Pfad B)

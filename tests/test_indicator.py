@@ -224,3 +224,66 @@ def test_cli_signal_abort_console_channel(monkeypatch, capsys) -> None:
     assert json.loads(capsys.readouterr().out) == {
         "abort_message": "mache ich selbst"
     }
+
+
+# --- ObservationOverlay: the Tk root must die in its own thread ------------
+#
+# Ticket T-20260919-184978745, side finding. Reproduced by running 20
+# `note_observation` calls in one process: it printed
+# `Tcl_AsyncDelete: async handler deleted by the wrong thread` — a Tcl-level
+# abort(), not a Python exception, so it kills the process with no traceback
+# and no log line. Cause: the Tk interpreter object is created on the overlay
+# thread but, once that thread's frame is gone, freed by whichever thread the
+# cyclic GC happens to run on. `_run` must therefore drop and collect it
+# itself, before returning.
+
+class _FakeWidget:
+    def __getattr__(self, _name):
+        return lambda *a, **k: None
+
+
+class _FakeRoot(_FakeWidget):
+    """Tk root stand-in that references itself, the way a real root and its
+    widgets reference each other — so only the cyclic GC can free it."""
+
+    def __init__(self, recorder):
+        self._recorder = recorder
+        self._cycle = self
+
+    def mainloop(self):
+        self._recorder.append("mainloop")
+
+
+def test_observation_overlay_frees_its_tk_root_on_its_own_thread(monkeypatch):
+    import threading
+    import types
+    import weakref
+
+    from open_compute.indicator import ObservationOverlay
+
+    calls: list[str] = []
+    freed_on: list[str] = []
+
+    def _make_root():
+        root = _FakeRoot(calls)
+        # Kept outside the root's own cycle, so the callback really fires.
+        _make_root.ref = weakref.ref(
+            root, lambda _r: freed_on.append(threading.current_thread().name)
+        )
+        return root
+
+    monkeypatch.setitem(
+        sys.modules,
+        "tkinter",
+        types.SimpleNamespace(Tk=_make_root, Text=lambda *a, **k: _FakeWidget()),
+    )
+
+    overlay = ObservationOverlay()
+    overlay.show()
+    overlay._thread.join(timeout=5.0)
+
+    assert calls == ["mainloop"]
+    assert freed_on == ["oc-observation-overlay"], (
+        "the Tk root outlived its thread — freeing it elsewhere is what Tcl "
+        "answers with an abort()"
+    )

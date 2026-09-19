@@ -20,6 +20,7 @@ overlay is constructed lazily and raises on non-Windows platforms.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import gc
 import json
 import math
 import os
@@ -596,58 +597,73 @@ class ObservationOverlay:
     def is_visible(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def _run(self) -> None:  # pragma: no cover - exercised via a fake in tests
+    def _run(self) -> None:
+        """Thread entry point: run the window, then free Tcl here, not elsewhere."""
         try:
-            import tkinter as tk
-
-            prev_hwnd = None
-            if sys.platform == "win32":
-                import ctypes
-
-                prev_hwnd = ctypes.windll.user32.GetForegroundWindow()
-
-            root = tk.Tk()
-            root.title(self.title)
-            root.attributes("-topmost", True)
-            root.resizable(True, True)
-            root.geometry("360x220+40+40")
-            text_widget = tk.Text(root, wrap="word", state="disabled")
-            text_widget.pack(fill="both", expand=True, padx=6, pady=6)
-            root.protocol("WM_DELETE_WINDOW", self._stop.set)
-
-            if prev_hwnd:
-                # Restore focus to whatever the human was using — this new
-                # window otherwise takes it just by being created.
-                ctypes.windll.user32.SetForegroundWindow(prev_hwnd)
-
-            def _poll() -> None:
-                if self._stop.is_set():
-                    root.destroy()
-                    return
-                appended = False
-                while True:
-                    try:
-                        line = self._queue.get_nowait()
-                    except queue.Empty:
-                        break
-                    text_widget.configure(state="normal")
-                    text_widget.insert("end", line + "\n")
-                    overflow = int(text_widget.index("end-1c").split(".")[0]) - self.max_lines
-                    if overflow > 0:
-                        text_widget.delete("1.0", f"{overflow + 1}.0")
-                    text_widget.configure(state="disabled")
-                    appended = True
-                if appended:
-                    text_widget.see("end")
-                root.after(self.poll_interval_ms, _poll)
-
-            self._started_ok = True
-            self._ready.set()
-            root.after(self.poll_interval_ms, _poll)
-            root.mainloop()
+            self._run_window()
         except BaseException as exc:  # noqa: BLE001 - surfaced via .error, never crashes the caller's thread
             self.error = exc
             self._ready.set()
+        finally:
+            # The Tcl interpreter must be freed by the thread that created it.
+            # Tk widgets reference their root and vice versa, so refcounting
+            # alone never frees it; left to the cyclic GC it gets deleted from
+            # whichever thread happens to collect, and Tcl answers that with
+            # `Tcl_AsyncDelete: async handler deleted by the wrong thread` — an
+            # abort() that takes the whole MCP server down with no traceback and
+            # no log line. The window lives in its own frame above precisely so
+            # that frame is gone by now and this collect can do its job.
+            # Reproduced 2026-09-19 (Ticket T-20260919-184978745).
+            gc.collect()
+
+    def _run_window(self) -> None:  # pragma: no cover - exercised via a fake in tests
+        import tkinter as tk
+
+        prev_hwnd = None
+        if sys.platform == "win32":
+            import ctypes
+
+            prev_hwnd = ctypes.windll.user32.GetForegroundWindow()
+
+        root = tk.Tk()
+        root.title(self.title)
+        root.attributes("-topmost", True)
+        root.resizable(True, True)
+        root.geometry("360x220+40+40")
+        text_widget = tk.Text(root, wrap="word", state="disabled")
+        text_widget.pack(fill="both", expand=True, padx=6, pady=6)
+        root.protocol("WM_DELETE_WINDOW", self._stop.set)
+
+        if prev_hwnd:
+            # Restore focus to whatever the human was using — this new
+            # window otherwise takes it just by being created.
+            ctypes.windll.user32.SetForegroundWindow(prev_hwnd)
+
+        def _poll() -> None:
+            if self._stop.is_set():
+                root.destroy()
+                return
+            appended = False
+            while True:
+                try:
+                    line = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                text_widget.configure(state="normal")
+                text_widget.insert("end", line + "\n")
+                overflow = int(text_widget.index("end-1c").split(".")[0]) - self.max_lines
+                if overflow > 0:
+                    text_widget.delete("1.0", f"{overflow + 1}.0")
+                text_widget.configure(state="disabled")
+                appended = True
+            if appended:
+                text_widget.see("end")
+            root.after(self.poll_interval_ms, _poll)
+
+        self._started_ok = True
+        self._ready.set()
+        root.after(self.poll_interval_ms, _poll)
+        root.mainloop()
 
 
 @dataclass
