@@ -196,7 +196,7 @@ flowchart TD
 sequenceDiagram
     autonumber
     actor User as Bediener / Mensch
-    participant Loop as Agenten-Loop (Orchestrator)
+    participant L as Agenten-Loop (Orchestrator)
     participant Perc as Wahrnehmung & Filter
     participant Coord as Koordinaten-Normalisierer
     participant Model as Reasoning-Backend (Claude / CUA / Mock)
@@ -204,30 +204,30 @@ sequenceDiagram
     participant Overlay as Grace-Window & Not-Aus-Overlay
     participant Driver as Lokaler / Browser-Treiber
 
-    User->>Loop: run(goal="Systemeinstellungen anpassen")
-    Loop->>Perc: capture_filtered(scope, window, budget)
+    User->>L: run(goal="Systemeinstellungen anpassen")
+    L->>Perc: capture_filtered(scope, window, budget)
     Perc->>Coord: Visueller Rohframe & UI-Elemente
-    Coord-->>Loop: Normierter (0..1) Wahrnehmungsframe
-    Loop->>Model: generate_action(perception_frame, prompt)
-    Model-->>Loop: Kanonische Aktion (z. B. left_click bei 0.45, 0.32)
-    Loop->>Gate: evaluate(action)
+    Coord-->>L: Normierter (0..1) Wahrnehmungsframe
+    L->>Model: generate_action(perception_frame, prompt)
+    Model-->>L: Kanonische Aktion (z. B. left_click bei 0.45, 0.32)
+    L->>Gate: evaluate(action)
     alt Aktion ist zustandsverändernd / riskant
         Gate->>Overlay: arm_mandatory_grace_period(seconds=4.0)
         Overlay->>User: Zeige Benachrichtigungsbanner
         alt Bediener drückt Not-Aus / Hotkey
             User-->>Overlay: Not-Aus-Signal
-            Overlay-->>Loop: Abort Execution Exception
-            Loop-->>User: Sitzung abgebrochen (Fail-Safe-Zustand)
+            Overlay-->>L: Abort Execution Exception
+            L-->>User: Sitzung abgebrochen (Fail-Safe-Zustand)
         else Karenzzeit ohne Not-Aus abgelaufen
             Overlay-->>Gate: Grace Window freigegeben
-            Gate-->>Loop: Decision.ALLOW
+            Gate-->>L: Decision.ALLOW
         end
     else Reine Lese-Inspektion
-        Gate-->>Loop: Decision.ALLOW (Sofortige Ausführung)
+        Gate-->>L: Decision.ALLOW (Sofortige Ausführung)
     end
-    Loop->>Driver: execute(action, denormalized_px)
-    Driver-->>Loop: ExecutionResult (width, height, status)
-    Loop->>User: Beobachtungsnotiz / Composite-Bild ausgeben
+    L->>Driver: execute(action, denormalized_px)
+    Driver-->>L: ExecutionResult (width, height, status)
+    L->>User: Beobachtungsnotiz / Composite-Bild ausgeben
 ```
 
 ### Komponenten-Übersicht

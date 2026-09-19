@@ -192,7 +192,7 @@ flowchart TD
 sequenceDiagram
     autonumber
     actor User as Operator / Human
-    participant Loop as Agent Loop (Orchestrator)
+    participant L as Agent Loop (Orchestrator)
     participant Perc as Perception & Filters
     participant Coord as Coordinate Normalizer
     participant Model as Reasoning Backend (Claude / CUA / Mock)
@@ -200,30 +200,30 @@ sequenceDiagram
     participant Overlay as Grace Window & Abort Overlay
     participant Driver as Local / Browser Executor
 
-    User->>Loop: run(goal="configure system settings")
-    Loop->>Perc: capture_filtered(scope, window, budget)
+    User->>L: run(goal="configure system settings")
+    L->>Perc: capture_filtered(scope, window, budget)
     Perc->>Coord: raw visual frame & UI elements
-    Coord-->>Loop: normalized (0..1) perception frame
-    Loop->>Model: generate_action(perception_frame, prompt)
-    Model-->>Loop: Canonical Action (e.g. left_click at 0.45, 0.32)
-    Loop->>Gate: evaluate(action)
+    Coord-->>L: normalized (0..1) perception frame
+    L->>Model: generate_action(perception_frame, prompt)
+    Model-->>L: Canonical Action (e.g. left_click at 0.45, 0.32)
+    L->>Gate: evaluate(action)
     alt Action is state-changing / risky
         Gate->>Overlay: arm_mandatory_grace_period(seconds=4.0)
         Overlay->>User: Display Non-Modal Notification Banner
         alt Operator presses Abort / Hotkey
             User-->>Overlay: Emergency Abort Signal
-            Overlay-->>Loop: Abort Execution Exception
-            Loop-->>User: Session Aborted (Fail-Safe State)
+            Overlay-->>L: Abort Execution Exception
+            L-->>User: Session Aborted (Fail-Safe State)
         else Grace Period Elapsed without abort
             Overlay-->>Gate: Grace Window Clear
-            Gate-->>Loop: Decision.ALLOW
+            Gate-->>L: Decision.ALLOW
         end
     else Read-Only Inspection
-        Gate-->>Loop: Decision.ALLOW (Instant pass)
+        Gate-->>L: Decision.ALLOW (Instant pass)
     end
-    Loop->>Driver: execute(action, denormalized_px)
-    Driver-->>Loop: ExecutionResult (width, height, status)
-    Loop->>User: Emit Observation Note / Composite Image
+    L->>Driver: execute(action, denormalized_px)
+    Driver-->>L: ExecutionResult (width, height, status)
+    L->>User: Emit Observation Note / Composite Image
 ```
 
 ### Component Layout
