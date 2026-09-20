@@ -53,7 +53,7 @@ all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", 
 
 [project.scripts]
 oc = "open_compute.cli:main"
-open-compute-mcp = "open_compute.mcp_server:main"
+open-compute-mcp = "open_compute.mcp_bootstrap:main"
 
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/open-compute"

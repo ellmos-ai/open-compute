@@ -2638,6 +2638,41 @@ def _release_held_input() -> None:
         pass
 
 
+async def _run_stdio_after_initialize() -> None:
+    """Run the FastMCP transport after a bootstrap already answered initialize.
+
+    ``mcp_bootstrap`` sends the initialize response before importing this module
+    so clients with a short startup timeout do not have to wait for the MCP SDK
+    import graph.  ``stateless=True`` is intentional here: the bootstrap has
+    already completed the protocol's initialize exchange, so the FastMCP
+    session must accept the follow-up ``initialized`` notification and tool
+    requests without waiting for a second initialize request.
+    """
+    from mcp.server.stdio import stdio_server
+
+    async with stdio_server() as (read_stream, write_stream):
+        await mcp._mcp_server.run(  # type: ignore[attr-defined]
+            read_stream,
+            write_stream,
+            mcp._mcp_server.create_initialization_options(),  # type: ignore[attr-defined]
+            stateless=True,
+        )
+
+
+def run_stdio_after_initialize() -> None:
+    """Continue an MCP stdio session whose initialize response was bootstrapped."""
+    import anyio
+
+    atexit.register(_release_held_input)
+    atexit.register(_hide_observation_overlay)
+    try:
+        anyio.run(_run_stdio_after_initialize)
+    finally:
+        signal_hide()
+        _hide_observation_overlay()
+        _release_held_input()
+
+
 def main() -> None:
     """Run the open-compute MCP server over stdio."""
     # Register once, at the single entry point: an atexit hook registered at
