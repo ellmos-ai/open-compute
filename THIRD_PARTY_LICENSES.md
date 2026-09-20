@@ -2,6 +2,7 @@
 
 > **Project:** `ellmos-ai/open-compute`
 > **Audited:** 2026-09-14
+> **Re-Audited (Pfad A Turnus-Hygiene):** 2026-09-20
 > **Repository License:** [MIT License](LICENSE)  
 > **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`)
 

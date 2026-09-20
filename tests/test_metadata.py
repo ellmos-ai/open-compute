@@ -370,6 +370,35 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn('"LLM Ready" = "https://github.com/ellmos-ai/open-compute/blob/master/llms.txt"', pyproject_text)
         self.assertIn('addopts = "-ra -v"', pyproject_text)
 
+    def test_lifecycle_workflows_present_and_configured(self):
+        stale_path = ROOT / ".github" / "workflows" / "stale.yml"
+        welcome_path = ROOT / ".github" / "workflows" / "welcome.yml"
+        self.assertTrue(stale_path.exists(), "stale.yml must exist in .github/workflows")
+        self.assertTrue(welcome_path.exists(), "welcome.yml must exist in .github/workflows")
+
+        stale_text = stale_path.read_text(encoding="utf-8")
+        self.assertIn("timeout-minutes: 10", stale_text)
+        self.assertIn("issues: write", stale_text)
+        self.assertIn("pull-requests: write", stale_text)
+        self.assertIn("actions/stale@v9", stale_text)
+
+        welcome_text = welcome_path.read_text(encoding="utf-8")
+        self.assertIn("timeout-minutes: 5", welcome_text)
+        self.assertIn("cancel-in-progress: true", welcome_text)
+        self.assertIn("issues: write", welcome_text)
+        self.assertIn("pull-requests: write", welcome_text)
+        self.assertIn("actions/first-interaction@v3", welcome_text)
+
+    def test_pyproject_pep621_and_pytest_hardening(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]', pyproject_text)
+        self.assertIn('minversion = "7.0"', pyproject_text)
+        self.assertIn(
+            'norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", ".venv"]',
+            pyproject_text,
+        )
+        self.assertIn('select = ["E", "F", "W"]', pyproject_text)
+
     def test_gitignore_canonical_locks_and_multihost_defense(self):
         gitignore_path = ROOT / ".gitignore"
         self.assertTrue(gitignore_path.exists(), ".gitignore must exist")
@@ -378,17 +407,30 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("LOCK\n", gi_text)
         self.assertIn("LOCK.*", gi_text)
         self.assertIn("LOCK*.txt", gi_text)
+        self.assertIn("LOCK.user.*", gi_text)
+        self.assertIn("LOCK.until.*", gi_text)
+        self.assertIn("LOCK.condition.*", gi_text)
         self.assertIn("LOCK.permissions.json", gi_text)
+        self.assertIn(".automation-lock", gi_text)
         self.assertIn("uv.lock", gi_text)
         self.assertIn("!package-lock.json", gi_text)
         # Multi-host sync conflict patterns
         self.assertIn("* (kopie)*", gi_text)
+        self.assertIn("* (Kopie)*", gi_text)
         self.assertIn("* (copy)*", gi_text)
+        self.assertIn("* (Copy)*", gi_text)
+        self.assertIn("*conflicted copy*", gi_text)
         self.assertIn("*-WORKSTATION*", gi_text)
+        self.assertIn("*-LAPTOP*", gi_text)
+        self.assertIn("*-ASUS*", gi_text)
         self.assertIn("*-ASUS-GEI*", gi_text)
+        self.assertIn("*-Mac Studio*", gi_text)
+        self.assertIn("*-MacBook*", gi_text)
         self.assertIn("*.orig", gi_text)
+        self.assertIn("*.rej", gi_text)
         # Caches
         self.assertIn(".coverage.*", gi_text)
+        self.assertIn(".hypothesis/", gi_text)
         self.assertIn(".mypy_cache/", gi_text)
         self.assertIn(".tox/", gi_text)
         self.assertIn(".turbo/", gi_text)
@@ -399,6 +441,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertTrue(changelog_path.exists(), "CHANGELOG.md must exist")
         cl_text = changelog_path.read_text(encoding="utf-8")
         self.assertIn("2026-09-12", cl_text)
+        self.assertIn("2026-09-20", cl_text)
         self.assertIn("Pfad A", cl_text)
         self.assertIn("timeout-minutes: 15", cl_text)
 
@@ -407,6 +450,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertTrue(mkt_path.exists(), "MARKETING-LOG.txt must exist")
         mkt_text = mkt_path.read_text(encoding="utf-8")
         self.assertIn("2026-09-12", mkt_text)
+        self.assertIn("2026-09-20", mkt_text)
         self.assertIn("Pfad A", mkt_text)
         self.assertIn("timeout-minutes: 15", mkt_text)
 

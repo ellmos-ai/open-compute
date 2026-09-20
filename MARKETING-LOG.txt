@@ -1,5 +1,17 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-09-20 — Turnusgemäße Repository-Hygiene, CI Lifecycle & Multi-Host Härtung (Pfad A)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand >152h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-12 vor 8 Tagen, letzte Pfad B Prüfung am 2026-09-14 vor 6 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 801 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Hygiene- & Härtungsmaßnahmen**:
+  1. **CI-Lifecycle & Community Workflows (`.github/workflows/stale.yml`, `.github/workflows/welcome.yml`)**: Bereitstellung von `stale.yml` (actions/stale@v9, täglicher Cron 30 1 * * *, timeout-minutes: 10, permissions: issues: write, pull-requests: write) und `welcome.yml` (actions/first-interaction@v3, timeout-minutes: 5, concurrency cancel-in-progress: true, permissions: issues: write, pull-requests: write).
+  2. **Multi-Host Cloud-Sync & Kanonisches Lock-System Härtung (`.gitignore`)**: Geschützt gegen Multi-Host- und Sync-Konflikte (`*conflicted copy*`, `* (Kopie)*`, `* (Copy)*`, `*-LAPTOP*`, `*-ASUS*`, `*-Mac Studio*`, `*-MacBook*`, `*.rej`), kanonische Locks (`LOCK.user.*`, `LOCK.until.*`, `LOCK.condition.*`, `.automation-lock`) und Caches (`.hypothesis/`).
+  3. **PEP 621 Standard-Metadaten & Pytest-Konfiguration (`pyproject.toml`)**: Standardisierung von `license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]` in `[project]`, `minversion = "7.0"` und `norecursedirs` in `[tool.pytest.ini_options]`, sowie Ruff-Linter-Regelsatz in `[tool.ruff.lint]` (`select = ["E", "F", "W"]`, `ignore = ["E501"]`).
+  4. **Drittanbieter-SBOM & Lizenzaudit (`THIRD_PARTY_LICENSES.md`)**: Re-Audit mit Stand 2026-09-20 bestätigt 100% permissive Lizenzen, Zero-Copyleft und unprivilegierten `RunAsInvoker` Non-Elevation Schutz.
+  5. **Automatisierte Vertragstests (`tests/test_metadata.py`)**: Ausbau um 5 neue/erweiterte Contract-Tests für Lifecycle-Workflows, Gitignore-Multi-Host/Lock-Defense, PEP 621 Packaging und Changelog/Marketing-Log Parität.
+  6. **Versionskonsistenz**: Gemäß Flottenstandard T-20260920-167562623 bleibt das `version`-Feld im Pfad A unverändert bei `0.9.1`; Release-Notes verbleiben unter `## [Unreleased]`.
+
 ## 2026-09-14 — Discoverability, Visual Architecture, Target Personas & Comparative Matrix (Pfad B v0.9.1)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 50h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-10 vor 4 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.

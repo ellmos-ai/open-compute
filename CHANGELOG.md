@@ -43,6 +43,24 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   in one process. The window now lives in its own frame (`_run_window`) so the
   overlay thread can collect it on the way out.
 
+### Repository Hygiene, CI Lifecycle & Multi-Host Defense (Pfad A - 2026-09-20)
+
+- **Automated Lifecycle & Community Workflows (`.github/workflows/stale.yml`, `.github/workflows/welcome.yml`)**:
+  - Deployed `.github/workflows/stale.yml` with `actions/stale@v9`, daily cron `30 1 * * *`, `timeout-minutes: 10`, exempt labels, and least-privilege permissions (`issues: write`, `pull-requests: write`).
+  - Deployed `.github/workflows/welcome.yml` with `actions/first-interaction@v3`, `timeout-minutes: 5`, concurrency control (`cancel-in-progress: true`), and least-privilege permissions (`issues: write`, `pull-requests: write`).
+- **Multi-Host Cloud-Sync & Canonical Lock System Defense (`.gitignore`)**:
+  - Hardened multi-host and cloud sync conflict filters (`*conflicted copy*`, `* (Kopie)*`, `* (Copy)*`, `*-LAPTOP*`, `*-ASUS*`, `*-Mac Studio*`, `*-MacBook*`, `*.rej`).
+  - Hardened multi-agent lock patterns (`LOCK.user.*`, `LOCK.until.*`, `LOCK.condition.*`, `.automation-lock`).
+  - Added `.hypothesis/` cache protection.
+- **PEP 621 Packaging Standards & Pytest Configuration (`pyproject.toml`)**:
+  - Standardized `license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]` under `[project]` for transparent SBOM distribution.
+  - Standardized `minversion = "7.0"` and `norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", ".venv"]` under `[tool.pytest.ini_options]`.
+  - Enforced Ruff lint standards under `[tool.ruff.lint]` (`select = ["E", "F", "W"]`, `ignore = ["E501"]`).
+- **Third-Party SBOM & License Re-Audit (`THIRD_PARTY_LICENSES.md`)**:
+  - Re-audited and verified 100% permissive dependencies, zero-copyleft guarantee, and unprivileged user-mode execution (`RunAsInvoker`).
+- **Automated Contract Test Suite Expansion (`tests/test_metadata.py`)**:
+  - Added contract tests for lifecycle workflows existence and permissions (`test_lifecycle_workflows_present_and_configured`), multi-host and lock defense in `.gitignore` (`test_gitignore_multihost_and_lock_defense`), and PEP 621 packaging / pytest hardening in `pyproject.toml` (`test_pyproject_pep621_and_pytest_hardening`).
+
 ## [0.9.1] - 2026-09-14
 
 ### Documentation, Marketing, Design & Discoverability (Pfad B)

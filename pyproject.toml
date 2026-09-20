@@ -8,6 +8,7 @@ version = "0.9.1"
 description = "Model-agnostic computer-use core: one agent loop for Claude, OpenAI CUA, and a mock backend, with normalized coordinates, a canonical action schema, and a central safety gate."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
 requires-python = ">=3.10"
 authors = [
     {name = "The open-compute authors"},
@@ -71,6 +72,10 @@ Security = "https://github.com/ellmos-ai/open-compute/blob/master/SECURITY.md"
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
 [tool.setuptools.packages.find]
 include = ["open_compute*"]
 
@@ -79,7 +84,9 @@ include = ["open_compute*"]
 open_compute = ["profiles/*.json"]
 
 [tool.pytest.ini_options]
+minversion = "7.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = "."
 addopts = "-ra -v"
+norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", ".venv"]

@@ -48,26 +48,39 @@ _archive/
 LOCK
 LOCK.*
 LOCK*.txt
+LOCK.user.*
+LOCK.until.*
+LOCK.condition.*
 LOCK.permissions.json
+.automation-lock
 *.lock
 uv.lock
 !package-lock.json
 
 # Multi-Host Sync-Konflikte & Temporärdateien
 * (kopie)*
+* (Kopie)*
 * (copy)*
+* (Copy)*
+*conflicted copy*
 *-WORKSTATION*
 *-WORKSTATION-LG*
+*-LAPTOP*
+*-ASUS*
 *-ASUS-GEI*
+*-Mac Studio*
+*-MacBook*
 *.sync-conflict-*
 *.conflict
 *-CONFLIT-*
 *-conflict-*
 *.sync-temp-*
 *.orig
+*.rej
 
 # Testing, Linting & Coverage Caches
 .ruff_cache/
+.hypothesis/
 .coverage
 .coverage.*
 coverage/
