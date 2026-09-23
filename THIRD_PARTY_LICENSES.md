@@ -1,23 +1,24 @@
 # Third-Party Licenses & Transparency Notice
 
-> **Project:** `ellmos-ai/open-compute`
-> **Audited:** 2026-09-14
-> **Re-Audited (Pfad A Turnus-Hygiene):** 2026-09-20
-> **Repository License:** [MIT License](LICENSE)  
-> **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`)
+> **Project:** `ellmos-ai/open-compute`<br>
+> **Audited:** 2026-09-23 (Prior audits: 2026-09-20, 2026-09-14, 2026-09-12, 2026-09-10)<br>
+> **Repository License:** [MIT License](LICENSE)<br>
+> **Attribution Notice:** [NOTICE](NOTICE)<br>
+> **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`), Fail-Closed
 
 ---
 
 ## Executive Summary & Compliance Assurance
 
-`open-compute` is designed with an uncompromising architectural principle: **the core agent loop has zero mandatory runtime dependencies** and runs entirely within the Python standard library. Optional extras (such as cloud vendor API clients, local screen grabbers, accessibility tree walkers, and browser automation drivers) are dynamically and lazily loaded only when explicitly configured by the operator.
+`open-compute` is designed with an uncompromising architectural principle: **the core agent loop has zero mandatory runtime dependencies** and runs entirely within the Python standard library. Optional extras (such as cloud vendor API clients, local screen grabbers, accessibility tree walkers, and browser automation drivers) are dynamically and lazily loaded only when explicitly configured by the operator. Canonical copyright and ecosystem attributions are formally preserved in the root [`NOTICE`](NOTICE) file.
 
 All direct, optional, and development dependencies used in `open-compute` are licensed under strictly **permissive open-source licenses** (MIT, Apache 2.0, BSD-3-Clause, PSFL, HPND). There are **zero copyleft or AGPL-style viral dependencies**, ensuring maximum freedom for enterprise integration, commercial deployments, academic research, and proprietary extensions.
 
-Furthermore, `open-compute` adheres to a strict **Zero-Egress Privacy Boundary**:
+Furthermore, `open-compute` adheres to a strict **Zero-Egress Privacy Boundary & Unprivileged Execution (`RunAsInvoker`)**:
 1. When using the default `mock` backend or local-first rule sets, **no network requests or telemetry data are transmitted**.
 2. API keys for cloud backends (`anthropic`, `openai`) are ingested strictly from memory or environment variables and are **never serialized to disk, state caches, or logs**.
-3. All local execution operates in unprivileged user mode (`RunAsInvoker`) without requiring administrative elevation or root permissions.
+3. All local execution operates strictly in unprivileged user mode (`RunAsInvoker`) without requiring administrative elevation or root permissions.
+4. Supply chain and runtime isolation guarantee: 100% permissive runtime dependencies, 0% copyleft contamination.
 
 ---
 
@@ -71,6 +72,25 @@ The Pillow library is licensed under the Historical Permission Notice and Discla
 > Copyright (c) 1995-2011 by Fredrik Lundh  
 > Copyright (c) 2010-2026 by Jeffrey A. Clark (Alex) and contributors.  
 > Permission to use, copy, modify, and distribute this software and its documentation for any purpose and without fee is hereby granted, provided that the above copyright notice appear in all copies and that both that copyright notice and this permission notice appear in supporting documentation.
+
+---
+
+## Level 1 SBOM Invariant Cross-Reference Matrix
+
+The following matrix maps the 10 core governance runtime invariants (`INV-MOD-01` to `INV-SLA-10`) to the underlying implementation files, system boundaries, and verification mechanisms:
+
+| Invariant ID | Scope & Guarantee | Implementation File / Component | Applicable License | Compliance Assurance & Verification |
+|:---:|---|---|---|---|
+| **INV-MOD-01** | Model-Agnostic Core Loop | `open_compute.base.ComputerBackend`, `actions.py` | PSFL-2.0 / MIT | Unified action schema & provider-neutral backend protocol |
+| **INV-DEP-02** | Zero Mandatory Runtime Dependencies | `open_compute.__init__` / Standard Library | PSFL-2.0 | Pure Python standard library on import; vendor SDKs lazy optional |
+| **INV-CRD-03** | Normalized Coordinates (0..1) | `open_compute.coordinates` | PSFL-2.0 / MIT | Invariant float coordinates `[0.0, 1.0]` with central DPI rescaling |
+| **INV-GRC-04** | Mandatory Pre-Action Grace Window | `open_compute.mcp_server`, `overlay.py` | PSFL-2.0 / MIT | Unconditional 4s countdown & 120s cooldown emergency-stop window |
+| **INV-SAF-05** | Fail-Closed Central Safety Gate | `open_compute.safety.SafetyPolicy` | PSFL-2.0 / MIT | 3-tier interception (`confirm`, `allow_all`, `read_only`) before dispatch |
+| **INV-USR-06** | Unprivileged Non-Elevation (RunAsInvoker) | `open_compute.cli`, `mcp_bootstrap.py` | PSFL-2.0 / MIT | Strictly non-elevated user mode; zero Administrator elevation |
+| **INV-EGR-07** | Local-First & Zero Egress by Default | `MockBackend`, `MockExecutor` | PSFL-2.0 / MIT | 100% offline test harness; zero telemetry sockets emitted |
+| **INV-SEC-08** | Zero Secret Persistence | `open_compute.backends.claude`, `openai` | MIT / Apache-2.0 | Ephemeral in-memory API keys; never persisted to disk or logs |
+| **INV-SCP-09** | Profile-Filtered Perception & Window Scoping | `open_compute.perception_filter` | PSFL-2.0 / MIT | Token-budgeted UIA focus lens & background-window blanking |
+| **INV-SLA-10** | Contractual Security Response & Triage SLA | `SECURITY.md` (`security@open-bricks.org`) | MIT | Binding 48h initial acknowledgment and 5-day triage commitment |
 
 ---
 

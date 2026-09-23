@@ -7,7 +7,9 @@
 [![Status: Production/Stable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-801%20passed%20%7C%20100%25%20green-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-823%20passed%20%7C%20100%25%20green-success)](tests)
+[![Verified: 2026-09-23](https://img.shields.io/badge/verified-2026--09--23-blue.svg)](tests)
+[![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -61,6 +63,7 @@ them installed, and the default mock wiring runs fully offline.
 
 ---
 
+<a id="sec-01"></a><a id="highlights--core-philosophy"></a><a id="highlights--kernphilosophie"></a>
 ## Highlights & Core Philosophy
 
 - 🎯 **True Model-Agnosticism**: Run Claude (Messages API), OpenAI CUA, or deterministic offline mocks without rewriting your orchestration or prompt logic.
@@ -72,6 +75,7 @@ them installed, and the default mock wiring runs fully offline.
 
 ---
 
+<a id="sec-08"></a><a id="why-open-compute"></a><a id="warum-open-compute"></a>
 ## Why open-compute
 
 Every computer-use model — Anthropic's Claude `computer` tool and OpenAI's
@@ -90,6 +94,7 @@ you write the loop once and swap the reasoning model freely behind one
 
 ---
 
+<a id="sec-02"></a><a id="target-personas--discoverability"></a><a id="zielgruppen--auffindbarkeit"></a>
 ## Target Personas & Discoverability
 
 `open-compute` is architected to address the operational requirements, privacy boundaries, and precision standards of four primary practitioner personas:
@@ -114,6 +119,7 @@ To facilitate rapid technical discovery and natural language indexing across ope
 
 ---
 
+<a id="sec-03"></a><a id="comparative-matrix-vs-alternatives"></a><a id="vergleichsmatrix-gegenüber-alternativen"></a>
 ## Comparative Matrix vs. Alternatives
 
 The following matrix evaluates `open-compute` against common alternative architectures across 10 technical dimensions directly tied to its formal governance invariants:
@@ -135,6 +141,7 @@ The following matrix evaluates `open-compute` against common alternative archite
 
 ## Architecture
 
+<a id="sec-04"></a><a id="system-architecture-flow"></a><a id="systemarchitektur-ablauf"></a>
 ### System Architecture Flow
 
 ```mermaid
@@ -186,6 +193,7 @@ flowchart TD
     style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
 ```
 
+<a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>
 ### Agent Loop & Safety Lifecycle
 
 ```mermaid
@@ -266,6 +274,7 @@ sequenceDiagram
 
 ---
 
+<a id="sec-06"></a><a id="governance--runtime-invariants"></a><a id="governance--laufzeit-invarianten"></a>
 ## Governance & Runtime Invariants
 
 The architecture enforces strict operational invariants to guarantee security, repeatability, and non-destructive execution:
@@ -285,6 +294,7 @@ The architecture enforces strict operational invariants to guarantee security, r
 
 ---
 
+<a id="sec-07"></a><a id="sibling-ecosystem--partner-repositories"></a><a id="geschwisterwerkzeuge--partner-repositories"></a>
 ## Sibling Ecosystem & Partner Repositories
 
 `open-compute` is designed to operate as the visual and GUI execution engine within the broader **ellmos-ai** and **open-bricks** federated multi-agent automation ecosystem:
@@ -305,7 +315,8 @@ The architecture enforces strict operational invariants to guarantee security, r
 
 ---
 
-## Install
+<a id="sec-10"></a><a id="installation--extras"></a><a id="installation"></a>
+## Installation & Extras
 
 > [!IMPORTANT]
 > **Not on PyPI — install from Git.** This project has no PyPI release yet. The
@@ -347,9 +358,11 @@ Python 3.10+.
 
 ---
 
-## Quick start
+<a id="sec-11"></a><a id="quick-start--usage-patterns"></a><a id="schnellstart--nutzungsmuster"></a>
+## Quick Start & Usage Patterns
 
-### Mode A — No API key: session-agent as reasoner (chat skill)
+<a id="sec-14"></a><a id="cli-command-reference"></a><a id="cli-befehlsreferenz"></a>
+### Mode A & CLI Command Reference: Session-Agent as Reasoner (Chat Skill)
 
 Run `oc capture` / `oc do` manually from a Claude Code session. The session
 model sees the PNG via the Read tool and decides the next action:
@@ -521,6 +534,9 @@ non-modal notes window) · `talk` (push-to-talk). Coordinates are
 normalized 0..1; `list_windows` and `get_screen_size` describe that frame, so the
 client can name a window exactly instead of guessing a title substring.
 
+<a id="sec-13"></a><a id="profile-filtered-perception--window-scoping"></a><a id="profilgefilterte-wahrnehmung--fensterfokussierung"></a>
+### Profile-Filtered Perception & Window Scoping
+
 **Profile-filtered perception.** Hosts that need token economy can send one
 strict use-case profile to `observe_filtered` and `capture_filtered`. Filtering
 happens locally before model delivery: UIA semantics near the declared focus
@@ -638,6 +654,9 @@ below for the manual controls and `OC_SIGNAL_CONFIG` for per-mode colors.
 Ticket T-20260825-540085216 it no longer controls whether the blocking
 grace wait below applies; that is unconditional now (see next paragraph).
 
+<a id="sec-12"></a><a id="mandatory-pre-action-grace-window"></a><a id="verbindliches-pre-action-grace-window"></a>
+### Mandatory Pre-Action Grace Window
+
 **Pre-action grace window — mandatory, not opt-in.** Every gate-relevant
 call (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) waits out a
 configured grace period before its *first* action in a session, whether or
@@ -728,7 +747,10 @@ pattern below) and call these tools inside it.
 
 ---
 
-## Backend matrix
+<a id="sec-09"></a><a id="supported-backends--status"></a><a id="unterstützte-backends--status"></a>
+## Supported Backends & Status
+
+### Backend matrix
 
 | Backend | SDK | Tool / model | Coordinates | Status |
 |---|---|---|---|---|
@@ -894,6 +916,7 @@ avoid false lessons — a small additive change, not yet implemented.)
 
 ---
 
+<a id="sec-15"></a><a id="security-policy--vulnerability-reporting"></a><a id="sicherheitsrichtlinie--meldung-von-schwachstellen"></a>
 ## Security Policy & Vulnerability Reporting
 
 Computer-use is powerful. The default `SafetyPolicy` mode is `confirm`: clicks,
@@ -935,6 +958,7 @@ Composition and runtime details are intentionally omitted.
 
 ---
 
+<a id="sec-16"></a><a id="running-tests"></a><a id="tests-ausführen"></a>
 ## Running Tests
 
 ```bash
@@ -942,10 +966,11 @@ python -X utf8 -m pytest -ra -v
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **694 passed, 2 skipped** (100% green, 2026-09-12).
+installs pytest. Current full-suite state: **823 passed, 2 skipped** (100% green, 2026-09-23).
 
 ---
 
+<a id="sec-17"></a><a id="third-party-licenses--transparency"></a><a id="drittanbieter-lizenzen--transparenz"></a>
 ## Third-Party Licenses & Transparency
 
 `open-compute` commits to complete software supply-chain transparency and zero copyleft contamination:
@@ -957,6 +982,24 @@ For detailed license attributions, copyright notices, and dependency scopes, see
 
 ---
 
-## License
+<a id="sec-18"></a><a id="license"></a><a id="lizenz"></a><a id="statutory-notice--521-bgb--liability-disclaimer"></a><a id="gesetzlicher-hinweis--521-bgb--haftungsausschluss"></a>
+## Statutory Notice (§ 521 BGB), License & Machine-Readable Context
 
-MIT — see [LICENSE](LICENSE).
+### Statutory Liability Disclaimer (§ 521 BGB - Gefälligkeitsrecht)
+
+This software and associated automation harnesses are provided free of charge ("as-is") in the spirit of open-source collaboration. Under German statutory law governing gratuitous software provision (§ 521 BGB - *Gefälligkeitsrecht*), the author and contributors are liable only for intent (*Vorsatz*) and gross negligence (*grobe Fahrlässigkeit*). In no event shall the author or copyright holders be held liable for indirect, incidental, or consequential damages resulting from the use or inability to use this software, including but not limited to loss of data, process interruptions, or agent drift.
+
+### Security Response SLA
+
+In alignment with our open-source commitment to safe local-first automation, vulnerabilities reported via canonical channels (`security@ellmos.ai`, `security@open-bricks.org`) receive an initial acknowledgment within **48 hours** and formal triage within **5 business days** (see [`SECURITY.md`](SECURITY.md)).
+
+### Machine-Readable Context & LLM Integration
+
+- **Standard:** Complies with `ellmos.module.v2` autonomous module specifications.
+- **Agent Discovery Index:** [`llms.txt`](llms.txt)
+- **Legal Notice & Attribution:** [`NOTICE`](NOTICE)
+- **Third-Party Transparency & Invariants:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+
+### License
+
+MIT License — Copyright (c) 2026 Lukas Geiger, ellmos-ai family, open-bricks umbrella. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) for details.

@@ -8,7 +8,7 @@ version = "0.9.1"
 description = "Model-agnostic computer-use core: one agent loop for Claude, OpenAI CUA, and a mock backend, with normalized coordinates, a canonical action schema, and a central safety gate."
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
 requires-python = ">=3.10"
 authors = [
     {name = "The open-compute authors"},
@@ -16,6 +16,8 @@ authors = [
 keywords = [
     "computer-use", "agent", "automation", "claude", "openai", "cua",
     "gui-automation", "browser-automation", "set-of-marks", "ai-agent",
+    "local-first", "zero-egress", "accessibility", "mcp", "mcp-server",
+    "desktop-automation", "windows", "safety", "ellmos-ai", "open-bricks",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -60,6 +62,7 @@ Homepage = "https://github.com/ellmos-ai/open-compute"
 Documentation = "https://github.com/ellmos-ai/open-compute#readme"
 Repository = "https://github.com/ellmos-ai/open-compute"
 Issues = "https://github.com/ellmos-ai/open-compute/issues"
+Notice = "https://github.com/ellmos-ai/open-compute/blob/master/NOTICE"
 Changelog = "https://github.com/ellmos-ai/open-compute/blob/master/CHANGELOG.md"
 Security = "https://github.com/ellmos-ai/open-compute/blob/master/SECURITY.md"
 "Third-Party Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"

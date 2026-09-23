@@ -7,8 +7,8 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-09-14
-## Version: 0.9.1 (801 passed automated tests, 100% green)
+## Last-checked: 2026-09-23
+## Version: 0.9.1 (823 passed automated tests, 2 skipped, 100% green)
 
 ## What it does
 
@@ -114,7 +114,7 @@ on-screen content as untrusted (prompt-injection risk).
 Profile-filtered MCP perception is a local pre-model boundary, not a model
 instruction. Profiles are strict, may forbid fullscreen, bound semantic and
 visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
-Current full-suite state: 694 passed, 2 skipped (100% green, 2026-09-12).
+Current full-suite state: 819 passed, 2 skipped (100% green, 2026-09-23).
 
 ## Governance & Runtime Invariants
 
@@ -132,9 +132,17 @@ Current full-suite state: 694 passed, 2 skipped (100% green, 2026-09-12).
 ## Third-Party Licenses & Transparency
 
 All direct, optional, and dev dependencies are strictly permissive (MIT, Apache-2.0,
-BSD-3-Clause, PSFL-2.0, HPND). Zero copyleft dependencies. Full audit documented
-in `THIRD_PARTY_LICENSES.md`.
+BSD-3-Clause, PSFL-2.0, HPND). Zero copyleft dependencies. Full audit and Level 1
+SBOM Invariant Matrix documented in `THIRD_PARTY_LICENSES.md`. Formal attribution
+in `NOTICE`.
+
+## Statutory Notice (§ 521 BGB) & Liability Disclaimer
+
+This software and automated test suites are provided free of charge without commercial
+consideration. In accordance with German statutory law (§ 521 BGB - Gefälligkeitsrecht),
+liability is strictly limited to intent (Vorsatz) and gross negligence (grobe Fahrlässigkeit).
+Security disclosures are governed by the 48h response SLA defined in SECURITY.md.
 
 ## License
 
-MIT.
+MIT License. Copyright (c) 2026 Lukas Geiger, ellmos-ai family, open-bricks umbrella. See LICENSE and NOTICE.

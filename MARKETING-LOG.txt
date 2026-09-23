@@ -1,5 +1,28 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-09-23 — Discoverability, 18-Point Dual Anchors, Invariants SBOM & Parity Contract (Pfad B v0.9.1)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 74.4h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-14 vor 9 Tagen, letzte Pfad A Prüfung am 2026-09-20 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 823 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Maßnahmen (Pfad B: Marketing, Design & Discoverability)**:
+  1. **GitHub Topics & Metadata Enrichment**: 20/20 kuratierte GitHub Topics gesetzt (`ellmos-ai, open-bricks, zero-egress` hinzugefügt via `gh repo edit`), Homepage auf kanonischen README-Anchor verlinkt.
+  2. **18-Punkte Reziproke Dual-HTML-Anker (`README.md` & `README_de.md`)**:
+     - Durchgängige Implementierung symmetrischer Dual-Anker (`<a id="sec-01">` bis `<a id="sec-18">` nebst zweisprachigen Slug-Ankern) für alle 18 Abschnitte.
+     - Ermöglicht robuste maschinenlesbare Navigation, deep linking und Sprachparität zwischen beiden Dokumenten.
+  3. **Level 1 SBOM Invarianten-Matrix (`THIRD_PARTY_LICENSES.md`)**:
+     - Ergänzung der `Level 1 SBOM Invariant Cross-Reference Matrix` zur expliziten Verknüpfung aller 10 Governance-Invarianten (`INV-MOD-01` bis `INV-SLA-10`) mit Implementierungspfaden, Zero-Egress und permissiven Lizenzen.
+  4. **Gesetzlicher Hinweis (§ 521 BGB - Gefälligkeitsrecht) & Security Response SLA**:
+     - Aufnahme des statutory liability disclaimers (§ 521 BGB Gefälligkeitsrecht: Haftung nur bei Vorsatz und grober Fahrlässigkeit) in `README.md`, `README_de.md` und `llms.txt`.
+     - Verankerung der Sicherheits-Reaktionszeiten (48h Erstbestätigung, 5 Werktage Triage).
+  5. **Urheberrechts- & Attribution-Härtung (`NOTICE`, `pyproject.toml`)**:
+     - Bereitstellung der kanonischen `NOTICE`-Datei im Root (Urheberrecht Lukas Geiger, ellmos-ai, open-bricks).
+     - Erweiterung der `pyproject.toml`-Keywords auf 20 Entdeckungsbegriffe sowie Verlinkung der Notice-URL in `[project.urls]`.
+  6. **Automatisierte Vertragstests (`tests/test_metadata.py`)**:
+     - Ausbau um 4 neue Contract-Tests (`test_notice_file_and_pyproject_contract`, `test_dual_anchor_receptive_links_contract`, `test_level1_sbom_invariants_table_contract`, `test_bgb521_statutory_liability_contract`).
+     - Gesamtanzahl der Tests auf 823 bestanden / 2 übersprungen (100% grün) erhöht.
+  7. **Versionsdisziplin (T-20260920-167562623)**:
+     - Version bleibt stabil bei `0.9.1`; alle Änderungen ordnungsgemäß unter `## [Unreleased]` im `CHANGELOG.md` dokumentiert.
+
 ## 2026-09-20 — Turnusgemäße Repository-Hygiene, CI Lifecycle & Multi-Host Härtung (Pfad A)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand >152h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-12 vor 8 Tagen, letzte Pfad B Prüfung am 2026-09-14 vor 6 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.

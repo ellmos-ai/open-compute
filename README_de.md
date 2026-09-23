@@ -7,7 +7,9 @@
 [![Status: Produktion/Stabil v0.9.1](https://img.shields.io/badge/status-0.9.1--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-801%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-823%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Geprüft: 2026-09-23](https://img.shields.io/badge/gepr%C3%BCft-2026--09--23-blue.svg)](tests)
+[![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
 [![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
@@ -63,6 +65,7 @@ vollständig offline.
 
 ---
 
+<a id="sec-01"></a><a id="highlights--core-philosophy"></a><a id="highlights--kernphilosophie"></a>
 ## Highlights & Kernphilosophie
 
 - 🎯 **Echte Modell-Agnostik**: Claude (Messages API), OpenAI CUA oder Offline-Mocks nahtlos ausführen, ohne Orchestrierungslogik oder Prompts anpassen zu müssen.
@@ -74,6 +77,7 @@ vollständig offline.
 
 ---
 
+<a id="sec-08"></a><a id="why-open-compute"></a><a id="warum-open-compute"></a>
 ## Warum open-compute
 
 Jedes Computer-Use-Modell — Anthropics Claude-`computer`-Tool und OpenAIs
@@ -94,6 +98,7 @@ bleibt:
 
 ---
 
+<a id="sec-02"></a><a id="target-personas--discoverability"></a><a id="zielgruppen--auffindbarkeit"></a>
 ## Zielgruppen & Auffindbarkeit
 
 `open-compute` wurde entwickelt, um die betrieblichen Anforderungen, Sicherheitsgrenzen und Präzisionsansprüche von vier zentralen Zielgruppen zu erfüllen:
@@ -118,6 +123,7 @@ Zur gezielten Auffindbarkeit in Open-Source-Katalogen, Paketregistern und Entwic
 
 ---
 
+<a id="sec-03"></a><a id="comparative-matrix-vs-alternatives"></a><a id="vergleichsmatrix-gegenüber-alternativen"></a>
 ## Vergleichsmatrix gegenüber Alternativen
 
 Die folgende Matrix bewertet `open-compute` gegenüber alternativen Ansätzen entlang von 10 technischen Dimensionen, die direkt an die formalen Governance-Invarianten gekoppelt sind:
@@ -139,6 +145,7 @@ Die folgende Matrix bewertet `open-compute` gegenüber alternativen Ansätzen en
 
 ## Architektur
 
+<a id="sec-04"></a><a id="system-architecture-flow"></a><a id="systemarchitektur-ablauf"></a>
 ### Systemarchitektur-Ablauf
 
 ```mermaid
@@ -190,6 +197,7 @@ flowchart TD
     style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
 ```
 
+<a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>
 ### Agenten-Loop & Sicherheits-Lebenszyklus
 
 ```mermaid
@@ -271,6 +279,7 @@ sequenceDiagram
 
 ---
 
+<a id="sec-06"></a><a id="governance--runtime-invariants"></a><a id="governance--laufzeit-invarianten"></a>
 ## Governance & Laufzeit-Invarianten
 
 Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholbarkeit und beschädigungsfreie Ausführung zu gewährleisten:
@@ -290,6 +299,7 @@ Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholba
 
 ---
 
+<a id="sec-07"></a><a id="sibling-ecosystem--partner-repositories"></a><a id="geschwisterwerkzeuge--partner-repositories"></a>
 ## Geschwisterwerkzeuge & Partner-Repositories
 
 `open-compute` fungiert als visuelle und funktionale GUI-Ausführungseinheit innerhalb des föderierten Automations-Ökosystems von **ellmos-ai** und **open-bricks**:
@@ -310,7 +320,8 @@ Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholba
 
 ---
 
-## Installation
+<a id="sec-10"></a><a id="installation--extras"></a><a id="installation"></a>
+## Installation & Extras
 
 > [!IMPORTANT]
 > **Nicht auf PyPI — Installation über Git.** Dieses Projekt hat noch kein
@@ -353,9 +364,11 @@ Python 3.10+.
 
 ---
 
-## Schnellstart
+<a id="sec-11"></a><a id="quick-start--usage-patterns"></a><a id="schnellstart--nutzungsmuster"></a>
+## Schnellstart & Nutzungsmuster
 
-### Modus A — Ohne API-Key: Session-Agent als Reasoner (Chat-Skill)
+<a id="sec-14"></a><a id="cli-command-reference"></a><a id="cli-befehlsreferenz"></a>
+### Modus A & CLI-Befehlsreferenz: Session-Agent als Reasoner (Chat-Skill)
 
 `oc capture` / `oc do` werden manuell aus einer Claude-Code-Session aufgerufen.
 Das Session-Modell sieht die PNG über das Read-Tool und entscheidet die nächste
@@ -534,6 +547,9 @@ Notizfenster) · `talk` (Push-to-Talk). Koordinaten normiert 0..1;
 `list_windows` und `get_screen_size` beschreiben genau diesen Rahmen — der Client
 kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
 
+<a id="sec-13"></a><a id="profile-filtered-perception--window-scoping"></a><a id="profilgefilterte-wahrnehmung--fensterfokussierung"></a>
+### Profilgefilterte Wahrnehmung & Fensterfokussierung
+
 **Profilgefilterte Wahrnehmung.** Hosts mit Fokus auf Tokenökonomie geben
 `observe_filtered` und `capture_filtered` ein striktes Einsatzprofil mit. Die
 Filterung läuft lokal vor der Modellzustellung: UIA-Semantik nahe dem erklärten
@@ -660,6 +676,9 @@ für die manuelle Steuerung und `OC_SIGNAL_CONFIG` für die Farben je Modus.
 T-20260825-540085216 steuert es NICHT mehr, ob die blockierende Wartezeit
 unten gilt; die ist jetzt bedingungslos (siehe nächster Absatz).
 
+<a id="sec-12"></a><a id="mandatory-pre-action-grace-window"></a><a id="verbindliches-pre-action-grace-window"></a>
+### Verbindliches Pre-Action Grace Window
+
 **Vorlauf-Fenster — pflichtig, nicht optional.** Jeder gate-relevante Aufruf
 (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) wartet vor seiner
 *ersten* Aktion einer Sitzung eine konfigurierte Karenzzeit ab — unabhängig
@@ -751,7 +770,10 @@ die Tools darin nutzen.
 
 ---
 
-## Backend-Matrix
+<a id="sec-09"></a><a id="supported-backends--status"></a><a id="unterstützte-backends--status"></a>
+## Unterstützte Backends & Status
+
+### Backend-Matrix
 
 | Backend | SDK | Tool / Modell | Koordinaten | Status |
 |---|---|---|---|---|
@@ -918,6 +940,7 @@ kleine, additive Änderung, noch nicht implementiert.)
 
 ---
 
+<a id="sec-15"></a><a id="security-policy--vulnerability-reporting"></a><a id="sicherheitsrichtlinie--meldung-von-schwachstellen"></a>
 ## Sicherheitsrichtlinie & Meldung von Schwachstellen
 
 Computer-Use ist mächtig. Der Standard-Modus der `SafetyPolicy` ist `confirm`:
@@ -968,6 +991,7 @@ Kompositions- und Runtime-Details werden bewusst nicht offengelegt.
 
 ---
 
+<a id="sec-16"></a><a id="running-tests"></a><a id="tests-ausführen"></a>
 ## Tests ausführen
 
 ```bash
@@ -976,10 +1000,11 @@ python -X utf8 -m pytest -ra -v
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**694 bestanden, 2 übersprungen** (100% grün, 2026-09-12).
+**823 bestanden, 2 übersprungen** (100% grün, 2026-09-23).
 
 ---
 
+<a id="sec-17"></a><a id="third-party-licenses--transparency"></a><a id="drittanbieter-lizenzen--transparenz"></a>
 ## Drittanbieter-Lizenzen & Transparenz
 
 `open-compute` verpflichtet sich zu lückenloser Software-Lieferkettentransparenz und dem vollständigen Verzicht auf Copyleft-Lizenzen:
@@ -991,6 +1016,24 @@ Detaillierte Lizenztexte, Urheberrechtshinweise und Paketgrenzen sind in [THIRD_
 
 ---
 
-## Lizenz
+<a id="sec-18"></a><a id="license"></a><a id="lizenz"></a><a id="statutory-notice--521-bgb--liability-disclaimer"></a><a id="gesetzlicher-hinweis--521-bgb--haftungsausschluss"></a>
+## Gesetzlicher Hinweis (§ 521 BGB), Lizenz & Maschinenlesbarer Kontext
 
-MIT — siehe [LICENSE](LICENSE).
+### Gesetzlicher Haftungsausschluss (§ 521 BGB - Gefälligkeitsrecht)
+
+Diese Software und die zugehörigen Test- und Automatisierungswerkzeuge werden unentgeltlich („as-is“) im Sinne der Open-Source-Zusammenarbeit bereitgestellt. Gemäß § 521 BGB (Haftung des Schenkers / Gefälligkeitsrecht) ist die Haftung des Autors und der Mitwirkenden auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Haftung für Mangelfolgeschäden, indirekte Schäden, Datenverlust, Betriebsunterbrechungen oder unerwartetes Agentenverhalten wird ausgeschlossen.
+
+### Verbindliche Sicherheitsreaktions-SLA
+
+Schwachstellenmeldungen über die offiziellen Sicherheitskanäle (`security@ellmos.ai`, `security@open-bricks.org`) werden verbindlich innerhalb von **48 Stunden** bestätigt und innerhalb von **5 Werktagen** fachlich triagiert (siehe [`SECURITY.md`](SECURITY.md)).
+
+### Maschinenlesbarer Kontext & LLM-Integration
+
+- **Standard:** Konform mit den `ellmos.module.v2`-Spezifikationen für autonome Module.
+- **Agent-Discovery-Index:** [`llms.txt`](llms.txt)
+- **Rechtlicher Hinweis & Attribution:** [`NOTICE`](NOTICE)
+- **Drittanbieter-Transparenz & Invarianten:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+
+### Lizenz
+
+MIT-Lizenz — Copyright (c) 2026 Lukas Geiger, ellmos-ai family, open-bricks umbrella. Siehe [`LICENSE`](LICENSE) und [`NOTICE`](NOTICE) für vollständige Lizenz- und Urheberrechtsdetails.

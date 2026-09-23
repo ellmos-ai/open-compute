@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Pfad B Marketing, Design & Discoverability Enhancements** [G 2026-09-23]:
+  - **18-Point Reciprocal Dual HTML Anchors:** Implemented symmetric anchor identifiers (`<a id="sec-01">` through `<a id="sec-18">` alongside bilingual slug anchors) across both `README.md` and `README_de.md`, ensuring cross-language parity, machine navigability, and deep-link resilience.
+  - **Level 1 SBOM Invariant Cross-Reference Matrix:** Enriched `THIRD_PARTY_LICENSES.md` with an explicit mapping matrix coupling invariants `INV-MOD-01` through `INV-SLA-10` to runtime implementation mechanisms, permissive licenses, and security boundaries.
+  - **Statutory Notice (§ 521 BGB - Gefälligkeitsrecht):** Added statutory gratuitous software liability disclaimers and 48h Security SLA commitments to `README.md`, `README_de.md`, and `llms.txt`.
+  - **NOTICE Legal File & pyproject.toml Enrichment:** Introduced canonical root `NOTICE` file attributing copyright (Lukas Geiger, ellmos-ai, open-bricks); expanded `pyproject.toml` keywords to 20 discoverability terms; registered Notice URL in project metadata.
+  - **Metadata & Contract Test Hardening:** Added contract tests in `tests/test_metadata.py` validating bilingual parity, NOTICE attribution, 20 keywords, dual anchor coverage, and SBOM table compliance (suite expanded to 823 passed, 2 skipped, 100% green).
 - **`chat(choices=[...])` — pick an option instead of typing it**
   (Ticket `T-20260919-184978745`): the `chat` tool now takes up to eight
   options of at most 120 characters, rendered as one-click buttons above the

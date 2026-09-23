@@ -342,9 +342,11 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
         readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
 
-        # Both must link to THIRD_PARTY_LICENSES.md
+        # Both must link to THIRD_PARTY_LICENSES.md and NOTICE
         self.assertIn("THIRD_PARTY_LICENSES.md", readme_en)
         self.assertIn("THIRD_PARTY_LICENSES.md", readme_de)
+        self.assertIn("NOTICE", readme_en)
+        self.assertIn("NOTICE", readme_de)
 
         # Both must have third-party badge
         self.assertIn("third--party-audited", readme_en)
@@ -354,9 +356,13 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 801 tests passed
-        self.assertIn("801%20passed", readme_en)
-        self.assertIn("801%20bestanden", readme_de)
+        # Both must report 823 tests passed
+        self.assertIn("823%20passed", readme_en)
+        self.assertIn("823%20bestanden", readme_de)
+
+        # Both must have NOTICE attribution badge
+        self.assertIn("attribution-NOTICE-informational", readme_en)
+        self.assertIn("attribution-NOTICE-informational", readme_de)
 
     def test_ci_timeout_minutes_and_pytest_flags(self):
         ci_path = ROOT / ".github" / "workflows" / "tests.yml"
@@ -391,7 +397,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
     def test_pyproject_pep621_and_pytest_hardening(self):
         pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]', pyproject_text)
+        self.assertIn('license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]', pyproject_text)
         self.assertIn('minversion = "7.0"', pyproject_text)
         self.assertIn(
             'norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", ".venv"]',
@@ -532,15 +538,59 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
         llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
         self.assertIn("Version: 0.9.1", llms_text)
-        self.assertIn("Last-checked: 2026-09-14", llms_text)
+        self.assertIn("Last-checked: 2026-09-23", llms_text)
 
         changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("## [0.9.1] - 2026-09-14", changelog_text)
 
         licenses_text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
-        self.assertIn("Audited:** 2026-09-14", licenses_text)
+        self.assertIn("Audited:** 2026-09-23", licenses_text)
         for inv_id in ["INV-MOD-01", "INV-SLA-10"]:
             self.assertIn(inv_id, licenses_text)
+
+    def test_notice_file_and_pyproject_contract(self):
+        notice_path = ROOT / "NOTICE"
+        self.assertTrue(notice_path.exists(), "NOTICE file must exist in repository root")
+        notice_text = notice_path.read_text(encoding="utf-8")
+        self.assertIn("Lukas Geiger", notice_text)
+        self.assertIn("ellmos-ai", notice_text)
+        self.assertIn("open-bricks", notice_text)
+
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('Notice = "https://github.com/ellmos-ai/open-compute/blob/master/NOTICE"', pyproject_text)
+        # Verify 20 keywords in pyproject.toml
+        keywords_match = re.search(r"keywords\s*=\s*\[(.*?)\]", pyproject_text, re.DOTALL)
+        self.assertIsNotNone(keywords_match, "keywords list must exist in pyproject.toml")
+        keywords = [kw.strip(' "\',\n') for kw in keywords_match.group(1).split(",") if kw.strip(' "\',\n')]
+        self.assertEqual(len(keywords), 20, f"Expected exactly 20 keywords in pyproject.toml, found {len(keywords)}")
+
+    def test_dual_anchor_receptive_links_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        for i in range(1, 19):
+            sec_id = f"sec-{i:02d}"
+            self.assertIn(f'<a id="{sec_id}"></a>', readme_en, f"Anchor {sec_id} missing in README.md")
+            self.assertIn(f'<a id="{sec_id}"></a>', readme_de, f"Anchor {sec_id} missing in README_de.md")
+
+    def test_level1_sbom_invariants_table_contract(self):
+        tpl_path = ROOT / "THIRD_PARTY_LICENSES.md"
+        tpl_text = tpl_path.read_text(encoding="utf-8")
+        self.assertIn("Level 1 SBOM Invariant Cross-Reference Matrix", tpl_text)
+        for i in range(1, 11):
+            inv_pattern = rf"INV-[A-Z]+-{i:02d}"
+            self.assertRegex(tpl_text, inv_pattern, f"Invariant number {i:02d} must be in Level 1 SBOM table")
+
+    def test_bgb521_statutory_liability_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+        llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+
+        self.assertIn("521 BGB", readme_en)
+        self.assertIn("Gefälligkeitsrecht", readme_en)
+        self.assertIn("521 BGB", readme_de)
+        self.assertIn("Gefälligkeitsrecht", readme_de)
+        self.assertIn("521 BGB", llms_text)
 
 
 if __name__ == "__main__":
