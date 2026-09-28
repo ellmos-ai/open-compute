@@ -63,8 +63,12 @@ uv.lock
 * (copy)*
 * (Copy)*
 *conflicted copy*
+*-IDEAPAD*
 *-WORKSTATION*
+*-WORKSTATION.*
+*_WORKSTATION*
 *-WORKSTATION-LG*
+*_WORKSTATION-LG*
 *-LAPTOP*
 *-ASUS*
 *-ASUS-GEI*
@@ -81,6 +85,8 @@ uv.lock
 # Testing, Linting & Coverage Caches
 .ruff_cache/
 .hypothesis/
+.pytest_temp/
+.pytest_tmp*/
 .coverage
 .coverage.*
 coverage/

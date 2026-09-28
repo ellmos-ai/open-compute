@@ -7,8 +7,8 @@
 [![Status: Produktion/Stabil v0.9.1](https://img.shields.io/badge/status-0.9.1--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-823%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
-[![Geprüft: 2026-09-23](https://img.shields.io/badge/gepr%C3%BCft-2026--09--23-blue.svg)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-829%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Geprüft: 2026-09-28](https://img.shields.io/badge/gepr%C3%BCft-2026--09--28-blue.svg)](tests)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
@@ -1000,7 +1000,7 @@ python -X utf8 -m pytest -ra -v
 
 Tests sind reine Mock-Tests und brauchen kein SDK; `pip install -e ".[dev]"` aus
 einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
-**823 bestanden, 2 übersprungen** (100% grün, 2026-09-23).
+**829 bestanden, 2 übersprungen** (100% grün, 2026-09-28).
 
 ---
 
@@ -1012,7 +1012,7 @@ einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
 - **Optionale Adapter:** Alle optionalen Komponenten (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) stehen unter streng permissiven Lizenzen (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
 - **Zero-Egress-Garantie:** Die Offline-Mock-Engine erzeugt keinerlei Netzwerkverkehr. Es sind keinerlei Tracking-, Analyse- oder Telemetriebibliotheken enthalten.
 
-Detaillierte Lizenztexte, Urheberrechtshinweise und Paketgrenzen sind in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) dokumentiert.
+Detaillierte Lizenztexte, Urheberrechtshinweise und Paketgrenzen sind in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) und [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) dokumentiert.
 
 ---
 
@@ -1032,7 +1032,7 @@ Schwachstellenmeldungen über die offiziellen Sicherheitskanäle (`security@ellm
 - **Standard:** Konform mit den `ellmos.module.v2`-Spezifikationen für autonome Module.
 - **Agent-Discovery-Index:** [`llms.txt`](llms.txt)
 - **Rechtlicher Hinweis & Attribution:** [`NOTICE`](NOTICE)
-- **Drittanbieter-Transparenz & Invarianten:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+- **Drittanbieter-Transparenz & Invarianten:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt)
 
 ### Lizenz
 

@@ -1,0 +1,146 @@
+THIRD-PARTY LICENSES & LEVEL 1 SBOM NOTICE
+Project: ellmos-ai/open-compute (open-compute)
+Audited: 2026-09-28 (Prior audits: 2026-09-23, 2026-09-20, 2026-09-14, 2026-09-12, 2026-09-10)
+Repository Version: 0.9.1 (Version Freeze per T-20260920-167562623)
+Repository License: MIT License (see LICENSE)
+Repository Attribution Notice: NOTICE (see NOTICE)
+Architecture & Privacy: 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (RunAsInvoker), Fail-Closed
+
+================================================================================
+1. EXECUTIVE SUMMARY & COMPLIANCE ASSURANCE
+================================================================================
+
+open-compute is engineered under strict architectural and governance
+invariants: 100% Local-First, Zero-Egress by default, unprivileged user-mode
+execution (RunAsInvoker), and fail-closed safety gate interception. The core
+agent loop has zero mandatory external runtime dependencies and executes
+entirely within the Python standard library. Optional extras (anthropic, openai,
+playwright, mss, Pillow, uiautomation, windows-capture, watchdog, clirec, mcp)
+are dynamically and lazily imported only when explicitly selected by the
+operator.
+
+All direct, optional, and development dependencies utilized across open-compute
+are distributed under strictly permissive and free open-source licenses (MIT,
+Apache-2.0, PSFL-2.0, HPND). There are zero copyleft, GPL, or AGPL-style viral
+dependencies, guaranteeing complete operational safety for enterprise
+integration, autonomous agent fleets, and security-critical deployments.
+Canonical copyright and ecosystem attributions are formally preserved in the
+root NOTICE file.
+
+================================================================================
+2. LEVEL 1 SBOM & INVARIANT CROSS-REFERENCE MATRIX
+================================================================================
+
+Invariant ID  | Operational Scope & Guarantee      | Technical Enforcement                  | License Scope
+--------------+------------------------------------+----------------------------------------+-------------------
+INV-MOD-01    | Model-Agnostic Core Loop           | open_compute.base.ComputerBackend      | PSFL-2.0 / MIT
+INV-DEP-02    | Zero Mandatory Runtime Dependencies| open_compute.__init__ / Standard Lib   | PSFL-2.0
+INV-CRD-03    | Normalized Coordinates (0..1)      | open_compute.coordinates               | PSFL-2.0 / MIT
+INV-GRC-04    | Mandatory Pre-Action Grace Window  | open_compute.mcp_server, overlay.py    | PSFL-2.0 / MIT
+INV-SAF-05    | Fail-Closed Central Safety Gate    | open_compute.safety.SafetyPolicy       | PSFL-2.0 / MIT
+INV-USR-06    | Unprivileged User-Mode Non-Elevate | open_compute.cli, mcp_bootstrap.py     | PSFL-2.0 / MIT
+INV-EGR-07    | Local-First & Zero Egress          | MockBackend, MockExecutor (offline)    | PSFL-2.0 / MIT
+INV-SEC-08    | Zero Secret Persistence           | open_compute.backends.claude, openai   | MIT / Apache-2.0
+INV-SCP-09    | Profile-Filtered Perception Scoping| open_compute.perception_filter         | PSFL-2.0 / MIT
+INV-SLA-10    | Dual Security Response & Triage SLA| SECURITY.md (security@open-bricks.org) | MIT
+
+================================================================================
+3. ZERO-COPYLEFT ISOLATION GUARANTEE & RUNASINVOKER CERTIFICATION
+================================================================================
+
+1. Zero-Copyleft Isolation Guarantee:
+   All core runtime dependencies operate strictly under permissive open-source
+   licenses (PSFL-2.0, MIT, Apache-2.0, HPND). The codebase, build definitions,
+   and runtime interfaces are completely free of GPL, AGPL, LGPL, SSPL, or
+   reciprocal copyleft obligations.
+
+2. Unprivileged Execution (RunAsInvoker):
+   open-compute enforces unprivileged user-mode execution under INV-USR-06.
+   All GUI interactions, coordinate normalizations, and action dispatches operate
+   strictly within non-elevated user context without requiring administrative
+   or root privileges.
+
+3. Zero-Egress Perimeter:
+   Under INV-EGR-07, default and mock operations initiate zero network
+   connections, transmit no telemetry, and execute entirely on local system
+   resources. Volatile API secrets (INV-SEC-08) are never persisted to disk.
+
+================================================================================
+4. RUNTIME & OPTIONAL DEPENDENCY MATRIX
+================================================================================
+
+Package / Component     Role / Functional Scope                                License      Source / Upstream
+-----------------------+------------------------------------------------------+------------+---------------------
+Python Standard Library Core agent loop, action schema, coordinates, safety    PSFL-2.0     python/cpython
+anthropic (optional)    Claude computer-use API client                         MIT          anthropics/anthropic-sdk-python
+openai (optional)       OpenAI CUA computer API client                         Apache-2.0   openai/openai-python
+playwright (optional)   Browser DOM observation and interaction                Apache-2.0   microsoft/playwright-python
+mss (optional)          Cross-platform fast screenshot grabber                 MIT          BoboTiG/python-mss
+Pillow (optional)       Image manipulation, before/after composites            HPND         python-pillow/Pillow
+uiautomation (optional) Microsoft UI Automation tree extraction (Windows)      Apache-2.0   yann740/uiautomation
+windows-capture (opt)   DirectX Windows Graphics Capture (WGC) surfaces        MIT          Nathan-Melaku/windows-capture-python
+watchdog (optional)     Filesystem event monitoring for directory triggers     Apache-2.0   gorakhargosh/watchdog
+clirec (optional)       Session recording and playback adapter                 MIT/Apache   ellmos-ai/clirec
+mcp (optional)          Model Context Protocol Python SDK (open-compute-mcp)   MIT          modelcontextprotocol/python-sdk
+
+================================================================================
+5. DEVELOPMENT & QUALITY ASSURANCE TOOLING
+================================================================================
+
+Package / Component     Usage & Purpose                                        License      Source / Upstream
+-----------------------+------------------------------------------------------+------------+---------------------
+pytest (>=7.0.0)        Automated regression test runner & contract suites     MIT          pytest-dev/pytest
+ruff (>=0.1.0)          High-performance Python linter and code formatter      MIT/Apache   astral-sh/ruff
+setuptools (>=68.0.0)   Standard package build backend (PEP 517 / PEP 621)     MIT          pypa/setuptools
+
+================================================================================
+6. FULL LICENSE TEXTS (EXCERPTS)
+================================================================================
+
+--- PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2 (PSFL-2.0) ---
+Used by Python standard library components.
+Copyright (c) 2001-2026 Python Software Foundation. All rights reserved.
+
+--- MIT LICENSE ---
+Used by open-compute, anthropic, mss, windows-capture, mcp, clirec, pytest, ruff, setuptools.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+--- APACHE LICENSE VERSION 2.0 (APACHE-2.0) ---
+Used by openai, playwright, uiautomation, watchdog, and ruff.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+--- HISTORICAL PERMISSION NOTICE AND DISCLAIMER (HPND / PILLOW LICENSE) ---
+Used by Pillow.
+Copyright (c) 1997-2011 by Secret Labs AB
+Copyright (c) 1995-2011 by Fredrik Lundh
+Copyright (c) 2010-2026 by Jeffrey A. Clark (Alex) and contributors.
+Permission to use, copy, modify, and distribute this software and its documentation
+for any purpose and without fee is hereby granted, provided that the above
+copyright notice appear in all copies.
+
+================================================================================
+7. STATUTORY NOTICE (§ 521 BGB GEFÄLLIGKEITSRECHT) & SECURITY SLA
+================================================================================
+
+Statutory Liability Notice:
+This software is provided free of charge as open-source software under the
+statutory framework of German gratuitous service law (§ 521 BGB - Gefälligkeitsrecht).
+Liability is strictly limited to intentional misconduct (Vorsatz) and gross
+negligence (grobe Fahrlässigkeit).
+
+Security Response & Triage SLA (INV-SLA-10):
+- Initial vulnerability acknowledgment: within 48 hours.
+- Triage assessment and coordination: within 5 business days.
+- Reporting contact: security@open-bricks.org / security@ellmos.ai

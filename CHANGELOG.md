@@ -11,6 +11,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Repository Hygiene, CI Lifecycle & Level 1 SBOM Text Companion (Pfad A)** [G 2026-09-28]:
+  - **CI Lifecycle Workflows & Label Synchronization:** Provisioned `.github/workflows/auto-assign.yml` (automated PR owner assignment), `.github/workflows/label-sync.yml` (dispatch label sync), and `.github/labels.yml` (canonical ecosystem issue/PR taxonomy); hardened `.github/workflows/stale.yml` with concurrency group and `cancel-in-progress: true`.
+  - **Multi-Host Cloud-Sync & Pytest Temp Defense (`.gitignore`):** Hardened against multi-host conflict tokens (`*-IDEAPAD*`, `*-WORKSTATION.*`, `*_WORKSTATION*`, `*_WORKSTATION-LG*`) and test temp directories (`.pytest_temp/`, `.pytest_tmp*/`).
+  - **PEP 621 Metadata & Pytest Standardization (`pyproject.toml`):** Standardized `license-files` to explicitly include all four legal files (`LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `THIRD_PARTY_LICENSES.txt`); registered `Third-Party Licenses (Text)` URL under `[project.urls]`; hardened `norecursedirs` with `.pytest_temp` and `.pytest_tmp*`.
+  - **Level 1 SBOM Text Companion (`THIRD_PARTY_LICENSES.txt`):** Created standalone plain-text SBOM companion with runtime invariant matrix (`INV-MOD-01` to `INV-SLA-10`), `RunAsInvoker` non-elevation certification, Zero-Copyleft isolation guarantee, statutory notice (§ 521 BGB Gefälligkeitsrecht), and license excerpts.
+  - **Attribution & Transparency Notice (`NOTICE`, `THIRD_PARTY_LICENSES.md`):** Updated `NOTICE` to cross-reference the text companion; re-audited `THIRD_PARTY_LICENSES.md` as of 2026-09-28 with companion link.
+  - **Contract Test Suite Expansion (`tests/test_metadata.py`):** Added automated contract tests validating the Level 1 SBOM text companion, PEP 621 license files, URLs, CI workflows with concurrency, and multi-host gitignore defense (suite expanded to 829 passed, 2 skipped | 100% green).
+  - **Version Invariant:** Maintained version `0.9.1` strictly unchanged according to fleet policy `T-20260920-167562623`.
+
 - **Pfad B Marketing, Design & Discoverability Enhancements** [G 2026-09-23]:
   - **18-Point Reciprocal Dual HTML Anchors:** Implemented symmetric anchor identifiers (`<a id="sec-01">` through `<a id="sec-18">` alongside bilingual slug anchors) across both `README.md` and `README_de.md`, ensuring cross-language parity, machine navigability, and deep-link resilience.
   - **Level 1 SBOM Invariant Cross-Reference Matrix:** Enriched `THIRD_PARTY_LICENSES.md` with an explicit mapping matrix coupling invariants `INV-MOD-01` through `INV-SLA-10` to runtime implementation mechanisms, permissive licenses, and security boundaries.

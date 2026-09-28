@@ -1,5 +1,32 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-09-28 — Turnusgemäße Repository-Hygiene, CI Lifecycle & Level 1 SBOM Text Companion (Pfad A v0.9.1)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand 114h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-20 vor 8 Tagen, letzte Pfad B Prüfung am 2026-09-23 vor 5 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 829 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Hygiene- & Härtungsmaßnahmen**:
+  1. **CI-Lifecycle Workflows & Label-Synchronisation (`.github/workflows/auto-assign.yml`, `.github/workflows/label-sync.yml`, `.github/labels.yml`, `.github/workflows/stale.yml`)**:
+     - Bereitstellung von `auto-assign.yml` (automatisierte Zuweisung des Repo-Owners bei neuen PRs) und `label-sync.yml` (Workflow-Dispatch Synchronisation der Labels aus `.github/labels.yml`).
+     - Bereitstellung der kanonischen Label-Taxonomie `.github/labels.yml` (bug, enhancement, good first issue, help wanted, documentation, duplicate, wontfix, priority: high, priority: low, needs-triage, stale).
+     - Härtung von `stale.yml` um Concurrency-Steuerung mit `cancel-in-progress: true`.
+  2. **Multi-Host Cloud-Sync & Pytest-Temp Härtung (`.gitignore`)**:
+     - Ergänzung der Multi-Host-Konfliktmuster um `*-IDEAPAD*`, `*-WORKSTATION.*`, `*_WORKSTATION*`, `*_WORKSTATION-LG*`.
+     - Schutz vor Pytest-Temporärverzeichnissen (`.pytest_temp/`, `.pytest_tmp*/`).
+  3. **PEP 621 Standard-Metadaten & Pytest-Härtung (`pyproject.toml`)**:
+     - Standardisierung von `license-files` auf alle vier Rechtsdokumente: `["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "THIRD_PARTY_LICENSES.txt"]`.
+     - Ergänzung von `"Third-Party Licenses (Text)"` in `[project.urls]`.
+     - Härtung von `norecursedirs` in `[tool.pytest.ini_options]` um `.pytest_temp` und `.pytest_tmp*`.
+  4. **Level 1 SBOM Text-Begleitdatei (`THIRD_PARTY_LICENSES.txt`)**:
+     - Erstellung der maschinenlesbaren Plain-Text-SBOM-Begleitdatei mit 10-Invarianten-Matrix (`INV-MOD-01` bis `INV-SLA-10`), `RunAsInvoker` Non-Elevation-Zertifizierung, Zero-Copyleft-Garantie, vollständigen Lizenztexten (PSFL-2.0, MIT, Apache-2.0, HPND Pillow) sowie gesetzlichem Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht) und 48h Security SLA.
+  5. **Attribution- & Lizenz-Re-Audit (`NOTICE`, `THIRD_PARTY_LICENSES.md`)**:
+     - `NOTICE` um Querverweis auf `THIRD_PARTY_LICENSES.txt` ergänzt.
+     - `THIRD_PARTY_LICENSES.md` mit Stand 2026-09-28 re-auditiert und Text-Companion verlinkt.
+  6. **Automatisierte Vertragstests (`tests/test_metadata.py`)**:
+     - Ausbau der Testsuite um 6 neue/erweiterte Contract-Tests für Level 1 SBOM Text Companion, PEP 621 License-Files/URLs, CI-Workflows mit Concurrency, Labels-Parität und Gitignore-Härtung (38/38 Contract-Tests grün, Gesamtprojekt 829 bestanden / 2 übersprungen | 100% grün).
+  7. **Dokumentation & Badge-Parität (`README.md`, `README_de.md`, `llms.txt`, `CHANGELOG.md`)**:
+     - Test-Badges synchron auf 829 bestanden (100% grün) und Prüfdatum 2026-09-28 angehoben.
+     - Versionsnummer bleibt strikt unverändert bei `0.9.1` gemäß Flotten-Richtlinie `T-20260920-167562623`.
+
 ## 2026-09-23 — Discoverability, 18-Point Dual Anchors, Invariants SBOM & Parity Contract (Pfad B v0.9.1)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 74.4h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-14 vor 9 Tagen, letzte Pfad A Prüfung am 2026-09-20 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.

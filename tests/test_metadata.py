@@ -356,9 +356,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 823 tests passed
-        self.assertIn("823%20passed", readme_en)
-        self.assertIn("823%20bestanden", readme_de)
+        # Both must report 829 tests passed
+        self.assertIn("829%20passed", readme_en)
+        self.assertIn("829%20bestanden", readme_de)
 
         # Both must have NOTICE attribution badge
         self.assertIn("attribution-NOTICE-informational", readme_en)
@@ -397,10 +397,13 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
     def test_pyproject_pep621_and_pytest_hardening(self):
         pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]', pyproject_text)
+        self.assertIn(
+            'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "THIRD_PARTY_LICENSES.txt"]',
+            pyproject_text,
+        )
         self.assertIn('minversion = "7.0"', pyproject_text)
         self.assertIn(
-            'norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", ".venv"]',
+            'norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".pytest_tmp*", "__pycache__", "build", "dist", ".venv"]',
             pyproject_text,
         )
         self.assertIn('select = ["E", "F", "W"]', pyproject_text)
@@ -538,13 +541,13 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
         llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
         self.assertIn("Version: 0.9.1", llms_text)
-        self.assertIn("Last-checked: 2026-09-23", llms_text)
+        self.assertIn("Last-checked: 2026-09-28", llms_text)
 
         changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("## [0.9.1] - 2026-09-14", changelog_text)
 
         licenses_text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
-        self.assertIn("Audited:** 2026-09-23", licenses_text)
+        self.assertIn("Audited:** 2026-09-28", licenses_text)
         for inv_id in ["INV-MOD-01", "INV-SLA-10"]:
             self.assertIn(inv_id, licenses_text)
 
@@ -591,6 +594,69 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("521 BGB", readme_de)
         self.assertIn("Gefälligkeitsrecht", readme_de)
         self.assertIn("521 BGB", llms_text)
+
+    def test_sbom_text_companion_contract(self):
+        sbom_path = ROOT / "THIRD_PARTY_LICENSES.txt"
+        self.assertTrue(sbom_path.exists(), "THIRD_PARTY_LICENSES.txt companion must exist")
+        text = sbom_path.read_text(encoding="utf-8")
+        self.assertGreater(len(text), 2000, "THIRD_PARTY_LICENSES.txt must be comprehensive")
+        self.assertIn("Project: ellmos-ai/open-compute", text)
+        self.assertIn("Audited: 2026-09-28", text)
+        self.assertIn("RunAsInvoker", text)
+        self.assertIn("Zero-Copyleft", text)
+        self.assertIn("Zero-Egress", text)
+        self.assertIn("521 BGB", text)
+        self.assertIn("security@open-bricks.org", text)
+        for i in range(1, 11):
+            inv_pattern = rf"INV-[A-Z]+-{i:02d}"
+            self.assertRegex(text, inv_pattern, f"Invariant number {i:02d} must be present in THIRD_PARTY_LICENSES.txt")
+
+    def test_pyproject_license_files_standardization(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "THIRD_PARTY_LICENSES.txt"]',
+            pyproject_text,
+            "pyproject.toml license-files must be standardized with all four legal files",
+        )
+
+    def test_pyproject_urls_third_party_licenses_text(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            '"Third-Party Licenses (Text)" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.txt"',
+            pyproject_text,
+            "pyproject.toml project.urls must register Third-Party Licenses (Text)",
+        )
+
+    def test_ci_workflows_and_labels_parity(self):
+        workflows_dir = ROOT / ".github" / "workflows"
+        self.assertTrue((workflows_dir / "stale.yml").exists(), "stale.yml workflow must exist")
+        self.assertTrue((workflows_dir / "welcome.yml").exists(), "welcome.yml workflow must exist")
+        self.assertTrue((workflows_dir / "auto-assign.yml").exists(), "auto-assign.yml workflow must exist")
+        self.assertTrue((workflows_dir / "label-sync.yml").exists(), "label-sync.yml workflow must exist")
+        self.assertTrue((ROOT / ".github" / "labels.yml").exists(), ".github/labels.yml must exist")
+
+        stale_text = (workflows_dir / "stale.yml").read_text(encoding="utf-8")
+        self.assertIn("concurrency:", stale_text, "stale.yml must have concurrency control")
+        self.assertIn("cancel-in-progress: true", stale_text, "stale.yml concurrency must cancel in progress")
+
+    def test_gitignore_multihost_and_temp_hardening(self):
+        gitignore_text = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        expected_patterns = [
+            "*-IDEAPAD*",
+            "*-WORKSTATION*",
+            "*-WORKSTATION.*",
+            "*_WORKSTATION*",
+            "*-WORKSTATION-LG*",
+            "*_WORKSTATION-LG*",
+            ".pytest_temp/",
+            ".pytest_tmp*/",
+        ]
+        for pattern in expected_patterns:
+            self.assertIn(pattern, gitignore_text, f"{pattern} must be present in .gitignore")
+
+    def test_notice_file_includes_sbom_text_cross_reference(self):
+        notice_text = (ROOT / "NOTICE").read_text(encoding="utf-8")
+        self.assertIn("THIRD_PARTY_LICENSES.txt", notice_text, "NOTICE must cross-reference THIRD_PARTY_LICENSES.txt")
 
 
 if __name__ == "__main__":

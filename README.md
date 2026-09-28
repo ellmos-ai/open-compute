@@ -7,8 +7,8 @@
 [![Status: Production/Stable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-823%20passed%20%7C%20100%25%20green-success)](tests)
-[![Verified: 2026-09-23](https://img.shields.io/badge/verified-2026--09--23-blue.svg)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-829%20passed%20%7C%20100%25%20green-success)](tests)
+[![Verified: 2026-09-28](https://img.shields.io/badge/verified-2026--09--28-blue.svg)](tests)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
@@ -966,7 +966,7 @@ python -X utf8 -m pytest -ra -v
 ```
 
 Tests are mock-only and require no SDK; `pip install -e ".[dev]"` from a clone
-installs pytest. Current full-suite state: **823 passed, 2 skipped** (100% green, 2026-09-23).
+installs pytest. Current full-suite state: **829 passed, 2 skipped** (100% green, 2026-09-28).
 
 ---
 
@@ -978,7 +978,7 @@ installs pytest. Current full-suite state: **823 passed, 2 skipped** (100% green
 - **Optional Adapters:** All optional dependencies (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) are distributed under strictly permissive licenses (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
 - **Zero-Egress Assurances:** The offline mock engine never emits network traffic. No tracking, analytics, or telemetry libraries are bundled.
 
-For detailed license attributions, copyright notices, and dependency scopes, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+For detailed license attributions, copyright notices, and dependency scopes, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
 
 ---
 
@@ -998,7 +998,7 @@ In alignment with our open-source commitment to safe local-first automation, vul
 - **Standard:** Complies with `ellmos.module.v2` autonomous module specifications.
 - **Agent Discovery Index:** [`llms.txt`](llms.txt)
 - **Legal Notice & Attribution:** [`NOTICE`](NOTICE)
-- **Third-Party Transparency & Invariants:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+- **Third-Party Transparency & Invariants:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt)
 
 ### License
 
