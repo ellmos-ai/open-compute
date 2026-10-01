@@ -7,8 +7,8 @@
 [![Status: Produktion/Stabil v0.9.1](https://img.shields.io/badge/status-0.9.1--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-829%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
-[![Geprüft: 2026-09-28](https://img.shields.io/badge/gepr%C3%BCft-2026--09--28-blue.svg)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-832%20bestanden%20%7C%20100%25%20gr%C3%BCn-success)](tests)
+[![Geprüft: 2026-10-01](https://img.shields.io/badge/gepr%C3%BCft-2026--10--01-blue.svg)](tests)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
@@ -16,6 +16,7 @@
 [![Code-Stil: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Drittanbieter: Auditiert](https://img.shields.io/badge/drittanbieter-auditiert%20%7C%20permissiv-blue)](THIRD_PARTY_LICENSES.md)
+[![Level 1 SBOM: Plain Text](https://img.shields.io/badge/Level%201%20SBOM-Plain--Text%20auditiert-informational)](THIRD_PARTY_LICENSES.txt)
 [![Ökosystem: ellmos-ai](https://img.shields.io/badge/%C3%96kosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Dachverband: open-bricks](https://img.shields.io/badge/dachverband-open--bricks-blue)](https://github.com/open-bricks)
 [![Lizenz: MIT](https://img.shields.io/badge/lizenz-MIT-green)](LICENSE)
@@ -195,6 +196,50 @@ flowchart TD
     style BackendLayer fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
     style SafetyLayer fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
+```
+
+### Vier-Ansichten-Architekturprojektion
+
+```
++===================================================================================================================+
+|                                    OPEN-COMPUTE ARCHITEKTUR-TOPOLOGIE (4 ANSICHTEN)                               |
++===================================================================================================================+
+| [SICHT 1: AUFRUFER-LAUFZEITEN & AGENTEN-CLIENTS]                                                                  |
+|  * Autonome KI-Agenten (Claude Desktop, Antigravity, OpenAI Codex, Ollama) via MCP-Server (open-compute-mcp)        |
+|  * Entwickler-Terminal & Automations-CLI (oc do | capture | click-name | move-window)                              |
+|  * Python SDK Client-Konsumenten (from open_compute import AgentLoop, MockBackend, LocalExecutor)                 |
+|  * Unprivilegierte Benutzer-Ausführung [INV-USR-06] -- Striktes RunAsInvoker, 0 administrative Rechteanforderungen|
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [SICHT 2: SOUVERÄNE ENGINE & ORCHESTRIERUNGS-PIPELINE]                                                            |
+|  * Kern-Agenten-Loop (loop.py) -- Deterministischer Orchestrator (Wahrnehmung -> Modell -> Safety -> Ausführung)  |
+|  * Modellagnostischer Backend-Router (backends/) [INV-MOD-01] -- Claude Messages API, OpenAI CUA, MockBackend     |
+|  * Kanonisches Aktionsschema (actions.py) -- click, type, key, scroll, drag, wait modellübergreifend normiert      |
+|  * Einheitliche Koordinaten-Normalisierung (coordinates.py) [INV-CRD-03] -- Normiert [0.0, 1.0] auf Auflösung/DPI |
+|  * Zentrales Safety-Policy-Gate (safety.py) [INV-SAF-05] -- 3-Stufen-Gate (confirm / allow_all / read_only)       |
+|  * Verbindliches Pre-Action Grace Window (overlay.py, mcp_server.py) [INV-GRC-04] -- 4s Countdown, 120s Cooldown |
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [SICHT 3: LAUFZEIT-PERSISTENZ, EVIDENZEN & BEWEISREGISTER]                                                        |
+|  * Profilgefilterte Wahrnehmung & Fensterscoping (perception_filter.py) [INV-SCP-09] -- Token-budgetierter UIA-Baum|
+|  * Visuelle Evidenzen & Composites (compose / Pillow) -- Vorher/Nachher-Screenshots, Set-of-Marks, Overlays       |
+|  * Offline Deterministisches Mock-Substrat (MockExecutor, MockBackend) [INV-DEP-02] -- 0 Pflicht-Abhängigkeiten   |
+|  * Flüchtige Zugangsdaten-Sicherheit [INV-SEC-08] -- Nur In-Memory API-Keys, 0 Festplatten- oder Log-Persistenz   |
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [SICHT 4: AIR-GAP SCHUTZPERIMETER, ZERO-EGRESS & GOVERNANCE-GRENZE]                                               |
+|  * 100% Local-First Ausführung [INV-EGR-07] -- 0 externe Netzwerk-Telemetrie-Sockets im Standard-/Mock-Modus     |
+|  * Reiner Python-Standardbibliothek-Kern -- Keine Pflicht-Drittpakete (cpython) [INV-DEP-02]                      |
+|  * Zero-Copyleft Isolations-Garantie -- 100% permissiver Open-Source-Stack (PSFL-2.0, MIT, Apache-2.0, HPND)     |
+|  * Multi-Host Cloud-Sync & Lock-Verteidigung -- Gehärtete .gitignore, Konfliktschutz, kanonische Lock-Guards     |
+|  * Verbindliche Sicherheits-Reaktions-SLA [INV-SLA-10] -- 48h Erstbestätigungs- und 5-Werktage-Triage-Garantie    |
++===================================================================================================================+
 ```
 
 <a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>

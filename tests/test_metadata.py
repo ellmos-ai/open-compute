@@ -356,9 +356,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 829 tests passed
-        self.assertIn("829%20passed", readme_en)
-        self.assertIn("829%20bestanden", readme_de)
+        # Both must report 832 tests passed
+        self.assertIn("832%20passed", readme_en)
+        self.assertIn("832%20bestanden", readme_de)
 
         # Both must have NOTICE attribution badge
         self.assertIn("attribution-NOTICE-informational", readme_en)
@@ -541,13 +541,13 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
         llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
         self.assertIn("Version: 0.9.1", llms_text)
-        self.assertIn("Last-checked: 2026-09-28", llms_text)
+        self.assertIn("Last-checked: 2026-10-01", llms_text)
 
         changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("## [0.9.1] - 2026-09-14", changelog_text)
 
         licenses_text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
-        self.assertIn("Audited:** 2026-09-28", licenses_text)
+        self.assertIn("Audited:** 2026-10-01", licenses_text)
         for inv_id in ["INV-MOD-01", "INV-SLA-10"]:
             self.assertIn(inv_id, licenses_text)
 
@@ -601,7 +601,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         text = sbom_path.read_text(encoding="utf-8")
         self.assertGreater(len(text), 2000, "THIRD_PARTY_LICENSES.txt must be comprehensive")
         self.assertIn("Project: ellmos-ai/open-compute", text)
-        self.assertIn("Audited: 2026-09-28", text)
+        self.assertIn("Audited: 2026-10-01", text)
         self.assertIn("RunAsInvoker", text)
         self.assertIn("Zero-Copyleft", text)
         self.assertIn("Zero-Egress", text)
@@ -610,6 +610,57 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         for i in range(1, 11):
             inv_pattern = rf"INV-[A-Z]+-{i:02d}"
             self.assertRegex(text, inv_pattern, f"Invariant number {i:02d} must be present in THIRD_PARTY_LICENSES.txt")
+
+    def test_ascii_four_view_topology_projection_contract(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+
+        self.assertIn("### Four-View Architectural Topology Projection", readme_en)
+        self.assertIn("### Vier-Ansichten-Architekturprojektion", readme_de)
+
+        expected_views_en = [
+            "[VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]",
+            "[VIEW 2: SOVEREIGN ENGINE & ORCHESTRATION PIPELINE]",
+            "[VIEW 3: RUNTIME PERSISTENCE, RUN RECEIPTS & EVIDENCE LEDGER]",
+            "[VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]",
+        ]
+        for view in expected_views_en:
+            self.assertIn(view, readme_en, f"English topology must contain {view}")
+
+        expected_views_de = [
+            "[SICHT 1: AUFRUFER-LAUFZEITEN & AGENTEN-CLIENTS]",
+            "[SICHT 2: SOUVERÄNE ENGINE & ORCHESTRIERUNGS-PIPELINE]",
+            "[SICHT 3: LAUFZEIT-PERSISTENZ, EVIDENZEN & BEWEISREGISTER]",
+            "[SICHT 4: AIR-GAP SCHUTZPERIMETER, ZERO-EGRESS & GOVERNANCE-GRENZE]",
+        ]
+        for view in expected_views_de:
+            self.assertIn(view, readme_de, f"German topology must contain {view}")
+
+        for i in range(1, 11):
+            pattern = rf"INV-[A-Z]+-{i:02d}"
+            self.assertRegex(readme_en, pattern, f"Invariant {i:02d} must appear in English topology")
+            self.assertRegex(readme_de, pattern, f"Invariant {i:02d} must appear in German topology")
+
+    def test_pyproject_level1_sbom_and_plain_text_urls_contract(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            '"Level 1 SBOM" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"',
+            pyproject_text,
+            "pyproject.toml project.urls must register Level 1 SBOM",
+        )
+        self.assertIn(
+            '"Plain-Text Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.txt"',
+            pyproject_text,
+            "pyproject.toml project.urls must register Plain-Text Licenses",
+        )
+
+    def test_marketing_log_audit_recency_contract(self):
+        mkt_path = ROOT / "MARKETING-LOG.txt"
+        self.assertTrue(mkt_path.exists(), "MARKETING-LOG.txt must exist")
+        mkt_text = mkt_path.read_text(encoding="utf-8")
+        self.assertIn("2026-10-01", mkt_text, "MARKETING-LOG.txt must contain 2026-10-01 entry")
+        self.assertIn("Pfad B", mkt_text, "MARKETING-LOG.txt must record Pfad B execution")
+        self.assertIn("Four-View Architectural Topology Projection", mkt_text)
 
     def test_pyproject_license_files_standardization(self):
         pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

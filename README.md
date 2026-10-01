@@ -7,8 +7,8 @@
 [![Status: Production/Stable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![Tests Workflow](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/open-compute/actions/workflows/tests.yml)
-[![Tests Passed](https://img.shields.io/badge/tests-829%20passed%20%7C%20100%25%20green-success)](tests)
-[![Verified: 2026-09-28](https://img.shields.io/badge/verified-2026--09--28-blue.svg)](tests)
+[![Tests Passed](https://img.shields.io/badge/tests-832%20passed%20%7C%20100%25%20green-success)](tests)
+[![Verified: 2026-10-01](https://img.shields.io/badge/verified-2026--10--01-blue.svg)](tests)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
 [![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
@@ -16,6 +16,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Third-Party: Audited](https://img.shields.io/badge/third--party-audited%20%7C%20permissive-blue)](THIRD_PARTY_LICENSES.md)
+[![Level 1 SBOM: Plain Text](https://img.shields.io/badge/Level%201%20SBOM-plain%20text%20audited-informational)](THIRD_PARTY_LICENSES.txt)
 [![Ecosystem: ellmos-ai](https://img.shields.io/badge/ecosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Umbrella: open-bricks](https://img.shields.io/badge/umbrella-open--bricks-blue)](https://github.com/open-bricks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -191,6 +192,50 @@ flowchart TD
     style BackendLayer fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
     style SafetyLayer fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     style ExecutionLayer fill:#ede7f6,stroke:#512da8,stroke-width:2px
+```
+
+### Four-View Architectural Topology Projection
+
+```
++===================================================================================================================+
+|                                    OPEN-COMPUTE ARCHITECTURAL TOPOLOGY (4 VIEWS)                                  |
++===================================================================================================================+
+| [VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]                                                                         |
+|  * Autonomous LLM Agents (Claude Desktop, Antigravity, OpenAI Codex, Ollama) via MCP Server (open-compute-mcp)    |
+|  * Developer Terminal & DevOps CLI Harness (oc do | capture | click-name | move-window)                            |
+|  * Python SDK Client Consumers (from open_compute import AgentLoop, MockBackend, LocalExecutor)                   |
+|  * Unprivileged User-Mode Invocation [INV-USR-06] -- Strict RunAsInvoker, zero administrative elevation prompts   |
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [VIEW 2: SOVEREIGN ENGINE & ORCHESTRATION PIPELINE]                                                               |
+|  * Core Agent Loop (loop.py) -- Deterministic perception -> backend -> safety -> execute -> feedback orchestrator  |
+|  * Model-Agnostic Backend Router (backends/) [INV-MOD-01] -- Claude Messages API, OpenAI CUA, MockBackend, Mode A |
+|  * Canonical Action Schema (actions.py) -- click, type, key, scroll, drag, wait normalized across models           |
+|  * Unified Coordinate Normalizer (coordinates.py) [INV-CRD-03] -- Normalized [0.0, 1.0] to native resolution/DPI   |
+|  * Central Safety Policy Gate (safety.py) [INV-SAF-05] -- 3-tier policy interception (confirm / allow_all / read)  |
+|  * Mandatory Pre-Action Grace Window (overlay.py, mcp_server.py) [INV-GRC-04] -- 4s countdown, 120s cooldown, abort|
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [VIEW 3: RUNTIME PERSISTENCE, RUN RECEIPTS & EVIDENCE LEDGER]                                                     |
+|  * Profile-Filtered Perception & Window Scoping (perception_filter.py) [INV-SCP-09] -- Token-budgeted UIA filter   |
+|  * Visual Evidence & Composites (compose / Pillow) -- Before/after screenshots, Set-of-Marks, observation overlays |
+|  * Offline Deterministic Mock Substrate (MockExecutor, MockBackend) [INV-DEP-02] -- 0 mandatory runtime deps      |
+|  * Ephemeral Credential Security [INV-SEC-08] -- In-memory API keys only, zero disk serialization or log leaking  |
++-------------------------------------------------------------------------------------------------------------------+
+                                                          |
+                                                          v
++-------------------------------------------------------------------------------------------------------------------+
+| [VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]                                            |
+|  * 100% Local-First Execution [INV-EGR-07] -- Zero external network telemetry sockets in default/mock mode        |
+|  * Pure Python Standard Library Core Runtime -- Zero external dependencies (cpython) [INV-DEP-02]                  |
+|  * Zero-Copyleft Isolation Guarantee -- 100% permissive open-source stack (PSFL-2.0, MIT, Apache-2.0, HPND)       |
+|  * Multi-Host Cloud-Sync & Lock Defense -- Hardened .gitignore, conflict-copy resistance, canonical lock guards   |
+|  * Binding Security Response Commitment [INV-SLA-10] -- 48h initial response SLA & 5-day triage SLA              |
++===================================================================================================================+
 ```
 
 <a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>

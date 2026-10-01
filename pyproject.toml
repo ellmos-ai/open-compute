@@ -14,10 +14,10 @@ authors = [
     {name = "The open-compute authors"},
 ]
 keywords = [
-    "computer-use", "agent", "automation", "claude", "openai", "cua",
-    "gui-automation", "browser-automation", "set-of-marks", "ai-agent",
-    "local-first", "zero-egress", "accessibility", "mcp", "mcp-server",
-    "desktop-automation", "windows", "safety", "ellmos-ai", "open-bricks",
+    "accessibility", "agent", "ai-agent", "automation", "browser-automation",
+    "claude", "computer-use", "cua", "desktop-automation", "ellmos-ai",
+    "gui-automation", "local-first", "mcp", "mcp-server", "open-bricks",
+    "openai", "safety", "set-of-marks", "windows", "zero-egress",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -65,8 +65,10 @@ Issues = "https://github.com/ellmos-ai/open-compute/issues"
 Notice = "https://github.com/ellmos-ai/open-compute/blob/master/NOTICE"
 Changelog = "https://github.com/ellmos-ai/open-compute/blob/master/CHANGELOG.md"
 Security = "https://github.com/ellmos-ai/open-compute/blob/master/SECURITY.md"
+"Level 1 SBOM" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"
 "Third-Party Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.md"
 "Third-Party Licenses (Text)" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.txt"
+"Plain-Text Licenses" = "https://github.com/ellmos-ai/open-compute/blob/master/THIRD_PARTY_LICENSES.txt"
 "Marketing Log" = "https://github.com/ellmos-ai/open-compute/blob/master/MARKETING-LOG.txt"
 "LLM Ready" = "https://github.com/ellmos-ai/open-compute/blob/master/llms.txt"
 "Parent Organization" = "https://github.com/ellmos-ai"

@@ -11,6 +11,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Discoverability, Four-View Architectural Topology & Level 1 SBOM Companion Re-Audit (Pfad B)** [G 2026-10-01]:
+  - **Four-View Architectural Topology Projection (ASCII):** Implemented comprehensive 4-view architectural projection tables in both `README.md` (`[VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]` to `[VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]`) and `README_de.md` (`[SICHT 1]` to `[SICHT 4]`), projecting all 10 governance invariants `INV-MOD-01` to `INV-SLA-10`.
+  - **Level 1 SBOM Plain-Text Re-Audit:** Updated `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_LICENSES.md` to audit date 2026-10-01 with full invariant cross-reference matrix verification, zero-copyleft and RunAsInvoker guarantees.
+  - **PEP 621 Standard URLs & 20-Topic Sättigung (`pyproject.toml`):** Registered canonical project URLs for `"Level 1 SBOM"` and `"Plain-Text Licenses"`. Sorted all 20 GitHub discoverability keywords alphabetically.
+  - **Badges & Bilinguale Parität (`README.md`, `README_de.md`):** Synchronized audit dates to 2026-10-01 and added `Level 1 SBOM: Plain Text` badge linked to companion text file.
+  - **RAG-Manifest & Documentation Harmonization (`llms.txt`, `MARKETING-LOG.txt`):** Synchronized `llms.txt` with audit date 2026-10-01, expanded test counts, and documented Section 2026-10-01 in `MARKETING-LOG.txt`.
+  - **Contract Test Suite Expansion (`tests/test_metadata.py`):** Added 3 new automated contract tests for the ASCII 4-view topology projection, Level 1 SBOM companion URLs, and marketing log audit recency.
+  - **Version Invariant:** Maintained version `0.9.1` strictly unchanged according to fleet policy `T-20260920-167562623`.
+
 - **Repository Hygiene, CI Lifecycle & Level 1 SBOM Text Companion (Pfad A)** [G 2026-09-28]:
   - **CI Lifecycle Workflows & Label Synchronization:** Provisioned `.github/workflows/auto-assign.yml` (automated PR owner assignment), `.github/workflows/label-sync.yml` (dispatch label sync), and `.github/labels.yml` (canonical ecosystem issue/PR taxonomy); hardened `.github/workflows/stale.yml` with concurrency group and `cancel-in-progress: true`.
   - **Multi-Host Cloud-Sync & Pytest Temp Defense (`.gitignore`):** Hardened against multi-host conflict tokens (`*-IDEAPAD*`, `*-WORKSTATION.*`, `*_WORKSTATION*`, `*_WORKSTATION-LG*`) and test temp directories (`.pytest_temp/`, `.pytest_tmp*/`).

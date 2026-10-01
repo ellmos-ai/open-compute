@@ -1,7 +1,7 @@
 # Third-Party Licenses & Transparency Notice
 
 > **Project:** `ellmos-ai/open-compute`<br>
-> **Audited:** 2026-09-28 (Prior audits: 2026-09-23, 2026-09-20, 2026-09-14, 2026-09-12, 2026-09-10)<br>
+> **Audited:** 2026-10-01 (Prior audits: 2026-09-28, 2026-09-23, 2026-09-20, 2026-09-14, 2026-09-12, 2026-09-10)<br>
 > **Repository License:** [MIT License](LICENSE)<br>
 > **Attribution & SBOM Companion:** [NOTICE](NOTICE) | [Level 1 SBOM (Text)](THIRD_PARTY_LICENSES.txt)<br>
 > **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`), Fail-Closed

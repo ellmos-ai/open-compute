@@ -1,5 +1,31 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-10-01 — Discoverability, Four-View Architectural Topology, Level 1 SBOM Text Companion Re-Audit & Contract Test Expansion (Pfad B v0.9.1)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 56h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-23 vor 8 Tagen, letzte Pfad A Prüfung am 2026-09-28 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 832 automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Maßnahmen (Pfad B: Marketing, Design & Discoverability)**:
+  1. **Four-View Architectural Topology Projection (ASCII-Topologie in `README.md` & `README_de.md`)**:
+     - Einführung der standardisierten Vier-Ansichten-Architekturprojektion in beiden Sprachversionen (`[VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]` / `[SICHT 1]` bis `[VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]` / `[SICHT 4]`).
+     - Vollständige Projektion aller 10 Governance-Invarianten (`INV-MOD-01` bis `INV-SLA-10`) in die 4 Schichten (Caller Runtimes, Sovereign Engine, Evidence Ledger, Air-Gap Perimeter).
+  2. **Level 1 SBOM Plain-Text Companion & Markdown Re-Audit (`THIRD_PARTY_LICENSES.txt`, `THIRD_PARTY_LICENSES.md`)**:
+     - Re-Audit der maschinenlesbaren Plain-Text-SBOM-Begleitdatei und der Markdown-Dokumentation mit Prüfdatum `2026-10-01`.
+     - Bestätigung aller 10 Invarianten, `RunAsInvoker` Non-Elevation-Garantie, Zero-Copyleft-Zertifizierung und Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht) nebst verbindlicher 48h Security Response SLA.
+  3. **PEP 621 Standardisierung & 20-Topic-Sättigung (`pyproject.toml`)**:
+     - Registrierung der standardisierten Projekt-URLs `"Level 1 SBOM"` und `"Plain-Text Licenses"`.
+     - Alphabetische Sortierung aller 20 GitHub-Discoverability-Keywords (`accessibility`, `agent`, `ai-agent`, `automation`, `browser-automation`, `claude`, `computer-use`, `cua`, `desktop-automation`, `ellmos-ai`, `gui-automation`, `local-first`, `mcp`, `mcp-server`, `open-bricks`, `openai`, `safety`, `set-of-marks`, `windows`, `zero-egress`).
+  4. **Badges & Bilinguale Parität (`README.md`, `README_de.md`)**:
+     - Synchronisation des Prüfdatums-Badges (`Verified: 2026-10-01` / `Geprüft: 2026-10-01`).
+     - Ergänzung des `Level 1 SBOM: Plain Text`-Badges mit Verlinkung auf `THIRD_PARTY_LICENSES.txt`.
+  5. **RAG-Manifest & Dokumentation (`llms.txt`, `CHANGELOG.md`)**:
+     - `llms.txt` aktualisiert auf Prüfstand 2026-10-01 mit Querverweisen auf die 4-Ansichten-Architekturprojektion und den Level 1 SBOM Text-Companion.
+     - Release Notes im `CHANGELOG.md` unter `## [Unreleased]` für den 2026-10-01 Pfad B Durchlauf gepflegt.
+  6. **Automatisierte Vertragstests (`tests/test_metadata.py`)**:
+     - Erweiterung der Testsuite um 3 neue automatisierte Contract-Tests (`test_ascii_four_view_topology_projection_contract`, `test_pyproject_level1_sbom_and_plain_text_urls_contract`, `test_marketing_log_audit_recency_contract`).
+     - Gesamte Testsuite auf 832 bestandene Tests (2 skipped, 100% grün) ausgebaut.
+  7. **Versionsdisziplin (T-20260920-167562623)**:
+     - Versionsnummer bleibt strikt unverändert bei `0.9.1` gemäß Flotten-Richtlinie `T-20260920-167562623`.
+
 ## 2026-09-28 — Turnusgemäße Repository-Hygiene, CI Lifecycle & Level 1 SBOM Text Companion (Pfad A v0.9.1)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand 114h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-20 vor 8 Tagen, letzte Pfad B Prüfung am 2026-09-23 vor 5 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
