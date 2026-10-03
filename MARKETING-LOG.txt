@@ -1,5 +1,31 @@
 # MARKETING-LOG.txt — ellmos-ai/open-compute
 
+## 2026-10-03 — Turnusgemäße Repository-Hygiene, Bilinguale CONTRIBUTING Guidelines, CI Hardening & Level 1 SBOM Re-Audit (Pfad A v0.9.1)
+
+- **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path a` (Ruhezustand 47.2h > 24h Cooldown, letzte Pfad A Prüfung am 2026-09-20 vor 13 Tagen, letzte Pfad B Prüfung am 2026-10-01 vor 2 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.
+- **Status & Reifegrad**: Production/Stable v0.9.1; 832+ automatisierte Unit- und Vertragstests grün (100% pass, 2 skipped), Zero-Dependency Standardbibliothek-Kern, vollständige Model-Agnostizismus-Abstraktion (Claude, OpenAI CUA, Mock).
+- **Durchgeführte Hygiene- & Härtungsmaßnahmen**:
+  1. **Bilinguale Contributing Guidelines (`CONTRIBUTING.md`)**:
+     - Vollständige zweisprachige Richtlinie (English & Deutsch) mit bilateralen Sprungankern (`#english`, `#deutsch`).
+     - Spezifikation aller 10 Governance- und Laufzeitinvarianten (`INV-MOD-01` bis `INV-SLA-10`), Plan D Local Development Workflow (`C:\_Local_DEV\repos\open-compute`), unprivilegiertem `RunAsInvoker`-Benutzermodus (`INV-USR-06`), gesetzlichem Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht) und verbindlicher 48h Security Response SLA (`security@ellmos.ai`, `security@open-bricks.org`, `support@lukasgeiger.com`).
+  2. **PEP 621 Standard-Metadaten & Pytest-Härtung (`pyproject.toml`)**:
+     - Registrierung von `Contributing = "https://github.com/ellmos-ai/open-compute/blob/master/CONTRIBUTING.md"` unter `[project.urls]`.
+     - Härtung von `norecursedirs` in `[tool.pytest.ini_options]` um `.turbo`, `.nyc_output` und `.tox`.
+  3. **Multi-Host Cloud-Sync-, Lock- & Taskplan-Defense (`.gitignore`)**:
+     - Ergänzung der Schutzmuster um `Desktop.ini`, `ehthumbs.db`, `*-IDEAPAD-GEI*`, `*-IDEAPAD-GEI.*`, `TASKPLAN_*.md`, `*-TASKPLAN*` sowie Multi-Agent-Lockmuster (`LOCK.dev.*`, `LOCK.antigravity.*`, `LOCK.bugsearch.*`).
+  4. **CI-Lifecycle Workflow Concurrency- & Timeout-Härtung (`.github/workflows/auto-assign.yml`, `.github/workflows/label-sync.yml`)**:
+     - Härtung von `auto-assign.yml` und `label-sync.yml` um `concurrency` (`cancel-in-progress: true`) und `timeout-minutes: 5`.
+  5. **Level 1 SBOM Text-Begleitdatei & Markdown Re-Audit (`THIRD_PARTY_LICENSES.txt`, `THIRD_PARTY_LICENSES.md`)**:
+     - Re-Audit der maschinenlesbaren Plain-Text-SBOM-Begleitdatei und der Markdown-Dokumentation mit Prüfdatum `2026-10-03`.
+     - Querverweis auf `CONTRIBUTING.md`, Bestätigung aller 10 Invarianten, `RunAsInvoker` Non-Elevation-Garantie, Zero-Copyleft-Zertifizierung und Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht) nebst verbindlicher 48h Security Response SLA.
+  6. **Dokumentation & Badge-Synchronisation (`README.md`, `README_de.md`, `llms.txt`, `CHANGELOG.md`)**:
+     - Test- und Prüfdatums-Badges synchronisiert (`Verified: 2026-10-03` / `Geprüft: 2026-10-03`), `Contributing: Welcome` / `Mitwirken: Willkommen` Badges ergänzt.
+     - `llms.txt` Stand 2026-10-03 mit `CONTRIBUTING.md`-Verweis aktualisiert.
+  7. **Automatisierte Vertragstests (`tests/test_metadata.py`)**:
+     - Erweiterung der Testsuite um 6 neue Contract-Tests für bilingual `CONTRIBUTING.md`, 10 Invarianten, PEP 621 URLs, CI Workflow Hardening, Multi-Host Lock-Defense und Re-Audit-Recency Stand 2026-10-03.
+  8. **Versionsdisziplin (T-20260920-167562623)**:
+     - Versionsnummer bleibt strikt unverändert bei `0.9.1` gemäß Flotten-Richtlinie `T-20260920-167562623`.
+
 ## 2026-10-01 — Discoverability, Four-View Architectural Topology, Level 1 SBOM Text Companion Re-Audit & Contract Test Expansion (Pfad B v0.9.1)
 
 - **Wahlkriterium**: `ellmos-ai/open-compute` (`C:\_Local_DEV\repos\open-compute`, Remote `https://github.com/ellmos-ai/open-compute.git`, Branch `master`) gewählt laut `_tools/repo_radar.py candidates --path b` (Ruhezustand 56h > 24h Cooldown, letzte Pfad B Prüfung am 2026-09-23 vor 8 Tagen, letzte Pfad A Prüfung am 2026-09-28 vor 3 Tagen). 100% sauberer Git-Zustand auf Branch `master`, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown-Check bestanden.

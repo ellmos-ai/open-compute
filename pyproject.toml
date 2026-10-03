@@ -59,6 +59,7 @@ open-compute-mcp = "open_compute.mcp_bootstrap:main"
 
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/open-compute"
+Contributing = "https://github.com/ellmos-ai/open-compute/blob/master/CONTRIBUTING.md"
 Documentation = "https://github.com/ellmos-ai/open-compute#readme"
 Repository = "https://github.com/ellmos-ai/open-compute"
 Issues = "https://github.com/ellmos-ai/open-compute/issues"
@@ -95,4 +96,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = "."
 addopts = "-ra -v"
-norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".pytest_tmp*", "__pycache__", "build", "dist", ".venv"]
+norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".pytest_tmp*", "__pycache__", "build", "dist", ".venv", ".turbo", ".nyc_output", ".tox"]

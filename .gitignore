@@ -31,7 +31,9 @@ env/
 # OS / editor
 .DS_Store
 Thumbs.db
+ehthumbs.db
 desktop.ini
+Desktop.ini
 
 # Local session files and internal reports (not for publish)
 _session/
@@ -51,6 +53,9 @@ LOCK*.txt
 LOCK.user.*
 LOCK.until.*
 LOCK.condition.*
+LOCK.dev.*
+LOCK.antigravity.*
+LOCK.bugsearch.*
 LOCK.permissions.json
 .automation-lock
 *.lock
@@ -64,6 +69,8 @@ uv.lock
 * (Copy)*
 *conflicted copy*
 *-IDEAPAD*
+*-IDEAPAD-GEI*
+*-IDEAPAD-GEI.*
 *-WORKSTATION*
 *-WORKSTATION.*
 *_WORKSTATION*
@@ -74,6 +81,8 @@ uv.lock
 *-ASUS-GEI*
 *-Mac Studio*
 *-MacBook*
+TASKPLAN_*.md
+*-TASKPLAN*
 *.sync-conflict-*
 *.conflict
 *-CONFLIT-*

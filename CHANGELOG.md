@@ -11,6 +11,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Repository Hygiene, Bilingual CONTRIBUTING Guidelines, CI Hardening & Level 1 SBOM Re-Audit (Pfad A)** [G 2026-10-03]:
+  - **Bilingual Contributing Guidelines (`CONTRIBUTING.md`):** Authoritative bilingual guide (English & Deutsch) establishing all 10 governance and runtime invariants (`INV-MOD-01` to `INV-SLA-10`), Plan D local development workflow (`C:\_Local_DEV\repos\open-compute`), unprivileged `RunAsInvoker` mode, version freeze discipline (`0.9.1` per `T-20260920-167562623`), § 521 BGB gratuitous liability limitation, and binding 48h Security Response SLA.
+  - **PEP 621 Metadata & Pytest Standardization (`pyproject.toml`):** Registered `Contributing` URL under `[project.urls]`; expanded `norecursedirs` with `.turbo`, `.nyc_output`, and `.tox`.
+  - **Multi-Host Lock & Sync Defense (`.gitignore`):** Hardened gitignore against multi-host conflict tokens (`*-IDEAPAD-GEI*`, `*-IDEAPAD-GEI.*`), multi-agent lock patterns (`LOCK.dev.*`, `LOCK.antigravity.*`, `LOCK.bugsearch.*`), and taskplan artifacts (`TASKPLAN_*.md`, `*-TASKPLAN*`).
+  - **CI Workflow Hardening (`.github/workflows/auto-assign.yml`, `.github/workflows/label-sync.yml`):** Added concurrency controls (`cancel-in-progress: true`) and strict 5-minute timeouts (`timeout-minutes: 5`) to PR auto-assign and label synchronization workflows.
+  - **Level 1 SBOM Re-Audit (`THIRD_PARTY_LICENSES.txt`, `THIRD_PARTY_LICENSES.md`):** Updated audit date to 2026-10-03 across companion files, cross-referencing `CONTRIBUTING.md` alongside § 521 BGB disclaimer, unprivileged user-mode certification, and 100% permissive runtime dependencies.
+  - **Documentation & Badge Synchronization (`README.md`, `README_de.md`, `llms.txt`):** Synchronized badges (`Verified: 2026-10-03` / `Geprüft: 2026-10-03`), added `Contributing: Welcome` / `Mitwirken: Willkommen` badges, and updated RAG manifest `llms.txt`.
+  - **Automated Contract Test Suite Expansion (`tests/test_metadata.py`):** Added 6 new automated contract tests enforcing bilingual CONTRIBUTING parity, 10 invariants, PEP 621 Contributing URL, CI concurrency/timeouts, multi-host lock defense, and 2026-10-03 audit recency.
+  - **Version Invariant:** Maintained version `0.9.1` strictly unchanged according to fleet policy `T-20260920-167562623`.
+
 - **Discoverability, Four-View Architectural Topology & Level 1 SBOM Companion Re-Audit (Pfad B)** [G 2026-10-01]:
   - **Four-View Architectural Topology Projection (ASCII):** Implemented comprehensive 4-view architectural projection tables in both `README.md` (`[VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]` to `[VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]`) and `README_de.md` (`[SICHT 1]` to `[SICHT 4]`), projecting all 10 governance invariants `INV-MOD-01` to `INV-SLA-10`.
   - **Level 1 SBOM Plain-Text Re-Audit:** Updated `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_LICENSES.md` to audit date 2026-10-01 with full invariant cross-reference matrix verification, zero-copyleft and RunAsInvoker guarantees.

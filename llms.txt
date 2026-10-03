@@ -7,8 +7,8 @@
 > context economy). With normalized coordinates, a canonical action schema, a
 > hybrid perception layer, and a central safety gate.
 
-## Last-checked: 2026-10-01
-## Version: 0.9.1 (832 passed automated tests, 2 skipped, 100% green)
+## Last-checked: 2026-10-03
+## Version: 0.9.1 (839 passed automated tests, 2 skipped, 100% green)
 
 ## What it does
 
@@ -30,6 +30,7 @@ uses.
 - Technical benchmarks vs. alternatives: see [Comparative Matrix vs. Alternatives](README.md#comparative-matrix-vs-alternatives).
 - Architectural topology (4 views): see [Four-View Architectural Topology Projection](README.md#four-view-architectural-topology-projection).
 - Level 1 SBOM Plain-Text Companion: see [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
+- Contributing Guidelines & Governance Invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Architecture
 

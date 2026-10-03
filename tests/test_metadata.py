@@ -356,9 +356,9 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_de)
 
-        # Both must report 832 tests passed
-        self.assertIn("832%20passed", readme_en)
-        self.assertIn("832%20bestanden", readme_de)
+        # Both must report 839 tests passed
+        self.assertIn("839%20passed", readme_en)
+        self.assertIn("839%20bestanden", readme_de)
 
         # Both must have NOTICE attribution badge
         self.assertIn("attribution-NOTICE-informational", readme_en)
@@ -403,7 +403,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         )
         self.assertIn('minversion = "7.0"', pyproject_text)
         self.assertIn(
-            'norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".pytest_tmp*", "__pycache__", "build", "dist", ".venv"]',
+            'norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".pytest_tmp*", "__pycache__", "build", "dist", ".venv", ".turbo", ".nyc_output", ".tox"]',
             pyproject_text,
         )
         self.assertIn('select = ["E", "F", "W"]', pyproject_text)
@@ -541,13 +541,13 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
 
         llms_text = (ROOT / "llms.txt").read_text(encoding="utf-8")
         self.assertIn("Version: 0.9.1", llms_text)
-        self.assertIn("Last-checked: 2026-10-01", llms_text)
+        self.assertIn("Last-checked: 2026-10-03", llms_text)
 
         changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("## [0.9.1] - 2026-09-14", changelog_text)
 
         licenses_text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
-        self.assertIn("Audited:** 2026-10-01", licenses_text)
+        self.assertIn("Audited:** 2026-10-03", licenses_text)
         for inv_id in ["INV-MOD-01", "INV-SLA-10"]:
             self.assertIn(inv_id, licenses_text)
 
@@ -601,7 +601,8 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         text = sbom_path.read_text(encoding="utf-8")
         self.assertGreater(len(text), 2000, "THIRD_PARTY_LICENSES.txt must be comprehensive")
         self.assertIn("Project: ellmos-ai/open-compute", text)
-        self.assertIn("Audited: 2026-10-01", text)
+        self.assertIn("Audited: 2026-10-03", text)
+        self.assertIn("CONTRIBUTING.md", text)
         self.assertIn("RunAsInvoker", text)
         self.assertIn("Zero-Copyleft", text)
         self.assertIn("Zero-Egress", text)
@@ -708,6 +709,86 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
     def test_notice_file_includes_sbom_text_cross_reference(self):
         notice_text = (ROOT / "NOTICE").read_text(encoding="utf-8")
         self.assertIn("THIRD_PARTY_LICENSES.txt", notice_text, "NOTICE must cross-reference THIRD_PARTY_LICENSES.txt")
+
+    def test_contributing_file_exists_and_bilingual_structure(self):
+        contrib_path = ROOT / "CONTRIBUTING.md"
+        self.assertTrue(contrib_path.exists(), "CONTRIBUTING.md must exist")
+        text = contrib_path.read_text(encoding="utf-8")
+        self.assertGreater(len(text), 3000, "CONTRIBUTING.md must be comprehensive (>3000 bytes)")
+        self.assertIn("[English](#english)", text)
+        self.assertIn("[Deutsch](#deutsch)", text)
+        self.assertIn('<a id="english"></a>', text)
+        self.assertIn('<a id="deutsch"></a>', text)
+        for i in range(1, 11):
+            pattern = rf"INV-[A-Z]+-{i:02d}"
+            matches = re.findall(pattern, text)
+            self.assertGreaterEqual(len(matches), 2, f"Invariant {pattern} must appear in both English and German sections")
+        self.assertIn(r"C:\_Local_DEV\repos\open-compute", text)
+        self.assertIn("RunAsInvoker", text)
+        self.assertIn("521 BGB", text)
+        self.assertIn("security@ellmos.ai", text)
+        self.assertIn("security@open-bricks.org", text)
+        self.assertIn("support@lukasgeiger.com", text)
+        self.assertIn("T-20260920-167562623", text)
+        self.assertIn("0.9.1", text)
+
+    def test_pyproject_contributing_url_and_norecursedirs(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            'Contributing = "https://github.com/ellmos-ai/open-compute/blob/master/CONTRIBUTING.md"',
+            pyproject_text,
+            "pyproject.toml project.urls must register Contributing",
+        )
+        for d in [".turbo", ".nyc_output", ".tox"]:
+            self.assertIn(f'"{d}"', pyproject_text, f"norecursedirs must include {d}")
+
+    def test_readme_and_de_contributing_badge_parity(self):
+        readme_en = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_de = (ROOT / "README_de.md").read_text(encoding="utf-8")
+        self.assertIn("badge/Contributing-Welcome-blue.svg", readme_en)
+        self.assertIn("badge/Mitwirken-Willkommen-blue.svg", readme_de)
+        self.assertIn("badge/verified-2026--10--03-blue.svg", readme_en)
+        self.assertIn("badge/gepr%C3%BCft-2026--10--03-blue.svg", readme_de)
+
+    def test_ci_lifecycle_workflows_concurrency_and_timeouts(self):
+        workflows_dir = ROOT / ".github" / "workflows"
+        auto_assign_text = (workflows_dir / "auto-assign.yml").read_text(encoding="utf-8")
+        label_sync_text = (workflows_dir / "label-sync.yml").read_text(encoding="utf-8")
+        self.assertIn("concurrency:", auto_assign_text)
+        self.assertIn("cancel-in-progress: true", auto_assign_text)
+        self.assertIn("timeout-minutes: 5", auto_assign_text)
+        self.assertIn("concurrency:", label_sync_text)
+        self.assertIn("cancel-in-progress: true", label_sync_text)
+        self.assertIn("timeout-minutes: 5", label_sync_text)
+
+    def test_gitignore_lock_and_taskplan_defense(self):
+        gitignore_text = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        for pattern in [
+            "Desktop.ini",
+            "ehthumbs.db",
+            "*-IDEAPAD-GEI*",
+            "*-IDEAPAD-GEI.*",
+            "TASKPLAN_*.md",
+            "*-TASKPLAN*",
+            "LOCK.dev.*",
+            "LOCK.antigravity.*",
+            "LOCK.bugsearch.*",
+        ]:
+            self.assertIn(pattern, gitignore_text, f"{pattern} must be present in .gitignore")
+
+    def test_changelog_and_marketing_log_recency_20261003(self):
+        changelog_text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        marketing_text = (ROOT / "MARKETING-LOG.txt").read_text(encoding="utf-8")
+        self.assertIn("## [Unreleased]", changelog_text)
+        self.assertIn("[G 2026-10-03]", changelog_text)
+        self.assertIn("## 2026-10-03", marketing_text)
+        self.assertIn("Pfad A", marketing_text)
+
+    def test_version_freeze_discipline(self):
+        pyproject_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        init_text = (ROOT / "open_compute" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('version = "0.9.1"', pyproject_text, "pyproject.toml version must be strictly 0.9.1")
+        self.assertIn('__version__ = "0.9.1"', init_text, "__init__.py version must be strictly 0.9.1")
 
 
 if __name__ == "__main__":
