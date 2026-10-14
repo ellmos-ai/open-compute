@@ -17,7 +17,7 @@ permissions:
 jobs:
   tests:
     name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
-    runs-on: ${{ matrix.os == 'macos-latest' && fromJSON('["self-hosted","macOS","ARM64","mac-studio"]') || matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     defaults:
       run:
