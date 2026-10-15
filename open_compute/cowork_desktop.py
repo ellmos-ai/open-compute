@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 import threading
 import time
 from typing import Any
@@ -19,7 +20,12 @@ class DesktopBackend:
         self._executor: Any = None
         self.registry = ObservationRegistry()
         self.tokens: dict = {}
-        self.profile = resolve_filter_profile(mode="act")
+        self.profile = replace(resolve_filter_profile(mode="act"),
+                               profile_id="cowork-focused-edit-v1", text_limit=350,
+                               value_policy="all-bounded")
+        # Only the selected window's focused/uniquely editable control supplies
+        # a value. all-bounded here preserves that one value despite root ordering.
+        self.last_edit_rect: dict[str, list] = {}
         self.io = threading.RLock()
 
     @property
@@ -53,6 +59,7 @@ class DesktopBackend:
         uia = _get_uia()
         frame = coordinate_frame_from_executor(self.executor)
         elements = []
+        editors = []
         # UIA uses COM; every HTTP worker initializes its own apartment.
         with uia.UIAutomationInitializerInThread():
             root = uia.ControlFromHandle(target["hwnd"])
@@ -64,16 +71,64 @@ class DesktopBackend:
                     if ctrl.IsPassword:
                         continue
                     x, y, w, h = _rect_to_px_tuple(ctrl.BoundingRectangle)
-                    elements.append({"name": ctrl.Name or "", "role": ctrl.ControlTypeName,
+                    element = {"name": ctrl.Name or "", "role": ctrl.ControlTypeName,
                                      "rect_px": [x, y, w, h], "visible": w > 0 and h > 0,
                                      "center_norm": [(x + w / 2 - frame["left"]) / frame["width"],
-                                                     (y + h / 2 - frame["top"]) / frame["height"]]})
+                                                     (y + h / 2 - frame["top"]) / frame["height"]]}
+                    elements.append(element)
+                    if any(role in element["role"] for role in ("Edit", "Document")):
+                        editors.append((ctrl, element, bool(ctrl.HasKeyboardFocus)))
                 except Exception:
                     continue
-        center = target["center"]
-        return filter_uia_elements(elements, profile=self.profile,
+            focused = [item for item in editors if item[2]]
+            remembered = [item for item in editors if item[1]["rect_px"] == self.last_edit_rect.get(target["window_token"])]
+            selected = focused[:1] or remembered[:1] or (editors if len(editors) == 1 else [])
+            truncated = False
+            readable = False
+            center = target["center"]
+            if selected:
+                ctrl, element, _ = selected[0]
+                self.last_edit_rect[target["window_token"]] = element["rect_px"]
+                # Password was excluded before any name/value/text access above.
+                raw = None
+                try:
+                    pattern = ctrl.GetTextPattern()
+                    if pattern:
+                        raw = pattern.DocumentRange.GetText(351)
+                except Exception:
+                    pass
+                if raw is None:
+                    try:
+                        pattern = ctrl.GetValuePattern()
+                        if pattern:
+                            raw = pattern.Value
+                    except Exception:
+                        pass
+                if isinstance(raw, str):
+                    readable = True
+                    truncated = len(raw) > 350
+                    element["value"] = raw[:350]
+                center = {"x": element["center_norm"][0], "y": element["center_norm"][1]}
+                elements.remove(element)
+                elements.insert(0, element)
+        packet = filter_uia_elements(elements, profile=self.profile,
                                    focus={"kind": "fixed-focus", "x": center["x"],
                                           "y": center["y"], "targetName": ""})
+        packet["content_readable"] = readable
+        packet["content_truncated"] = truncated
+        while True:
+            metrics = packet["metrics"]
+            metrics["includedElements"] = len(packet["elements"])
+            metrics["omittedElements"] = len(elements) - metrics["excludedElements"] - len(packet["elements"])
+            size = len(__import__("json").dumps(packet, ensure_ascii=False, separators=(",", ":")))
+            if size > self.profile.max_characters:
+                if not packet["elements"]:
+                    raise ValueError("focused content exceeds semantic budget")
+                packet["elements"].pop()
+            elif metrics["payloadCharacters"] == size:
+                break
+            metrics["payloadCharacters"] = size
+        return packet
 
     def observe(self, target: dict) -> dict:
         with self.io:
@@ -156,6 +211,18 @@ class DesktopBackend:
         # Do not initialize a desktop solely for cleanup.
         if self._executor is not None:
             self._executor.release_all()
+
+    def task_monitor(self, cancel):
+        monitor = PhysicalInputMonitor(cancel)
+        monitor.start()
+        return monitor
+
+    def prepare_task(self, target, cancel):
+        if cancel.is_set():
+            raise PermissionError("task cancelled before target activation")
+        live = self._resolve(target)
+        self._activate_target(live)
+        self._foreground(target)
 
     def lens(self, target: dict) -> dict:
         """Explicit, local-only <=400px crop. Refuse covered/non-foreground targets."""

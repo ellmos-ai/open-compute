@@ -33,16 +33,26 @@ function describeAction(a){
 function render(state) {
   current=state;
   if(!hydrated){$("goal").value=state.goal;$("constraints").value=state.constraints;hydrated=true;}
-  const modeNames={discuss:"Besprechen",observe:"Begleiten",confirm:"Mit Bestätigung ausführen"};
+  const modeNames={human_only:"Ich arbeite allein",human_leads:"Ich führe",model_leads:"Modell führt – ich schaue zu",model_alone:"Modell arbeitet allein"};
   $("work-mode").value=state.work_mode;$("work-mode").disabled=state.closed;
-  $("work-mode-hint").textContent={discuss:"Nur Text und optionale Sprache. Kein Zielfenster und kein Desktop-Zugriff nötig.",observe:"Beobachten und Vorschläge besprechen. Es werden keine Aktionen ausgeführt.",confirm:"Beobachten und einzelne Aktionen nach deiner Annahme ausführen. Keine unbeaufsichtigte Vollautomatik."}[state.work_mode];
-  for(const id of ["windows","target","observe","lens","watch"])$(id).disabled=state.work_mode==="discuss"||state.closed;
-  if(state.work_mode==="discuss"){$("watch").checked=false;$("preview").hidden=true;$("target").value="";}
+  $("work-mode-hint").textContent={human_only:"Modell und Beobachtung sind ausgeschaltet. Deine Eingaben bleiben lokal.",human_leads:"Du arbeitest. Nach einem ausdrücklichen Auftrag kommentiert das Modell Änderungen und macht Vorschläge. Einzelne Vorschläge kannst du übernehmen.",model_leads:"Du gibst einen begrenzten Auftrag frei und bleibst zum Zuschauen verbunden. Übernehmen / Pause beendet die Freigabe.",model_alone:"Du gibst einen begrenzten Auftrag frei und kannst das Fenster schließen. Beim Wiederöffnen mit oc cowork wartet der Bericht. Neustart erteilt keine neue Freigabe."}[state.work_mode];
+  const task=state.worker?.grant;const modelRole=["model_leads","model_alone"].includes(state.work_mode);
+  for(const id of ["windows","target","observe","lens","watch"])$(id).disabled=state.work_mode==="human_only"||state.closed||Boolean(task);
+  if(state.work_mode==="human_only"){$("watch").checked=false;$("preview").hidden=true;$("target").value="";}
+  $("task-controls").hidden=!modelRole;
+  if(!$("task-hide")){const hide=plain("button","Freigeben und Fenster schließen","primary");hide.id="task-hide";$("task-start").after(hide);hide.onclick=()=>startTask(true);}
+  $("task-hide").hidden=state.work_mode!=="model_alone";
+  $("task-start").disabled=state.closed||Boolean(task)||state.worker?.busy||!state.worker?.available||state.safety_mode==="read_only";
+  $("task-hide").disabled=$("task-start").disabled;
+  $("task-worker-hint").textContent=state.worker?.available?`Worker: ${state.worker.identity}. Der Auftrag endet an Budget, Rückfrage oder Fehler.`:"Kein ausführbarer Worker verbunden. Der Auftrag kann noch nicht starten.";
+  const report=state.worker?.current_report||state.worker?.reports?.at(-1);
+  const taskStatuses={running:"Auftrag läuft",aborted:"Auftrag abgebrochen",failed:"Auftrag mit Fehler beendet",needs_human:"Deine Prüfung oder Antwort ist nötig",budget_reached:"Freigegebenes Budget erreicht",model_reported_done:"Modell meldet Auftrag erledigt – Ergebnis prüfen"};
+  $("task-report").textContent=report?`${taskStatuses[report.status]||report.status}\nZiel: ${report.objective}\n${report.summary}\nSchritte: ${report.steps} · Modell-Turns: ${report.turns}${report.phase==="grace"?"\nVier Sekunden Abbruchfenster.":""}`:"Noch kein Auftrag. Eine Rückkehr oder Fortsetzung wiederholt keine Aktion.";
   const sessionNames={companion:"Bereit",paused:"Pausiert",control:"Aktion läuft",handoff:"Freigabe wird geprüft",observe:"Beobachten",assist:"Unterstützen"};
   const safetyNames={confirm:"Bestätigung erforderlich",read_only:"Nur lesen",allow_all:"Einzelannahme im Cowork-Modus"};
   $("connection").textContent = `Verbunden · ${modeNames[state.work_mode]} · ${sessionNames[state.mode]||state.mode} · Sicherheit: ${safetyNames[state.safety_mode]||state.safety_mode}${state.closed?" · Sitzung beendet":""}`;
   const model=state.model;
-  $("model").textContent=model.status==="connected"?`Host-Modell: ${model.identity} (vom Host gemeldet)`:(model.identity?`Host-Modell getrennt: ${model.identity}`:"Kein Host-Modell verbunden. Verbinde einen MCP-Agenten und rufe cowork_next auf.");
+  $("model").textContent=state.work_mode==="human_only"?"Modell ausgeschaltet.":state.worker?.available?`Worker: ${state.worker.identity} · ${state.worker.busy?"denkt gerade":"bereit"}${model.status==="error"?" · Fehler, bitte übernehmen":""}`:model.status==="connected"?`Host-Modell: ${model.identity} (vom Host gemeldet)`:"Kein ausführbarer Worker verbunden. Ein MCP-Host kann weiterhin den menschlich geführten Dialog bedienen.";
   const msgs=JSON.stringify(state.messages);
   if(msgs!==messagesSignature){messagesSignature=msgs;$("messages").replaceChildren();for(const m of state.messages){const e=plain("div","",`message ${m.role}`);e.append(plain("span",m.role==="human"?"Du":m.role==="system"?"Sitzung":"Host-Modell","role"),document.createTextNode(m.text));$("messages").append(e);}$("messages").scrollTop=$("messages").scrollHeight;
     const last=state.messages.filter(m=>m.role==="model").at(-1);if(last&&last.id!==lastSpeech){lastSpeech=last.id;if($("tts").checked&&"speechSynthesis" in window){speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(last.text);utterance.lang="de-DE";speechSynthesis.speak(utterance);}}}
@@ -54,12 +64,13 @@ function render(state) {
     if(offer.reason)card.append(plain("p",reasonText(offer.reason)));
     if(offer.receipt?.reason)card.append(plain("p",reasonText(offer.receipt.reason)));
     const transfer=offer.receipt?.text_transfer;if(transfer&&!transfer.complete)card.append(plain("p",`${transfer.sent_chars} von ${transfer.requested_chars} Zeichen gesendet. Bitte den Teiltext prüfen.`));
-    if(offer.status==="pending"){const row=plain("div","","controls");for(const accept of [true,false]){const b=plain("button",accept?"Annehmen und einmal ausführen":"Ablehnen",accept?"primary":"");b.disabled=(state.safety_mode==="read_only"||state.work_mode!=="confirm")&&accept;b.onclick=async()=>{b.disabled=true;await action("/ui/decide",{offer_id:offer.id,accept,nonce:offer.approval_nonce,revision:offer.revision,argument_digest:offer.digest});};row.append(b);}card.append(row,plain("p","Einmalige Annahme; läuft nach kurzer Zeit ab. Bei Zieländerung erneut beobachten.","hint"));}$("offers").append(card);}}
+    if(offer.status==="pending"){const row=plain("div","","controls");for(const accept of [true,false]){const b=plain("button",accept?"Annehmen und einmal ausführen":"Ablehnen",accept?"primary":"");b.disabled=(state.safety_mode==="read_only"||state.work_mode!=="human_leads")&&accept;b.onclick=async()=>{b.disabled=true;await action("/ui/decide",{offer_id:offer.id,accept,nonce:offer.approval_nonce,revision:offer.revision,argument_digest:offer.digest});};row.append(b);}card.append(row,plain("p","Einmalige Annahme; läuft nach kurzer Zeit ab. Bei Zieländerung erneut beobachten.","hint"));}$("offers").append(card);}}
   $("semantics").textContent=state.observation?JSON.stringify(state.observation,null,2):"Noch keine aktuelle Modellsicht. Aktualisiere sie vor einem neuen Vorschlag.";
   $("target-status").textContent=state.target?`Gebunden: ${state.target.title}`:"Kein Ziel gewählt. Textdialog ist bereits nutzbar.";
   $("metrics").textContent=`Ausgelieferte Modell-Turns: ${state.metrics.delivered_turns} / ${state.budgets.turns}\nKontext: ${state.metrics.context_characters} Zeichen / ${state.metrics.context_bytes} Bytes (kumulativ)\nJe Turn höchstens ${state.budgets.context} Zeichen\nAusgabe: höchstens ${state.budgets.output} Zeichen je Antwort\nLokale UI-Updates: ${state.metrics.ui_updates}\nWartender Turn: ${state.pending_turn?"ja":"nein"}`;
-  $("send").disabled=state.closed||state.mode==="paused"||state.pending_turn||state.executing;
-  $("resume").disabled=state.closed||state.mode!=="paused"||state.executing;
+  const usage=state.worker?.provider_usage_totals;if(usage&&Object.keys(usage).length)$("metrics").textContent+=`\nProvider meldet (getrennt): ${JSON.stringify(usage)}`;
+  $("send").disabled=state.closed||state.mode==="paused"||state.pending_turn||state.executing||Boolean(task)||modelRole;
+  $("resume").disabled=state.closed||state.mode!=="paused"||state.executing||Boolean(task)||state.worker?.busy;
   $("pause").disabled=state.closed;$("stop").disabled=state.closed;
 }
 async function poll(){if(busyPoll)return;busyPoll=true;try{render(await api("/ui/state"));}catch(e){$("connection").textContent="Verbindung verloren. Freigaben werden widerrufen. Nach Wiederanbindung bewusst fortsetzen.";stopVoice();error(e);}finally{busyPoll=false;}}
@@ -83,5 +94,7 @@ if(!("speechSynthesis" in window))$("tts").disabled=true;
 window.addEventListener("pagehide",stopVoice);
 setInterval(()=>{if(!stopping)poll();},1500);
 setInterval(()=>{if($("watch").checked&&current&&!current.executing&&!current.closed)lens();},2500);
-$("work-mode").onchange=async()=>{stopVoice();const result=await action("/ui/work-mode",{work_mode:$("work-mode").value});if(result&&result.work_mode!=="discuss")windows();};
-poll().then(()=>{if(current&&current.work_mode!=="discuss")windows();});
+async function startTask(hide=false){stopVoice();if(current?.mode==="paused"){const resumed=await action("/ui/resume");if(!resumed)return;}const configured=await action("/ui/configure",{goal:$("goal").value,constraints:$("constraints").value,target_token:$("target").value});if(!configured)return;const started=await action("/ui/task-start",{objective:$("goal").value,target_token:$("target").value,allowed_actions:Array.from($("task-actions").querySelectorAll("input:checked")).map(i=>i.value),seconds:Number($("task-seconds").value),max_steps:Number($("task-steps").value),max_turns:Number($("task-turns").value)});if(started&&hide){$("task-worker-hint").textContent="Das Fenster wird geschlossen. Falls der Browser es offen lässt: jetzt innerhalb des viersekündigen Abbruchfensters schließen. Später mit oc cowork wieder öffnen.";window.close();}}
+$("task-start").onclick=()=>startTask(false);
+$("work-mode").onchange=async()=>{stopVoice();const result=await action("/ui/work-mode",{work_mode:$("work-mode").value});if(result&&result.work_mode!=="human_only")windows();};
+poll().then(()=>{if(current&&current.work_mode!=="human_only")windows();});

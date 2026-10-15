@@ -8,6 +8,8 @@ from open_compute.cowork_desktop import DesktopBackend
 from open_compute.interaction import send_text_verified
 from test_cowork import FakeDesktop
 from open_compute.cowork_desktop import activate_verified
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 
 def test_segmented_text_reports_partial_on_cancel(monkeypatch):
@@ -93,3 +95,35 @@ def test_activation_uses_readback_and_always_detaches(successful):
         with pytest.raises(PermissionError):
             activate_verified(42, user32=user, kernel32=Kernel())
     assert user.attaches == [(8, True), (42, True), (42, False), (8, False)]
+
+
+@pytest.mark.parametrize("text,password", [("hallo welt", False), ("x" * 351, False), ("SECRET", True)])
+def test_selected_editor_content_is_bounded_and_password_never_accessed(monkeypatch, text, password):
+    backend = DesktopBackend()
+    backend._executor = SimpleNamespace(coordinate_frame=(0, 0, 800, 600))
+    class Editor:
+        IsPassword = password
+        HasKeyboardFocus = False  # a single chosen editor also works behind the UI
+        ControlTypeName = "EditControl"
+        BoundingRectangle = SimpleNamespace(left=10, top=10, right=410, bottom=210)
+        @property
+        def Name(self):
+            assert not password
+            return ""
+        def GetTextPattern(self):
+            assert not password
+            return None
+        def GetValuePattern(self):
+            assert not password
+            return SimpleNamespace(Value=text)
+    uia = SimpleNamespace(UIAutomationInitializerInThread=nullcontext,
+        ControlFromHandle=lambda hwnd: object(), WalkControl=lambda root, maxDepth: [(Editor(), 0)])
+    monkeypatch.setattr("open_compute.feeds.uia_windows._get_uia", lambda: uia)
+    packet = backend._semantics(FakeDesktop().window)
+    assert len(__import__("json").dumps(packet, ensure_ascii=False, separators=(",", ":"))) <= 1200
+    if password:
+        assert "SECRET" not in str(packet) and packet["content_readable"] is False
+    else:
+        assert packet["content_readable"] is True
+        assert packet["content_truncated"] is (len(text) > 350)
+        assert any(element.get("value") == text[:350] for element in packet["elements"])

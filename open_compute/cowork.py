@@ -90,16 +90,15 @@ class CoworkService:
 
     def __init__(self, backend: Any, *, mode: str | None = None,
                  budgets: Budgets | None = None, clock=time.monotonic, _grace_seconds: float = 4,
-                 work_mode: str = "discuss"):
+                 work_mode: str = "human_leads", worker=None, report_path=None):
         self.backend = backend
         self.budgets = budgets or Budgets()
         self.clock = clock
         self._grace_seconds = _grace_seconds
         self.lock = threading.RLock()
         self.control = ControlSession.companion("local-human")
-        if work_mode not in {"discuss", "observe", "confirm"}:
-            raise ValueError("work_mode must be discuss|observe|confirm")
-        self.work_mode = work_mode
+        from .cowork_tasks import role_name
+        self.work_mode = role_name(work_mode)
         self.session_id = secrets.token_hex(16)
         self.revision = 0
         self.target: dict | None = None
@@ -129,6 +128,9 @@ class CoworkService:
                         "output_characters": 0, "images": 0, "image_bytes": 0,
                         "observation_characters": 0, "observation_bytes": 0,
                         "ui_updates": 0, "deduplicated": 0}
+        from .cowork_tasks import TaskController
+        self.tasks = TaskController(self, worker=worker, report_path=report_path)
+        self.tasks.start()
 
     def _human(self, key: str) -> None:
         if not secrets.compare_digest(str(key), self._ui_key):
@@ -147,7 +149,7 @@ class CoworkService:
             self.turn = None
 
     def _active(self) -> None:
-        if self.closed or self.control.mode is SessionMode.PAUSED or self.executing:
+        if self.closed or self.control.mode is SessionMode.PAUSED or self.executing or self.tasks.running:
             raise PermissionError("session stopped, paused or executing")
 
     def snapshot(self, *, human_key: str | None = None) -> dict:
@@ -174,7 +176,7 @@ class CoworkService:
                     "messages": list(self.messages), "offers": offers,
                     "events": list(self.events), "metrics": dict(self.metrics),
                     "budgets": asdict(self.budgets), "character_unit": "Unicode code points",
-                    "pending_turn": self.turn is not None}
+                    "pending_turn": self.turn is not None, "worker": self.tasks.state()}
 
     def configure(self, key: str, goal: str, constraints: str, target_token: str) -> dict:
         with self.lock:
@@ -183,12 +185,12 @@ class CoworkService:
             goal = bounded(goal, 350, "goal")
             if not isinstance(constraints, str) or len(constraints) > 1200:
                 raise ValueError("constraints: at most 1200 characters")
-            if self.work_mode == "discuss":
+            if self.work_mode == "human_only":
                 target_token = ""
             matches = [w for w in self.backend.windows() if w["window_token"] == target_token] if target_token else []
             if target_token and len(matches) != 1:
                 raise ValueError("choose a live target window")
-            if self.work_mode != "discuss" and not matches:
+            if self.work_mode in {"model_leads", "model_alone"} and not matches:
                 raise ValueError("choose a live target window for desktop collaboration")
             if matches:
                 bounded(matches[0]["title"], 350, "target title")
@@ -214,15 +216,18 @@ class CoworkService:
             self._invalidate("new human message")
             self.message_ids.append(message_id)
             self.messages.append({"role": "human", "text": text, "id": message_id})
+            if self.work_mode == "human_only":
+                return {"status": "saved_local"}
             self.turn = {"id": secrets.token_hex(16), "revision": self.revision,
                          "claim": None, "expires": self.clock() + self.budgets.model_seconds}
+            self.tasks.wake.set()
             return {"status": "queued", "turn_id": self.turn["id"]}
 
     def observe(self) -> dict:
         with self.lock:
             self._active()
-            if self.work_mode == "discuss":
-                raise PermissionError("Besprechen erlaubt keine Desktop-Beobachtung")
+            if self.work_mode == "human_only":
+                raise PermissionError("Ich arbeite allein: keine Desktop-Beobachtung")
             if self.target is None:
                 raise ValueError("human must choose target first")
             obs = self.backend.observe(self.target)
@@ -233,8 +238,17 @@ class CoworkService:
             return obs
 
     def next_turn(self, identity: str) -> dict:
+        if self.work_mode != "human_leads":
+            raise PermissionError("model turns require human-led role or a UI task grant")
+        if self.tasks.available:
+            return {"status": "busy", "owner": "connected-worker"}
+        return self._next_turn(identity)
+
+    def _next_turn(self, identity: str) -> dict:
         with self.lock:
             self._active()
+            if self.work_mode != "human_leads":
+                raise PermissionError("model turns require human-led role or a UI task grant")
             identity = bounded(identity, 120, "model identity")
             self.model = {"identity": identity, "status": "connected",
                           "last_seen": self.clock(), "identity_source": "host-reported"}
@@ -292,8 +306,8 @@ class CoworkService:
     def model_lens(self, reason: str) -> dict:
         with self.lock:
             self._active()
-            if self.work_mode == "discuss":
-                raise PermissionError("Besprechen erlaubt keine Desktop-Beobachtung")
+            if self.work_mode == "human_only":
+                raise PermissionError("Ich arbeite allein: keine Desktop-Beobachtung")
             bounded(reason, 350, "visual escalation reason")
             if (not self.turn or not self.turn["claim"] or not self.turn.get("observed")
                     or self.turn.get("image") or not self.target):
@@ -317,8 +331,8 @@ class CoworkService:
             text = bounded(text, self.budgets.output, "reply")
             offer = None
             if proposal is not None:
-                if self.work_mode == "discuss":
-                    raise PermissionError("Besprechen erlaubt keine Aktionsangebote")
+                if self.work_mode != "human_leads":
+                    raise PermissionError("Einzelangebote sind nur beim menschlichen Führen möglich")
                 if self.target is None or self.observation is None:
                     raise ValueError("observe selected target before offering")
                 if set(proposal) != {"action", "observation_id"}:
@@ -365,8 +379,8 @@ class CoworkService:
                 offer["status"] = "rejected"
                 self._event("offer_rejected", offer_id=offer_id)
                 return dict(offer)
-            if self.work_mode != "confirm":
-                offer.update(status="denied", reason="Begleiten erlaubt keine Ausführung")
+            if self.work_mode != "human_leads":
+                offer.update(status="denied", reason="Einzelannahme gehört zum menschlichen Führen")
                 return dict(offer)
             if self.ui_seen is None or self.clock() - self.ui_seen > 8:
                 raise PermissionError("UI presence expired")
@@ -444,13 +458,16 @@ class CoworkService:
             self._invalidate(reason)
             self.closed = self.closed or stop
             self._event("stopped" if stop else "paused", reason=reason)
-        self.backend.release_all()
+        try:
+            self.backend.release_all()
+        finally:
+            self.tasks.halt(reason)
         return {"status": "stopped" if stop else "paused"}
 
     def resume(self, key: str) -> dict:
         with self.lock:
             self._human(key)
-            if self.closed or self.executing:
+            if self.closed or self.executing or self.tasks.running or self.tasks.busy:
                 raise PermissionError("session cannot resume")
             self.control.set_mode(SessionMode.COMPANION)
             self.cancel.clear()
@@ -461,20 +478,23 @@ class CoworkService:
             self._human(key)
             if self.closed:
                 raise PermissionError("session stopped")
-            if work_mode not in {"discuss", "observe", "confirm"}:
-                raise ValueError("work_mode must be discuss|observe|confirm")
+            from .cowork_tasks import role_name
+            work_mode = role_name(work_mode)
             if work_mode == self.work_mode:
                 return {"status": "unchanged", "work_mode": work_mode}
-            if self.executing:
+            if self.executing or self.tasks.running or self.tasks.busy:
                 self.cancel.set()
                 self.control.human_activity()
             self._invalidate("human changed work mode")
             self.observation = None
             self.work_mode = work_mode
-            if work_mode == "discuss":
+            if work_mode == "human_only":
                 self.target = None
             self._event("work_mode_changed", work_mode=work_mode)
-        self.backend.release_all()
+        try:
+            self.backend.release_all()
+        finally:
+            self.tasks.halt("human changed work role")
         return {"status": "changed", "work_mode": work_mode}
 
     def watchdog(self) -> None:
@@ -492,10 +512,15 @@ class CoworkService:
             active = self.control.mode is not SessionMode.PAUSED and not self.closed
             lease_expired = self.executing and self.control.lease is not None and not self.control.authorize(
                 "*", require_exact_scope=False)[0]
-        if expired and active:
+        if expired and active and self.work_mode != "model_alone":
             self.interrupt(self._ui_key, reason="UI connection lost")
         elif lease_expired:
             self.interrupt(self._ui_key, reason="control lease expired")
+        with self.lock:
+            grant = self.tasks.grant
+            task_expired = grant is not None and self.clock() >= grant.expires_at
+        if task_expired:
+            self.tasks.halt("task time budget reached")
 
     def model_status(self) -> dict:
         """Latest-only model projection; local history is never a second context feed."""
@@ -508,5 +533,8 @@ class CoworkService:
                     "pending_offer_ids": [x["id"] for x in self.offers.values() if x["status"] == "pending"],
                     "delivered_turns": self.metrics["delivered_turns"],
                     "turn_budget": self.budgets.turns,
+                    "worker": {"available": self.tasks.available, "busy": self.tasks.busy,
+                               "task_id": self.tasks.grant.task_id if self.tasks.grant else None,
+                               "report_status": self.tasks.report.get("status") if self.tasks.report else None},
                     "last_result": next(({"id": x["id"], "status": x["status"]}
                                          for x in reversed(list(self.offers.values()))), None)}

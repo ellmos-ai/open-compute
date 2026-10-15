@@ -17,6 +17,11 @@ label { display:block; font-size:13px; color:#bdced1; margin:9px 0 5px }
 label:has(input) { display:flex; align-items:center; gap:5px; margin:0 }
 textarea,select { display:block; width:100%; padding:10px; border:1px solid #4b6169; border-radius:5px; background:#101b20; color:#eff5f4; font:inherit; font-size:14px; resize:vertical; margin-bottom:12px }
 #messages { min-height:180px; max-height:340px; overflow:auto; border-top:1px solid #33464d; padding-top:8px }
+.limits { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px }
+.limits input { width:100%; padding:8px; font:inherit }
+fieldset { border:1px solid #50676e; padding:10px; margin:12px 0 }
+fieldset label { display:flex; align-items:center; gap:6px }
+#task-report { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px }
 .message { padding:12px 15px; margin:8px 0; border-radius:6px; background:#23343b; white-space:pre-wrap; overflow-wrap:anywhere }
 .message.human { background:#203c3b }
 .role { font-size:11px; text-transform:uppercase; color:#9cbab9; display:block; margin-bottom:4px }

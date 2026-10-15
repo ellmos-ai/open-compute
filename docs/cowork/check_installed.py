@@ -25,7 +25,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="oc-cowork-wheel-") as temp:
         runtime = Path(temp) / "runtime.json"
         child = subprocess.Popen([sys.executable, "-m", "open_compute.cli", "cowork", "--no-open",
-                                  "--runtime", str(runtime), "--max-turns", "3"],
+                                  "--runtime", str(runtime), "--max-turns", "3", "--worker", "none"],
                                   cwd=temp, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, encoding="utf-8",
                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -45,12 +45,12 @@ def main():
                     return json.load(response)
             with urllib.request.urlopen(origin) as response:
                 html = response.read().decode("utf-8-sig")
-            assert "Mikrofon" in html and "Besprechen" in html and "Übernehmen" in html
+            assert "Mikrofon" in html and "Modell begleitet" in html and "Übernehmen" in html
             state = ui("/ui/state")
-            assert state["work_mode"] == "discuss" and state["target"] is None
+            assert state["work_mode"] == "human_leads" and state["target"] is None
             ui("/ui/message", {"text": "Text ohne Desktop äöü", "message_id": "wheel-1"})
             turn = model_request("next", {"identity": "wheel smoke / deterministic host"}, descriptor=runtime)
-            assert turn["context"]["work_mode"] == "discuss"
+            assert turn["context"]["work_mode"] == "human_leads"
             model_request("reply", {"turn_id": turn["context"]["turn_id"], "claim": turn["claim"],
                                      "text": "Antwort aus dem installierten Paket"}, descriptor=runtime)
             state = ui("/ui/state")

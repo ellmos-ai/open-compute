@@ -274,29 +274,29 @@ def test_discuss_without_windows_or_target():
     s.configure(key, "Nur besprechen", "Text ist ausreichend", "")
     s.message(key, "Hallo", "a")
     turn = s.next_turn("keyless host")
-    assert turn["context"]["work_mode"] == "discuss"
+    assert turn["context"]["work_mode"] == "human_leads"
     assert turn["context"]["target"] is None
-    with pytest.raises(PermissionError):
+    with pytest.raises((PermissionError, ValueError)):
         s.observe()
-    with pytest.raises(PermissionError):
+    with pytest.raises((PermissionError, ValueError)):
         s.reply(turn["context"]["turn_id"], turn["claim"], "Aktion",
                 {"action": {"type": "key", "text": "a"}, "observation_id": "fake"})
     assert s.reply(turn["context"]["turn_id"], turn["claim"], "Nur Text")["status"] == "replied"
 
 
-def test_observe_mode_offers_but_never_executes(setup):
+def test_human_leads_keeps_explicit_individual_adoption(setup):
     s, b, key = setup
     s.set_work_mode(key, "observe")
     o = offer(setup)
-    assert decide(s, key, o)["status"] == "denied"
-    assert not b.calls and s.model_status()["work_mode"] == "observe"
+    assert decide(s, key, o)["status"] == "uncertain"
+    assert len(b.calls) == 1 and s.model_status()["work_mode"] == "human_leads"
 
 
 def test_mode_switch_revokes_pending_offer(setup):
     s, b, key = setup
     o = offer(setup)
-    s.set_work_mode(key, "observe")
-    s.set_work_mode(key, "confirm")
+    s.set_work_mode(key, "human_only")
+    s.set_work_mode(key, "human_leads")
     with pytest.raises(PermissionError):
         decide(s, key, o)
     assert not b.calls
@@ -310,11 +310,11 @@ def test_mode_switch_interrupts_active_execution(setup):
     thread = threading.Thread(target=lambda: result.append(decide(s, key, o)))
     thread.start()
     assert b.started.wait(2)
-    s.set_work_mode(key, "discuss")
+    s.set_work_mode(key, "human_only")
     thread.join(3)
     assert not thread.is_alive() and not s.executing
     assert result[0]["status"] == "uncertain"
-    assert s.control.lease is None and s.work_mode == "discuss" and s.target is None
+    assert s.control.lease is None and s.work_mode == "human_only" and s.target is None
 
 
 def test_turn_expiry_does_not_leave_queue_stuck(setup):

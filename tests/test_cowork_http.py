@@ -6,6 +6,7 @@ import pytest
 
 from open_compute.cowork import CoworkService
 from open_compute.cowork_http import CoworkHost, model_request
+from open_compute.cowork_http import existing_ui_url
 from test_cowork import FakeDesktop
 
 
@@ -34,9 +35,15 @@ def request(host, path, data=None, *, model=False, headers=None):
                                      {"Authorization": "Bearer wrong"},
                                      {"Sec-Fetch-Site": "cross-site"}])
 def test_cross_origin_host_and_bad_capability_blocked(host, headers):
-    with pytest.raises(urllib.error.HTTPError) as error:
-        request(host, "/ui/pause", {}, headers=headers)
-    assert error.value.code == 403
+    for _ in range(8):
+        with pytest.raises(urllib.error.HTTPError) as error:
+            request(host, "/ui/pause", {}, headers=headers)
+        try:
+            assert error.value.code == 403
+            assert error.value.headers["Connection"] == "close"
+            assert json.load(error.value)["error"]
+        finally:
+            error.value.close()
     assert host.service.control.mode.value == "companion"
 
 
@@ -116,3 +123,16 @@ def test_exclusive_descriptor_and_only_safe_model_operations(host):
         model_request("decide", {}, descriptor=host.descriptor_path)
     with pytest.raises(PermissionError):
         model_request("reply", {"turn_id": "x", "claim": "x", "text": "bad"}, descriptor=host.descriptor_path)
+
+
+def test_reopen_authenticates_same_live_session_without_inference(host):
+    before = host.service.metrics["delivered_turns"]
+    assert existing_ui_url(host.descriptor_path) == host.ui_url
+    assert host.service.metrics["delivered_turns"] == before
+    assert "ui_key" not in json.loads(host.descriptor_path.read_text())
+    private = host.ui_descriptor_path
+    data = json.loads(private.read_text())
+    data["pid"] += 1
+    private.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(PermissionError):
+        existing_ui_url(host.descriptor_path)
