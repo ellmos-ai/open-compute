@@ -50,23 +50,35 @@ def test_model_channel_cannot_approve_even_with_valid_model_key(host):
     assert host.service._ui_key not in json.dumps(descriptor)
 
 
-def test_actual_http_turn_observation_reply_and_approval(host, monkeypatch):
-    from open_compute import mcp_server
-    monkeypatch.setenv("OC_COWORK_RUNTIME", str(host.descriptor_path))
+@pytest.mark.parametrize("channel", ["http", "mcp"])
+def test_actual_turn_observation_reply_and_approval(host, monkeypatch, channel):
+    if channel == "mcp":
+        pytest.importorskip("mcp", reason="optional MCP wrapper coverage; HTTP case always runs")
+        from open_compute import mcp_server
+        monkeypatch.setenv("OC_COWORK_RUNTIME", str(host.descriptor_path))
+
+    def model(operation, data=None):
+        if channel == "http":
+            return model_request(operation, data, descriptor=host.descriptor_path)
+        tool = {"next": mcp_server.cowork_next, "observe": mcp_server.cowork_observe,
+                "reply": mcp_server.cowork_reply, "state": mcp_server.cowork_status}[operation]
+        return tool(**(data or {}))
+
     request(host, "/ui/state")
     request(host, "/ui/configure", {"goal": "Helfen", "constraints": "", "target_token": host.service.backend.window["window_token"]})
     request(host, "/ui/message", {"text": "Bitte hallo schreiben", "message_id": "browser-1"})
-    turn = mcp_server.cowork_next("Test host-model / no provider call")
-    obs = mcp_server.cowork_observe()
-    result = mcp_server.cowork_reply(turn["context"]["turn_id"], turn["claim"], "Vorschlag aus MCP",
-                {"action": {"type": "type", "text": "Hallo"}, "observation_id": obs["observation_id"]})
+    turn = model("next", {"identity": "Test host-model / no provider call"})
+    obs = model("observe")
+    result = model("reply", {"turn_id": turn["context"]["turn_id"], "claim": turn["claim"],
+                "text": "Vorschlag aus Modellkanal", "proposal": {
+                    "action": {"type": "type", "text": "Hallo"}, "observation_id": obs["observation_id"]}})
     assert result["status"] == "offered"
     assert not host.service.backend.calls
     ui = request(host, "/ui/state")
     offer = ui["offers"][-1]
-    assert "Vorschlag aus MCP" in json.dumps(ui, ensure_ascii=False)
-    model = mcp_server.cowork_status()
-    assert "messages" not in model and "approval_nonce" not in json.dumps(model)
+    assert "Vorschlag aus Modellkanal" in json.dumps(ui, ensure_ascii=False)
+    status = model("state")
+    assert "messages" not in status and "approval_nonce" not in json.dumps(status)
     result = request(host, "/ui/decide", {"offer_id": offer["id"], "accept": True,
                "nonce": offer["approval_nonce"], "revision": offer["revision"], "argument_digest": offer["digest"]})
     assert result["status"] == "uncertain" and len(host.service.backend.calls) == 1
