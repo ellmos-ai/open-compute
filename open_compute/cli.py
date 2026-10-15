@@ -2157,6 +2157,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         print(textwrap.dedent("""\
             Usage:
+              oc cowork [start|state|next|observe|reply] [--no-open] [--runtime PATH]
               oc capture [--out PATH] [--monitor N] [--window SUBSTR]
               oc capture-series --window SUBSTR [--max-frames N] [--stable-frames N]
               oc session status|companion|assist|request-control|grant|heartbeat|pause|release
@@ -2188,7 +2189,10 @@ def main() -> None:
     cmd = sys.argv[1]
     rest = sys.argv[2:]
 
-    if cmd == "capture":
+    if cmd == "cowork":
+        from .cowork_http import main as cowork_main
+        cowork_main(rest)
+    elif cmd == "capture":
         cmd_capture(rest)
     elif cmd == "capture-series":
         cmd_capture_series(rest)

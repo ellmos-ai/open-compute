@@ -88,7 +88,7 @@ include = ["open_compute*"]
 
 [tool.setuptools.package-data]
 # Bundled perception-mode profiles, loaded by name at runtime.
-open_compute = ["profiles/*.json"]
+open_compute = ["profiles/*.json", "cowork_ui/*.html", "cowork_ui/*.js", "cowork_ui/*.css"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

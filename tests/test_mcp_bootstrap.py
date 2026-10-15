@@ -116,6 +116,7 @@ def test_bootstrap_handoff_keeps_tools_available() -> None:
 
         assert tools_response["id"] == 2
         assert "chat" in names
-        assert len(names) == 19
+        assert {"cowork_status", "cowork_next", "cowork_observe", "cowork_lens", "cowork_reply"} <= names
+        assert len(names) == 24
     finally:
         _stop(process)
