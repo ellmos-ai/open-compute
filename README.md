@@ -24,6 +24,12 @@
 
 **A model-agnostic computer-use core: one agent loop, any reasoning model behind a single interface.**
 
+**Standalone Cowork (development):** `oc cowork` opens a separate local app window
+with text, optional browser speech, bounded target observations and human-approved
+action offers. An MCP host model connects through `cowork_next`, `cowork_observe`
+and `cowork_reply` without a model API key. No Cowork Protocol or Node service is
+required. See [setup, contracts and verification limits](docs/cowork/README.md).
+
 open-compute is a small, dependency-light Python core for building computer-use
 agents (LLM-driven GUI / desktop / browser automation). It implements the
 **perception → model-tool-call → action → feedback** loop and keeps the
