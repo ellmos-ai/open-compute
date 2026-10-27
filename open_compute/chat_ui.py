@@ -68,9 +68,14 @@ class MessagesLineAdapter:
         target_ref: str,
         chat_id: str,
     ) -> None:
-        self.library_dir = Path(library_dir).resolve(strict=True)
-        self.messages_dir = Path(messages_dir).resolve(strict=True)
-        self.config_path = Path(config_path).resolve(strict=True)
+        try:
+            self.library_dir = Path(library_dir).resolve(strict=True)
+            self.messages_dir = Path(messages_dir).resolve(strict=True)
+            self.config_path = Path(config_path).resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise MessagesLineUnavailable(
+                "local Messages-Line library, store or configuration path is unavailable"
+            ) from exc
         self.target_ref = target_ref
         self.chat_id = chat_id
         if not self.library_dir.is_dir() or not (self.library_dir / "messages_line.py").is_file():

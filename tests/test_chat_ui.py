@@ -116,6 +116,23 @@ def _messages_line_fixture(tmp_path, monkeypatch, *, mode="chat_start", gui_open
     return adapter, config_path, config, message
 
 
+def test_messages_line_from_environment_maps_missing_config_to_unavailable(
+    tmp_path, monkeypatch
+):
+    library = os.environ.get("OPEN_COMPUTE_MESSAGES_LIB", "")
+    if not library or not (Path(library) / "messages_line.py").is_file():
+        pytest.skip("needs the independently pinned Ticket-Master Messages-Line library")
+    store = tmp_path / "messages"
+    store.mkdir()
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_LIB", library)
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_DIR", str(store))
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_CONFIG", str(tmp_path / "missing-policy.json"))
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_TARGET_REF", "gui:open-compute-test")
+
+    with pytest.raises(MessagesLineUnavailable, match="path is unavailable"):
+        MessagesLineAdapter.from_environment("missing-policy-chat")
+
+
 def test_messages_line_lists_start_demand_and_active_modes_without_content(tmp_path, monkeypatch):
     adapters = {}
     for mode in ("chat_start", "on_demand", "active_chat"):
@@ -918,3 +935,32 @@ def test_native_tk_child_starts_and_shuts_down_cleanly():
         if session.process is not None and session.process.poll() is None:
             session.process.terminate()
             session.process.wait(timeout=2)
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32" and not os.environ.get("DISPLAY"),
+    reason="native Tk process smoke requires a desktop display",
+)
+def test_native_chat_stays_open_when_configured_policy_disappears(tmp_path, monkeypatch):
+    adapter, config_path, _config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    config_path.unlink()
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_LIB", str(adapter.library_dir))
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_DIR", str(adapter.messages_dir))
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_CONFIG", str(config_path))
+    monkeypatch.setenv("OPEN_COMPUTE_MESSAGES_TARGET_REF", adapter.target_ref)
+
+    session = ChatSession(chat_id="pytest-missing-policy-window")
+    try:
+        session.start(
+            title="open-compute Chat fehlende Policy",
+            context="Messages-Line ist optional.",
+            choices=(),
+        )
+        assert session.ready.is_set()
+        assert session.process is not None and session.process.poll() is None
+        assert adapter._line.receipts(message["message_id"]) == []
+    finally:
+        if session.process is not None and session.process.poll() is None:
+            session._send_command({"type": "close"})
+            session.process.wait(timeout=5)
+    assert session.process is not None and session.process.poll() is not None
