@@ -125,7 +125,7 @@ if ($repoRoot -ine $repo.TrimEnd('\')) {
 if (-not $PrepareOnly -and [string]::IsNullOrWhiteSpace($Workspace)) {
     throw 'Bitte den gewünschten Arbeitsordner ausdrücklich mit -Workspace auswählen.'
 }
-if (-not $PrepareOnly) {
+if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
     $workspaceItem = Get-Item -LiteralPath $Workspace -ErrorAction Stop
     if (-not $workspaceItem.PSIsContainer) {
         throw "Der gewählte Host-Arbeitsordner ist kein Ordner: $Workspace"
