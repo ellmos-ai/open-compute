@@ -1009,6 +1009,11 @@ def test_tk_observation_replay_returns_same_frame_without_second_capture(
         observation_enabled=True,
         observation_window={"hwnd": 44, "pid": 55, "title": "Testfenster"},
         observation_event_id="event-1",
+        observation_generation=1,
+    )
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=turn.observation_window,
+        generation=1,
     )
 
     class Bridge:
@@ -1052,6 +1057,11 @@ def test_tk_observation_requires_mode_and_current_screenshot_consent(
         observation_enabled=False,
         observation_window={"hwnd": 44, "pid": 55, "title": "Testfenster"},
         observation_event_id="event-optout",
+        observation_generation=1,
+    )
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=turn.observation_window,
+        generation=1,
     )
     monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
         open=lambda **_kwargs: (session, turn, False),
@@ -1063,7 +1073,7 @@ def test_tk_observation_requires_mode_and_current_screenshot_consent(
     result = S.chat(channel="tk")
 
     assert result["status"] == "observation_failed"
-    assert "Beobachtungsmodus ist für diesen Turn aus" in result["error"]
+    assert "Freigabe, Fenster oder Sitzung wurde geändert" in result["error"]
     assert captures == []
 
 

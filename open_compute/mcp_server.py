@@ -2678,6 +2678,11 @@ def chat(
             return {"status": "waiting_for_human", "chat_id": session.chat_id, "screenshot": None}
         if turn.observation_update:
             def capture_observation() -> dict[str, Any]:
+                if not session.observation_authorizes(turn):
+                    return {
+                        "status": "revoked",
+                        "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
+                    }
                 if not turn.observation_enabled:
                     return {
                         "status": "error",
@@ -2703,7 +2708,8 @@ def chat(
                     }
 
             outcome = session.capture_observation_once(
-                turn.observation_event_id, capture_observation, replayed=replayed
+                turn.observation_event_id, capture_observation, replayed=replayed,
+                authorized=lambda: session.observation_authorizes(turn),
             )
 
             if outcome.get("status") != "ok":

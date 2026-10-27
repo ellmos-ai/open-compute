@@ -117,6 +117,7 @@ class HumanTurn:
     observation_enabled: bool = False
     observation_window: dict[str, Any] | None = None
     observation_event_id: str = ""
+    observation_generation: int = 0
 
 
 @dataclass
@@ -135,6 +136,11 @@ class ChatSession:
     observation_reply_cache: tuple[str, dict[str, Any]] | None = None
     observation_capture_lock: threading.Lock = field(default_factory=threading.Lock)
     observation_processed_ids: list[str] = field(default_factory=list)
+    observation_state_lock: threading.Lock = field(default_factory=threading.Lock)
+    observation_generation: int = 0
+    observation_enabled: bool = False
+    observation_screenshot_consent: bool = False
+    observation_window: dict[str, Any] | None = None
     temp_audio_paths: set[Path] = field(default_factory=set)
 
     def start(self, *, title: str, context: str, choices: tuple[str, ...]) -> None:
@@ -210,6 +216,13 @@ class ChatSession:
                         self._track_temp_audio(message.get("path"))
                     elif message.get("type") == "temp_audio_removed":
                         self._untrack_temp_audio(message.get("path"))
+                    elif message.get("type") == "observation_state":
+                        self.update_observation_state(
+                            enabled=bool(message.get("enabled")),
+                            screenshot_consent=bool(message.get("screenshot_consent")),
+                            window=message.get("window") if isinstance(message.get("window"), dict) else None,
+                            generation=message.get("generation"),
+                        )
                     else:
                         self.turns.put(message)
                 except json.JSONDecodeError as exc:
@@ -289,13 +302,19 @@ class ChatSession:
         self._send_command({"type": "observation_error", "message": safe_message})
 
     def capture_observation_once(
-        self, event_id: str, capture: Any, *, replayed: bool = False
+        self, event_id: str, capture: Any, *, replayed: bool = False,
+        authorized: Any | None = None,
     ) -> dict[str, Any]:
         """Capture at most once per UI event and cache only one <=2-MB frame."""
         key = str(event_id).strip()
         if not key or len(key) > 128:
             return {"status": "error", "message": "Ungültige Beobachtungs-ID."}
         with self.observation_capture_lock:
+            if authorized is not None and not authorized():
+                return {
+                    "status": "revoked",
+                    "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
+                }
             cached = self.observation_reply_cache
             if cached is not None and cached[0] == key:
                 return dict(cached[1])
@@ -326,6 +345,45 @@ class ChatSession:
             if len(self.observation_processed_ids) > 64:
                 self.observation_processed_ids.pop(0)
             return dict(result)
+
+    def update_observation_state(
+        self, *, enabled: bool, screenshot_consent: bool,
+        window: Mapping[str, Any] | None, generation: Any = None,
+    ) -> None:
+        """Apply the UI's latest revocable consent state from its IPC stream."""
+        try:
+            identity = _window_identity(window) if window is not None else None
+        except (KeyError, TypeError, ValueError):
+            identity = None
+        with self.observation_state_lock:
+            if self.closed.is_set():
+                enabled = screenshot_consent = False
+                identity = None
+            if generation is not None:
+                try:
+                    supplied = int(generation)
+                except (TypeError, ValueError):
+                    return
+                if supplied <= self.observation_generation:
+                    return
+                self.observation_generation = supplied
+            else:
+                self.observation_generation += 1
+            self.observation_enabled = bool(enabled and identity)
+            self.observation_screenshot_consent = bool(screenshot_consent and identity)
+            self.observation_window = identity
+
+    def observation_authorizes(self, turn: HumanTurn) -> bool:
+        with self.observation_state_lock:
+            return bool(
+                not self.closed.is_set()
+                and turn.observation_generation == self.observation_generation
+                and turn.observation_enabled
+                and turn.screenshot
+                and self.observation_enabled
+                and self.observation_screenshot_consent
+                and turn.observation_window == self.observation_window
+            )
 
     def _send_command(self, command: dict[str, Any]) -> None:
         if self.process is None or self.process.stdin is None or self.process.poll() is not None:
@@ -381,6 +439,7 @@ class ChatSession:
                         str(value.get("observation_event_id", ""))[:128]
                         if value.get("observation_update") else ""
                     ),
+                    observation_generation=int(value.get("observation_generation", 0)),
                 ), False
 
     def _run_ui(self, title: str, context: str, choices: tuple[str, ...]) -> None:
@@ -501,6 +560,27 @@ class ChatSession:
 
             observation_after_id: str | None = None
             last_observation_at = 0.0
+            observation_generation = 0
+            published_observation_state: tuple[Any, ...] | None = None
+
+            def publish_observation_state(
+                enabled: bool, screenshot_consent: bool,
+                window: Mapping[str, Any] | None,
+            ) -> None:
+                nonlocal observation_generation, published_observation_state
+                identity = _window_identity(window) if window is not None else None
+                state = (bool(enabled), bool(screenshot_consent), identity)
+                if state == published_observation_state:
+                    return
+                observation_generation += 1
+                published_observation_state = state
+                self.turns.put({
+                    "type": "observation_state",
+                    "generation": observation_generation,
+                    "enabled": bool(enabled),
+                    "screenshot_consent": bool(screenshot_consent),
+                    "window": identity,
+                })
 
             def cancel_observation_timer() -> None:
                 nonlocal observation_after_id
@@ -514,14 +594,26 @@ class ChatSession:
             def refresh_observation_state(*_args: Any) -> None:
                 nonlocal observation_after_id
                 cancel_observation_timer()
-                if self.closed.is_set() or not observe_enabled.get():
-                    return
                 selected = observation_window_by_label.get(window_choice.get())
-                if not include_shot.get():
-                    status.set("Beobachtung pausiert: Screenshotfreigabe für den Turn ist aus.")
-                    return
-                if selected is None:
-                    status.set("Beobachtung pausiert: Bitte ein Zielfenster auswählen.")
+                allowed = bool(
+                    not self.closed.is_set()
+                    and observation_capture_allowed(
+                        enabled=bool(observe_enabled.get()),
+                        screenshot_consent=bool(include_shot.get()),
+                        window=selected,
+                    )
+                )
+                publish_observation_state(
+                    allowed, bool(include_shot.get()) if allowed else False,
+                    selected if allowed else None,
+                )
+                if not allowed:
+                    if self.closed.is_set() or not observe_enabled.get():
+                        return
+                    if not include_shot.get():
+                        status.set("Beobachtung pausiert: Screenshotfreigabe für den Turn ist aus.")
+                    else:
+                        status.set("Beobachtung pausiert: Bitte ein Zielfenster auswählen.")
                     return
                 delay = max(
                     0.0,
@@ -532,14 +624,14 @@ class ChatSession:
                     f"{OBSERVATION_INTERVAL_SECONDS} Sekunden. Zum Stoppen AUS wählen."
                 )
                 observation_after_id = root.after(
-                    int(delay * 1_000), capture_observation_turn
+                    int(delay * 1_000), capture_observation_turn, observation_generation
                 )
 
-            def capture_observation_turn() -> None:
+            def capture_observation_turn(expected_generation: int) -> None:
                 nonlocal observation_after_id, last_observation_at
                 observation_after_id = None
                 selected = observation_window_by_label.get(window_choice.get())
-                if not observation_capture_allowed(
+                if expected_generation != observation_generation or not observation_capture_allowed(
                     enabled=bool(observe_enabled.get()),
                     screenshot_consent=bool(include_shot.get()),
                     window=selected,
@@ -559,10 +651,12 @@ class ChatSession:
                     observation_update=True,
                     observation_window=selected,
                     observation_event_id=str(uuid.uuid4()),
+                    observation_generation=expected_generation,
                 )
 
             def cleanup_chat() -> None:
                 cancel_observation_timer()
+                publish_observation_state(False, False, None)
                 cancel_microphone_work()
 
             refresh_window_choices()

@@ -2,6 +2,8 @@
 
 import os
 import queue
+import io
+import json
 import subprocess
 import sys
 import time
@@ -117,6 +119,145 @@ def test_observation_event_is_captured_once_and_only_one_frame_is_cached():
     session.dispose()
     assert session.observation_reply_cache is None
     assert session.observation_processed_ids == []
+
+
+def test_observation_revocation_invalidates_queued_and_cached_frame_before_return():
+    session = ChatSession(chat_id="observation-revoked")
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    queued = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="queued-before-off",
+        observation_generation=session.observation_generation,
+    )
+    session.update_observation_state(
+        enabled=False, screenshot_consent=False, window=None
+    )
+    captures = []
+    denied = session.capture_observation_once(
+        queued.observation_event_id,
+        lambda: captures.append(True) or {"status": "ok", "png": b"private"},
+        authorized=lambda: session.observation_authorizes(queued),
+    )
+    assert denied["status"] == "revoked"
+    assert captures == []
+
+
+def test_observation_scope_change_invalidates_turn_and_previously_cached_image():
+    session = ChatSession(chat_id="observation-window-change")
+    first = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    other = {"hwnd": 45, "pid": 56, "title": "Anderes Fenster"}
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=first
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=first, observation_event_id="scope-event",
+        observation_generation=session.observation_generation,
+    )
+    captures = []
+    captured = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: captures.append(True) or {"status": "ok", "png": b"private"},
+        authorized=lambda: session.observation_authorizes(turn),
+    )
+    assert captured["status"] == "ok"
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=other
+    )
+    replay = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: captures.append("duplicate") or {"status": "ok", "png": b"wrong"},
+        authorized=lambda: session.observation_authorizes(turn),
+    )
+    assert replay["status"] == "revoked"
+    assert captures == [True]
+
+
+def test_observation_session_close_invalidates_queued_turn_before_capture():
+    session = ChatSession(chat_id="observation-session-close")
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="closed-session-event",
+        observation_generation=session.observation_generation,
+    )
+    session.closed.set()
+    captures = []
+    outcome = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: captures.append(True) or {"status": "ok", "png": b"private"},
+        authorized=lambda: session.observation_authorizes(turn),
+    )
+    assert outcome["status"] == "revoked"
+    assert captures == []
+
+
+def test_observation_ipc_revocation_after_turn_is_queued_prevents_capture():
+    session = ChatSession(chat_id="observation-ipc-revoke")
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    messages = [
+        {"type": "observation_state", "generation": 1, "enabled": True,
+         "screenshot_consent": True, "window": target},
+        {"type": "human", "message": "Prüfe das Fenster", "mode": "Bildschirmhilfe",
+         "screenshot": True, "observation_update": True, "observation_enabled": True,
+         "observation_window": target, "observation_event_id": "queued-then-off",
+         "observation_generation": 1},
+        {"type": "observation_state", "generation": 2, "enabled": False,
+         "screenshot_consent": False, "window": None},
+    ]
+    session.process = SimpleNamespace(
+        stdout=io.StringIO("".join(json.dumps(item) + "\n" for item in messages)),
+        wait=lambda: 0,
+    )
+    session._read_child_output()
+    turn, timed_out = session.next_turn(timeout=0.1)
+    assert not timed_out and turn is not None
+    captures = []
+    outcome = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: captures.append(True) or {"status": "ok", "png": b"private"},
+        authorized=lambda: session.observation_authorizes(turn),
+    )
+    assert outcome["status"] == "revoked"
+    assert captures == []
+
+
+def test_ui_child_turn_sink_publishes_consent_generation_and_scope():
+    from open_compute.chat_ui_process import _TurnSink
+
+    class Output:
+        def __init__(self):
+            self.messages = []
+
+        def send(self, message):
+            self.messages.append(message)
+
+    output = Output()
+    sink = _TurnSink(output)
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    sink.put({
+        "type": "observation_state", "generation": 4, "enabled": True,
+        "screenshot_consent": True, "window": target,
+    })
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="generation-4",
+        observation_generation=4,
+    )
+    sink.put(turn)
+    assert output.messages[0]["generation"] == 4
+    assert output.messages[0]["window"] == target
+    assert output.messages[1]["observation_generation"] == 4
 
 
 def test_observation_event_rejects_empty_or_oversized_id_without_capture():

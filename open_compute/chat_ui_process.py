@@ -46,7 +46,10 @@ class _TurnSink:
                 "observation_enabled": value.observation_enabled,
                 "observation_window": value.observation_window,
                 "observation_event_id": value.observation_event_id,
+                "observation_generation": value.observation_generation,
             })
+        elif isinstance(value, dict) and value.get("type") == "observation_state":
+            self.output.send(value)
 
 
 class _ReadySignal:

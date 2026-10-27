@@ -9,9 +9,22 @@ $ErrorActionPreference = 'Stop'
 
 function Get-TreeDigest([string]$Root) {
     $base = (Resolve-Path -LiteralPath $Root).Path
-    $rows = foreach ($file in Get-ChildItem -LiteralPath $base -File -Recurse | Sort-Object FullName) {
-        if ($file.Name -eq '.open-compute-chat-pin.json') { continue }
+    $rootItem = Get-Item -LiteralPath $base -Force
+    if (($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Gepinnter Snapshot-Root ist ein Link/Reparsepoint: $base"
+    }
+    $items = @(Get-ChildItem -LiteralPath $base -Force -Recurse)
+    foreach ($item in $items) {
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Gepinnter Snapshot enthält einen Link/Reparsepoint: $($item.FullName)"
+        }
+        if (-not $item.PSIsContainer -and $item.Extension -in @('.pyc', '.pyo', '.exe', '.dll', '.pyd', '.com', '.scr', '.bat', '.cmd')) {
+            throw "Gepinnter Snapshot enthält ein unerwartetes ausführbares/Bytecode-Artefakt: $($item.FullName)"
+        }
+    }
+    $rows = foreach ($file in $items | Where-Object { -not $_.PSIsContainer } | Sort-Object FullName) {
         $relative = [IO.Path]::GetRelativePath($base, $file.FullName).Replace('\', '/')
+        if ($relative -eq '.open-compute-chat-pin.json') { continue }
         $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         "$relative=$hash"
     }
@@ -31,7 +44,7 @@ function Assert-PinnedTree([string]$Root, [string]$ExpectedCommit, [string]$Expe
     }
     $pin = Get-Content -LiteralPath $pinPath -Raw -Encoding utf8 | ConvertFrom-Json
     if ($pin.commit -ne $ExpectedCommit -or $pin.tree_sha256 -ne $ExpectedTreeDigest) {
-        throw "Vorhandener Snapshot passt nicht zum festgeschriebenen Commit: $Root"
+        throw "Vorhandener Snapshot-Pin passt nicht zum unabhängig aus Git-Commit abgeleiteten Inhalt: $Root"
     }
     $actualDigest = Get-TreeDigest $Root
     if ($actualDigest -ne $pin.tree_sha256) {
@@ -46,13 +59,6 @@ function Install-PinnedArchive(
     [string]$Target,
     [string]$Purpose
 ) {
-    if (Test-Path -LiteralPath $Target) {
-        Assert-PinnedTree -Root $Target -ExpectedCommit $Commit -ExpectedTreeDigest (
-            (Get-Content -LiteralPath (Join-Path $Target '.open-compute-chat-pin.json') -Raw -Encoding utf8 | ConvertFrom-Json).tree_sha256
-        )
-        return
-    }
-
     $temporary = "$Target.tmp-$([guid]::NewGuid().ToString('N'))"
     $archive = "$temporary.zip"
     New-Item -ItemType Directory -Path $temporary -Force | Out-Null
@@ -65,6 +71,12 @@ function Install-PinnedArchive(
         Expand-Archive -LiteralPath $archive -DestinationPath $temporary -Force
         Remove-Item -LiteralPath $archive -Force
         $treeDigest = Get-TreeDigest $temporary
+        if (Test-Path -LiteralPath $Target) {
+            # Never accept a cache's own marker as authority. Re-derive expected
+            # bytes from the requested immutable Git commit on every launch.
+            Assert-PinnedTree -Root $Target -ExpectedCommit $Commit -ExpectedTreeDigest $treeDigest
+            return
+        }
         $pin = [ordered]@{
             purpose = $Purpose
             commit = $Commit
@@ -257,7 +269,11 @@ Write-Output "Codex-Basisconfig wurde nicht verändert: $(Join-Path $codexHome '
 
 if ($PrepareOnly) {
     Write-Output 'Vorbereitung abgeschlossen; kein Codex-Modellturn gestartet.'
-    Write-Output "Start mit: .\scripts\open_compute_chat.ps1 -Model <verfügbares-Modell>"
+    if ([string]::IsNullOrWhiteSpace($Workspace)) {
+        Write-Output 'Start mit: .\scripts\open_compute_chat.ps1 -Model <verfügbares-Modell> -Workspace <gewählter-Arbeitsordner>'
+    } else {
+        Write-Output "Start mit: .\scripts\open_compute_chat.ps1 -Model <verfügbares-Modell> -Workspace `"$hostWorkspace`""
+    }
     return
 }
 $prompt = @"
