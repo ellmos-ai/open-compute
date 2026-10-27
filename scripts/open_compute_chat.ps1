@@ -208,7 +208,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "Codex konnte das isolierte MCP-Profil nicht laden: $($probe -join "`n")"
 }
 $serverConfig = ($probe -join "`n") | ConvertFrom-Json
-if ($serverConfig.enabled -ne $true -or @($serverConfig.enabled_tools) -notcontains 'chat') {
+$expectedPython = $python.Replace('\', '/')
+$expectedOpenSnapshot = $openSnapshot.Replace('\', '/')
+$expectedPythonPath = $pythonPath.Replace('\', '/')
+$effectiveArgs = @($serverConfig.transport.args)
+$expectedArgs = @('-m', 'open_compute.mcp_server')
+$effectiveTools = @($serverConfig.enabled_tools)
+$profileValid = (
+    ($serverConfig.enabled -eq $true) -and
+    ($serverConfig.transport.command -eq $expectedPython) -and
+    (($effectiveArgs -join '|') -eq ($expectedArgs -join '|')) -and
+    ($serverConfig.transport.cwd -eq $expectedOpenSnapshot) -and
+    ($serverConfig.transport.env.PYTHONPATH -eq $expectedPythonPath) -and
+    ($serverConfig.transport.env.OC_SAFETY_MODE -eq 'confirm') -and
+    ($serverConfig.transport.env.OC_SIGNAL_AUTO -eq 'off') -and
+    ($effectiveTools.Count -eq 1) -and
+    ($effectiveTools[0] -eq 'chat')
+)
+if (-not $profileValid) {
     throw "Codex-Profil-Readback stimmt nicht mit dem chat-only-Serververtrag überein."
 }
 $disabledProbe = & $codex.Source --profile $profileName mcp get open-compute --json 2>&1
