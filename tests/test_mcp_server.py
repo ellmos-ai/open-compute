@@ -997,6 +997,100 @@ def test_tk_chat_captures_when_human_turn_checkbox_is_checked(
     assert pathlib.Path(result["screenshot"]).is_file()
 
 
+def test_tk_observation_replay_returns_same_frame_without_second_capture(
+    monkeypatch, _signal_state
+):
+    from open_compute.chat_ui import ChatSession, HumanTurn
+
+    session = ChatSession(chat_id="chat-observation")
+    turn = HumanTurn(
+        "Bitte prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True,
+        observation_enabled=True,
+        observation_window={"hwnd": 44, "pid": 55, "title": "Testfenster"},
+        observation_event_id="event-1",
+    )
+
+    class Bridge:
+        def open(self, **_kwargs):
+            return session, turn, False
+
+        def reply(self, _chat_id, **_kwargs):
+            return session, turn, False, True
+
+    captures = []
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", Bridge())
+    monkeypatch.setattr(
+        S, "_capture_chat_observation",
+        lambda _window: captures.append("capture") or ({"kind": "chat_observation"}, b"png-bytes"),
+    )
+
+    initial = S.chat(channel="tk")
+    replay = S.chat(
+        channel="tk", chat_id="chat-observation",
+        assistant_message="Ich schaue auf das freigegebene Fenster.",
+        assistant_turn_id="assistant-retry",
+    )
+
+    assert isinstance(initial, CallToolResult)
+    assert initial.structuredContent["status"] == "waiting_for_assistant"
+    assert initial.content[1].type == "image"
+    assert replay.structuredContent["assistant_turn_replayed"] is True
+    assert replay.content[1].data == initial.content[1].data
+    assert captures == ["capture"]
+
+
+def test_tk_observation_requires_mode_and_current_screenshot_consent(
+    monkeypatch, _signal_state
+):
+    from open_compute.chat_ui import ChatSession, HumanTurn
+
+    session = ChatSession(chat_id="chat-observation-optout")
+    turn = HumanTurn(
+        "Bitte prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True,
+        observation_enabled=False,
+        observation_window={"hwnd": 44, "pid": 55, "title": "Testfenster"},
+        observation_event_id="event-optout",
+    )
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
+        open=lambda **_kwargs: (session, turn, False),
+        report_observation_error=lambda *_args: None,
+    ))
+    captures = []
+    monkeypatch.setattr(S, "_capture_chat_observation", lambda _window: captures.append(True))
+
+    result = S.chat(channel="tk")
+
+    assert result["status"] == "observation_failed"
+    assert "Beobachtungsmodus ist für diesen Turn aus" in result["error"]
+    assert captures == []
+
+
+def test_chat_observation_resolves_exact_live_window_and_rejects_stale_scope(
+    monkeypatch
+):
+    requested = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    live = {**requested, "window_token": "server-issued"}
+    captured = []
+    monkeypatch.setattr(S, "_await_grace_period", lambda: None)
+    monkeypatch.setattr(S, "_current_windows", lambda **_kwargs: [live])
+    monkeypatch.setattr(S, "_capture_window_png", lambda window: captured.append(window) or b"png")
+    monkeypatch.setattr(S, "_shrink_png", lambda png: png)
+
+    metadata, png = S._capture_chat_observation(requested)
+
+    assert metadata["window"]["window_id"] == 44
+    assert png == b"png"
+    assert captured == [live]
+
+    captured.clear()
+    monkeypatch.setattr(S, "_current_windows", lambda **_kwargs: [])
+    with pytest.raises(ValueError, match="verschwunden oder hat sich geändert"):
+        S._capture_chat_observation(requested)
+    assert captured == []
+
+
 def test_console_chat_retains_legacy_explicit_shot_contract(
     monkeypatch, _signal_state, tmp_path
 ):

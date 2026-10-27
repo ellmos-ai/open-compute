@@ -17,6 +17,7 @@ from open_compute.chat_ui import (
     ChatSession,
     HumanTurn,
     insert_collaboration_prompt,
+    observation_capture_allowed,
 )
 from open_compute.voice_io_bridge import (
     MODEL_ENV,
@@ -88,6 +89,61 @@ def test_collaboration_prompt_replaces_selected_text_in_editable_field():
         ("insert", "insert", "Bearbeite diesen Vorschlag"),
         ("focus",),
     ]
+
+
+def test_observation_event_is_captured_once_and_only_one_frame_is_cached():
+    session = ChatSession(chat_id="observation-cache")
+    calls = []
+
+    first = session.capture_observation_once(
+        "event-1", lambda: calls.append("capture") or {"status": "ok", "png": b"frame"}
+    )
+    replay = session.capture_observation_once(
+        "event-1", lambda: calls.append("duplicate") or {"status": "ok", "png": b"wrong"}
+    )
+
+    assert first == replay == {"status": "ok", "png": b"frame"}
+    assert calls == ["capture"]
+
+    session.capture_observation_once(
+        "event-2", lambda: {"status": "ok", "png": b"new frame"}
+    )
+    expired = session.capture_observation_once(
+        "event-1", lambda: calls.append("expired recapture") or {"status": "ok", "png": b"wrong"}
+    )
+    assert expired["status"] == "expired"
+    assert "expired recapture" not in calls
+    session.dispose()
+    assert session.observation_reply_cache is None
+    assert session.observation_processed_ids == []
+
+
+def test_observation_event_rejects_empty_or_oversized_id_without_capture():
+    session = ChatSession(chat_id="observation-invalid")
+    calls = []
+
+    for event_id in ("", "x" * 129):
+        result = session.capture_observation_once(
+            event_id, lambda: calls.append(event_id) or {"status": "ok", "png": b"frame"}
+        )
+        assert result["status"] == "error"
+    assert calls == []
+
+
+def test_observation_tick_requires_current_mode_consent_and_selected_window():
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    assert observation_capture_allowed(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    assert not observation_capture_allowed(
+        enabled=False, screenshot_consent=True, window=target
+    )
+    assert not observation_capture_allowed(
+        enabled=True, screenshot_consent=False, window=target
+    )
+    assert not observation_capture_allowed(
+        enabled=True, screenshot_consent=True, window=None
+    )
 
 
 def test_microphone_recording_saves_one_temporary_wav_and_closes_device(tmp_path):

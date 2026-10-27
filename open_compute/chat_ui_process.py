@@ -42,6 +42,10 @@ class _TurnSink:
             self.output.send({
                 "type": "human", "message": value.message, "mode": value.mode,
                 "screenshot": value.screenshot, "choice_index": value.choice_index,
+                "observation_update": value.observation_update,
+                "observation_enabled": value.observation_enabled,
+                "observation_window": value.observation_window,
+                "observation_event_id": value.observation_event_id,
             })
 
 
@@ -130,6 +134,12 @@ def _read_commands(commands: queue.Queue[tuple[Any, ...]], output: _ProtocolOutp
                     output.send({"type": "error", "detail": "assistant choices exceed their size limit"})
                     continue
                 commands.put(("assistant", message, tuple(choices)))
+            elif kind == "observation_error":
+                message = data.get("message", "Beobachtung fehlgeschlagen.")
+                if not isinstance(message, str):
+                    output.send({"type": "error", "detail": "invalid observation error notice"})
+                    continue
+                commands.put(("observation_error", message[:2_000]))
             elif kind == "close":
                 commands.put(("close",))
                 return

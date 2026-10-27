@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 MODES: tuple[str, ...] = ("Allgemein", "Kurz", "Brainstorming", "Bildschirmhilfe")
@@ -39,6 +39,8 @@ COLLABORATION_PROMPTS: tuple[tuple[str, str], ...] = (
     ),
 )
 _STOP = "__OPEN_COMPUTE_CHAT_STOP__"
+OBSERVATION_INTERVAL_SECONDS = 15
+MAX_OBSERVATION_WINDOWS = 64
 
 
 def insert_collaboration_prompt(entry: Any, prompt: str) -> None:
@@ -67,12 +69,54 @@ def _transcribe_local_wav(path: Path) -> str:
     return transcribe_local_wav(path)
 
 
+def observation_capture_allowed(
+    *, enabled: bool, screenshot_consent: bool, window: Mapping[str, Any] | None
+) -> bool:
+    """Require explicit observe mode, current screenshot consent, and a scope."""
+    return bool(enabled and screenshot_consent and window and window.get("title"))
+
+
+def _window_identity(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass only the live identity fields needed for a later fail-closed check."""
+    return {
+        "hwnd": int(value.get("hwnd", value.get("window_id"))),
+        "pid": int(value.get("pid", value.get("process_id"))),
+        "title": str(value["title"]).strip(),
+    }
+
+
+def _available_observation_windows(exclude_title: str = "") -> list[dict[str, Any]]:
+    """List visible top-level windows without capturing any pixels."""
+    try:
+        from .drivers.local import list_windows
+
+        windows = list_windows()
+    except Exception:
+        return []
+    result: list[dict[str, Any]] = []
+    for raw in windows:
+        try:
+            window = _window_identity(raw)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not window["title"] or window["title"] == exclude_title:
+            continue
+        result.append(window)
+        if len(result) >= MAX_OBSERVATION_WINDOWS:
+            break
+    return result
+
+
 @dataclass(frozen=True)
 class HumanTurn:
     message: str
     mode: str
     screenshot: bool
     choice_index: int | None = None
+    observation_update: bool = False
+    observation_enabled: bool = False
+    observation_window: dict[str, Any] | None = None
+    observation_event_id: str = ""
 
 
 @dataclass
@@ -88,6 +132,9 @@ class ChatSession:
     exchange_lock: threading.Lock = field(default_factory=threading.Lock)
     input_lock: threading.Lock = field(default_factory=threading.Lock)
     replies: dict[str, tuple[str, HumanTurn | None, bool]] = field(default_factory=dict)
+    observation_reply_cache: tuple[str, dict[str, Any]] | None = None
+    observation_capture_lock: threading.Lock = field(default_factory=threading.Lock)
+    observation_processed_ids: list[str] = field(default_factory=list)
     temp_audio_paths: set[Path] = field(default_factory=set)
 
     def start(self, *, title: str, context: str, choices: tuple[str, ...]) -> None:
@@ -208,6 +255,9 @@ class ChatSession:
                 self._untrack_temp_audio(str(path))
 
     def dispose(self) -> None:
+        with self.observation_capture_lock:
+            self.observation_reply_cache = None
+            self.observation_processed_ids.clear()
         if self.process is not None and self.process.poll() is None:
             return
         if self.process is not None:
@@ -229,6 +279,51 @@ class ChatSession:
             self.commands.put(("assistant", message, choices))
             return
         self._send_command({"type": "assistant", "message": message, "choices": list(choices)})
+
+    def report_observation_error(self, message: str) -> None:
+        """Tell the visible UI that an observation was refused or failed."""
+        safe_message = str(message)[:2_000]
+        if self.process is None:
+            self.commands.put(("observation_error", safe_message))
+            return
+        self._send_command({"type": "observation_error", "message": safe_message})
+
+    def capture_observation_once(self, event_id: str, capture: Any) -> dict[str, Any]:
+        """Capture at most once per UI event and cache only one <=2-MB frame."""
+        key = str(event_id).strip()
+        if not key or len(key) > 128:
+            return {"status": "error", "message": "Ungültige Beobachtungs-ID."}
+        with self.observation_capture_lock:
+            cached = self.observation_reply_cache
+            if cached is not None and cached[0] == key:
+                return dict(cached[1])
+            if key in self.observation_processed_ids:
+                return {
+                    "status": "expired",
+                    "message": "Dieses Beobachtungsbild ist nicht mehr im begrenzten Cache.",
+                }
+            try:
+                result = capture()
+            except Exception as exc:
+                result = {
+                    "status": "error",
+                    "message": f"Bildschirmbeobachtung fehlgeschlagen: {type(exc).__name__}: {exc}",
+                }
+            if not isinstance(result, dict):
+                result = {"status": "error", "message": "Ungültiges Beobachtungsergebnis."}
+            image = result.get("png")
+            if result.get("status") == "ok" and (
+                not isinstance(image, bytes) or len(image) > 2_000_000
+            ):
+                result = {
+                    "status": "error",
+                    "message": "Beobachtungsbild fehlt oder überschreitet das 2-MB-Limit.",
+                }
+            self.observation_reply_cache = (key, dict(result))
+            self.observation_processed_ids.append(key)
+            if len(self.observation_processed_ids) > 64:
+                self.observation_processed_ids.pop(0)
+            return dict(result)
 
     def _send_command(self, command: dict[str, Any]) -> None:
         if self.process is None or self.process.stdin is None or self.process.poll() is not None:
@@ -273,6 +368,17 @@ class ChatSession:
                     message=value["message"], mode=value["mode"],
                     screenshot=bool(value.get("screenshot")),
                     choice_index=value.get("choice_index"),
+                    observation_update=bool(value.get("observation_update")),
+                    observation_enabled=bool(value.get("observation_enabled")),
+                    observation_window=(
+                        _window_identity(value["observation_window"])
+                        if isinstance(value.get("observation_window"), dict)
+                        else None
+                    ),
+                    observation_event_id=(
+                        str(value.get("observation_event_id", ""))[:128]
+                        if value.get("observation_update") else ""
+                    ),
                 ), False
 
     def _run_ui(self, title: str, context: str, choices: tuple[str, ...]) -> None:
@@ -287,6 +393,7 @@ class ChatSession:
             root.geometry("760x650")
             root.minsize(560, 430)
             root.protocol("WM_DELETE_WINDOW", lambda: self._close(root))
+            observation_windows = _available_observation_windows(root.title())
 
             outer = ttk.Frame(root, padding=12)
             outer.pack(fill="both", expand=True)
@@ -302,10 +409,14 @@ class ChatSession:
             history.tag_configure("human", foreground="#174b8a", spacing1=10)
             history.tag_configure("assistant", foreground="#176b44", spacing1=10)
             history.tag_configure("system", foreground="#666666", spacing1=6)
+            history.tag_configure("observation", foreground="#8a4b08", spacing1=10)
 
             def append(role: str, message: str) -> None:
                 history.configure(state="normal")
-                label = {"human": "Du", "assistant": "Assistent", "system": "Hinweis"}[role]
+                label = {
+                    "human": "Du", "assistant": "Assistent", "system": "Hinweis",
+                    "observation": "Beobachtung",
+                }[role]
                 history.insert("end", f"{label}\n", role)
                 history.insert("end", message.strip() + "\n\n", role)
                 history.see("end")
@@ -324,8 +435,47 @@ class ChatSession:
             ).pack(side="left", padx=(6, 14))
             include_shot = tk.BooleanVar(value=False)
             ttk.Checkbutton(
-                mode_row, text="Vollbild-Screenshot an den Assistenten senden",
+                mode_row, text="Screenshot für diesen Turn freigeben (auch für Beobachtung)",
                 variable=include_shot,
+            ).pack(side="left")
+
+            observation_row = ttk.Frame(outer)
+            observation_row.pack(fill="x", pady=(3, 5))
+            observe_enabled = tk.BooleanVar(value=False)
+            window_choice = tk.StringVar(value="")
+            observation_window_by_label: dict[str, dict[str, Any]] = {}
+            window_selector = ttk.Combobox(
+                observation_row, textvariable=window_choice,
+                values=(), state="readonly", width=48,
+            )
+
+            def refresh_window_choices() -> None:
+                nonlocal observation_windows
+                current = window_choice.get()
+                observation_windows = _available_observation_windows(root.title())
+                observation_window_by_label.clear()
+                labels: list[str] = []
+                for identity in observation_windows:
+                    label = f"{identity['title']} — PID {identity['pid']}"
+                    observation_window_by_label[label] = identity
+                    labels.append(label)
+                window_selector.configure(values=tuple(labels))
+                if current in observation_window_by_label:
+                    window_choice.set(current)
+                else:
+                    window_choice.set("")
+                if not labels:
+                    status.set("Keine sichtbaren Zielfenster gefunden; Beobachtung bleibt aus.")
+
+            observe_toggle = ttk.Checkbutton(
+                observation_row, text="Fenster beobachten (AN/AUS)",
+                variable=observe_enabled,
+            )
+            observe_toggle.pack(side="left")
+            window_selector.pack(side="left", padx=(8, 5))
+            ttk.Button(
+                observation_row, text="Fenster aktualisieren",
+                command=refresh_window_choices,
             ).pack(side="left")
 
             suggestions = ttk.Frame(outer)
@@ -346,6 +496,77 @@ class ChatSession:
 
             status = tk.StringVar(value="Der Assistent wartet auf deine Nachricht.")
             ttk.Label(outer, textvariable=status).pack(anchor="w", pady=(5, 0))
+
+            observation_after_id: str | None = None
+            last_observation_at = 0.0
+
+            def cancel_observation_timer() -> None:
+                nonlocal observation_after_id
+                if observation_after_id is not None:
+                    try:
+                        root.after_cancel(observation_after_id)
+                    except Exception:
+                        pass
+                    observation_after_id = None
+
+            def refresh_observation_state(*_args: Any) -> None:
+                nonlocal observation_after_id
+                cancel_observation_timer()
+                if self.closed.is_set() or not observe_enabled.get():
+                    return
+                selected = observation_window_by_label.get(window_choice.get())
+                if not include_shot.get():
+                    status.set("Beobachtung pausiert: Screenshotfreigabe für den Turn ist aus.")
+                    return
+                if selected is None:
+                    status.set("Beobachtung pausiert: Bitte ein Zielfenster auswählen.")
+                    return
+                delay = max(
+                    0.0,
+                    OBSERVATION_INTERVAL_SECONDS - (time.monotonic() - last_observation_at),
+                )
+                status.set(
+                    f"Beobachtung AN: {selected['title']} — begrenzte Abfrage alle "
+                    f"{OBSERVATION_INTERVAL_SECONDS} Sekunden. Zum Stoppen AUS wählen."
+                )
+                observation_after_id = root.after(
+                    int(delay * 1_000), capture_observation_turn
+                )
+
+            def capture_observation_turn() -> None:
+                nonlocal observation_after_id, last_observation_at
+                observation_after_id = None
+                selected = observation_window_by_label.get(window_choice.get())
+                if not observation_capture_allowed(
+                    enabled=bool(observe_enabled.get()),
+                    screenshot_consent=bool(include_shot.get()),
+                    window=selected,
+                ):
+                    refresh_observation_state()
+                    return
+                if self.closed.is_set():
+                    return
+                last_observation_at = time.monotonic()
+                message = (
+                    "Bitte beobachte das freigegebene Fenster auf relevante Änderungen "
+                    "und gib mir kurze Hilfestellungen oder Vorschläge. "
+                    f"Fenster: {selected['title']}."
+                )
+                submit(
+                    message,
+                    observation_update=True,
+                    observation_window=selected,
+                    observation_event_id=str(uuid.uuid4()),
+                )
+
+            def cleanup_chat() -> None:
+                cancel_observation_timer()
+                cancel_microphone_work()
+
+            refresh_window_choices()
+            observe_enabled.trace_add("write", refresh_observation_state)
+            include_shot.trace_add("write", refresh_observation_state)
+            window_choice.trace_add("write", refresh_observation_state)
 
             voice_row = ttk.Frame(outer)
             voice_row.pack(fill="x", pady=(5, 0))
@@ -386,7 +607,7 @@ class ChatSession:
                 active_audio_path = None
 
             if hasattr(self, "cleanup_callback"):
-                self.cleanup_callback = cancel_microphone_work
+                self.cleanup_callback = cleanup_chat
 
             def poll_transcription() -> None:
                 nonlocal transcription_cancelled
@@ -510,13 +731,29 @@ class ChatSession:
             mic_button.configure(command=toggle_microphone)
             root.after(100, poll_transcription)
 
-            def submit(message: str | None = None, choice_index: int | None = None) -> None:
+            def submit(
+                message: str | None = None,
+                choice_index: int | None = None,
+                *,
+                observation_update: bool = False,
+                observation_window: Mapping[str, Any] | None = None,
+                observation_event_id: str = "",
+            ) -> None:
                 text = message if message is not None else entry.get("1.0", "end-1c").strip()
                 if not text.strip() or self.closed.is_set():
                     return
                 if len(text) > 20_000:
                     status.set("Nachricht zu lang (maximal 20.000 Zeichen).")
                     return
+                if observation_update and not observation_capture_allowed(
+                    enabled=bool(observe_enabled.get()),
+                    screenshot_consent=bool(include_shot.get()),
+                    window=observation_window,
+                ):
+                    status.set("Beobachtung gestoppt: Fenster- oder Screenshotfreigabe fehlt.")
+                    refresh_observation_state()
+                    return
+                cancel_observation_timer()
                 if recording_started is not None or transcription_cancelled is not None:
                     try:
                         cancel_microphone_work()
@@ -527,16 +764,35 @@ class ChatSession:
                         )
                         return
                 mic_button.configure(state="disabled")
-                append("human", text)
+                if observation_update and observation_window is not None:
+                    append("observation", f"Fenster: {observation_window['title']}\n{text}")
+                else:
+                    append("human", text)
                 self.turns.put(HumanTurn(
                     message=text.strip(), mode=mode.get(),
                     screenshot=bool(include_shot.get()), choice_index=choice_index,
+                    observation_update=observation_update,
+                    observation_enabled=(
+                        bool(observe_enabled.get()) if observation_update else False
+                    ),
+                    observation_window=(
+                        _window_identity(observation_window)
+                        if observation_window is not None else None
+                    ),
+                    observation_event_id=(
+                        observation_event_id[:128] if observation_update else ""
+                    ),
                 ))
-                entry.delete("1.0", "end")
+                if not observation_update:
+                    entry.delete("1.0", "end")
                 entry.configure(state="disabled")
                 send_button.configure(state="disabled")
                 set_choices(())
-                status.set("Nachricht übergeben. Der Assistent denkt …")
+                status.set(
+                    "Beobachtung übergeben. Der Assistent prüft das Fenster …"
+                    if observation_update
+                    else "Nachricht übergeben. Der Assistent denkt …"
+                )
 
             def set_choices(items: tuple[str, ...]) -> None:
                 for child in suggestions.winfo_children():
@@ -573,6 +829,15 @@ class ChatSession:
                             mic_button.configure(state="normal" if voice_ready else "disabled")
                             entry.focus_set()
                             status.set("Der Assistent wartet auf deine Nachricht.")
+                            refresh_observation_state()
+                        elif kind == "observation_error":
+                            append("system", payload[0])
+                            observe_enabled.set(False)
+                            entry.configure(state="normal")
+                            send_button.configure(state="normal")
+                            mic_button.configure(state="normal" if voice_ready else "disabled")
+                            status.set("Beobachtung pausiert. Prüfe Fenster und Freigabe, dann erneut aktivieren.")
+                            entry.focus_set()
                         elif kind == "close":
                             self._close(root)
                 except queue.Empty:
@@ -695,6 +960,12 @@ class ChatBridge:
         if turn is None and session.closed.is_set():
             self._forget(chat_id)
         return session, turn, timed_out
+
+    def report_observation_error(self, chat_id: str, message: str) -> None:
+        with self._lock:
+            session = self._sessions.get(chat_id)
+        if session is not None and not session.closed.is_set():
+            session.report_observation_error(message)
 
     def _forget(self, chat_id: str) -> None:
         with self._lock:

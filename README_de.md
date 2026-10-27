@@ -549,9 +549,21 @@ Fenstersitzung sichtbar und wird nicht als Chatdatenbank gespeichert.
 
 Drei Zusammenarbeitsprompts („Kurz weg“, „Wieder da“ und „Hilfe und
 Vorschläge“) übernehmen bearbeitbare Entwürfe in das Texteingabefeld. Sie
-senden den Text nicht und starten keine Arbeit im Hintergrund. Eine laufende
-Bildschirmbeobachtung ist nicht implementiert; die Bildschirmhilfe verwendet
-nur den für diesen Turn ausdrücklich freigegebenen Screenshot.
+senden den Text nicht und starten keine Arbeit im Hintergrund.
+
+Die laufende Beobachtung ist standardmäßig AUS. Für den Start muss der Mensch
+„Fenster beobachten (AN/AUS)“ einschalten, genau ein sichtbares Zielfenster
+auswählen und die Screenshotfreigabe für den Turn aktiviert lassen. Die
+Beobachtung erfasst höchstens einmal alle 15 Sekunden ein Bild dieses Fensters
+und sendet es im bestehenden MCP-Chat-Rückkanal zusammen mit der Frage nach
+Hilfestellungen oder Vorschlägen. Das Bild wird weder auf der Festplatte noch
+im Observation-Registry gespeichert. AUS, eine widerrufene Screenshotfreigabe,
+ein geschlossenes Zielfenster, „Chat beenden“, Client-Abbruch und
+Sitzungsende stoppen weitere Aufnahmen. Veraltete oder nicht mehr eindeutige
+Fensteridentitäten werden abgewiesen. Wiederholte Host-Turn-IDs verwenden
+höchstens das zuletzt gespeicherte, auf 2 MB begrenzte Bildresultat und lösen
+keine weitere Aufnahme aus. Ein Bildschirmbild geht nur an den Host, wenn der
+Mensch beide Einwilligungen sichtbar erteilt hat.
 
 Die Mikrofontaste ist aktiv, wenn das lokale Sprachmodul und das deutsche
 Modell installiert sind. Ein Klick startet die Aufnahme, der nächste beendet
@@ -579,6 +591,30 @@ lokale Voraussetzung.
 
 Das Tool ruft selbst kein Modell und keinen Provider auf. Es nutzt den bereits
 verbundenen Hostreasoner und benötigt daher keine zusätzlichen Provider-Keys.
+
+Für den direkt verbundenen Codex-Desktopdialog liegt ein eigener Launcher bei.
+Nach einem sauberen Commit bereitet er einen unveränderlichen Snapshot exakt
+dieser Version und ein pro Commit benanntes Codex-Profil vor. Das Profil lässt
+den bisherigen `open-compute`-Eintrag nur innerhalb dieses Profils deaktiviert,
+registriert den gepinnten MCP-Server mit ausschließlich dem Werkzeug `chat`
+und ändert weder die globale `config.toml` noch das globale MCP-Profil.
+Vorbereitung und Profilreadback starten kein Modell:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -PrepareOnly
+```
+
+Für den Dialog muss ein im eigenen Codex-Konto verfügbares Modell ausdrücklich
+angegeben werden; der Launcher nimmt keinen Modell-Fallback:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -Model "<Modellname aus deinem Codex-Konto>" -Context "Wobei soll ich dir helfen?"
+```
+
+Der Aufruf verwendet die vorhandene Codex-Anmeldung und zeigt das native
+Chatfenster über den chat-only MCP-Server. Beenden des Codex-Dialogs oder des
+Fensters schließt den Host-Rückkanal. Vor einem Start verweigert der Launcher
+einen veränderten Quellworktree oder einen veränderten/abweichenden Snapshot.
 
 ### Modus B — Autonomer Loop mit einem API-Backend
 
