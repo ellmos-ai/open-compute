@@ -538,8 +538,10 @@ Menschennachricht zurück und zeigen die Antwort nicht doppelt an.
 Das Fenster zeigt den Verlauf mit Rollen, bietet die Modi „Allgemein“, „Kurz“,
 „Brainstorming“ und „Bildschirmhilfe“ sowie Modellvorschläge als anklickbare
 Antworten. Der gewählte Modus kommt samt konkreter Antwortanweisung zum
-Hostmodell zurück. Vollbild-Screenshots werden nur mit gesetzter Einwilligungsbox oder
-explizitem `shot=true` erfasst. Wartende MCP-Aufrufe enden nach höchstens
+Hostmodell zurück. Im dauerhaften Tk-Dialog werden Vollbild-Screenshots nur erfasst,
+wenn der Mensch die Einwilligungsbox für diesen Turn aktiviert. Das Legacy-Argument
+`shot=true` bleibt im einmaligen Konsolenkanal verfügbar und übersteuert die
+Tk-Einwilligung nicht. Wartende MCP-Aufrufe enden nach höchstens
 3.600 Sekunden; `status="waiting_for_human"` lässt sich mit `poll=true`
 fortsetzen (erneut mit derselben `chat_id`). „Chat beenden“ oder das Schließen
 des Fensters gibt den Aufruf frei. Der Verlauf bleibt während dieser

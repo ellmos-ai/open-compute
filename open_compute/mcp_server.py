@@ -2562,8 +2562,8 @@ def chat(
 
     The Tk window keeps the visible conversation history, lets the human pick
     a response mode and send suggestions, and captures a screenshot only when
-    the human checks the screenshot box (or explicitly requests ``shot``).
-    Console calls retain the legacy one-message prompt.
+    the human checks the screenshot box for that turn. Console calls retain
+    the legacy one-message prompt and its explicit ``shot`` option.
     """
     cleaned = _clean_choices(choices)
     try:
@@ -2615,7 +2615,10 @@ def chat(
                 return {"status": "closed", "chat_id": session.chat_id, "screenshot": None}
             return {"status": "waiting_for_human", "chat_id": session.chat_id, "screenshot": None}
         shot_path = None
-        if shot or turn.screenshot:
+        # In the persistent Tk dialog, only the human's checkbox on this
+        # specific turn grants capture consent. The legacy host-side ``shot``
+        # flag remains meaningful for the one-shot console path below.
+        if turn.screenshot:
             obs = _STATE.executor().screenshot()
             data = bytes(obs.screenshot)
             from datetime import datetime, timezone

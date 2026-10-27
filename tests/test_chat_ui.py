@@ -1,6 +1,8 @@
 """Contract tests for the native host-model chat bridge."""
 
 import os
+import queue
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -43,14 +45,18 @@ class _PromptEntry:
 
 
 class _FakeMci:
-    def __init__(self):
+    def __init__(self, errors=None):
         self.commands = []
+        self.errors = errors or {}
 
     def __call__(self, command):
         self.commands.append(command)
         if command.startswith("save "):
             path = Path(command.split('"')[1])
             path.write_bytes(b"RIFF" + b"0" * 64)
+        for prefix, code in self.errors.items():
+            if command.startswith(prefix):
+                return code
         return 0
 
 
@@ -109,6 +115,105 @@ def test_microphone_cancel_closes_device_and_deletes_temporary_audio(tmp_path):
     assert not path.exists()
     assert recorder.alias is None
     assert any(command.startswith("close ") for command in mci.commands)
+
+
+def test_microphone_stop_error_is_reported_and_successful_close_releases_handle(tmp_path):
+    mci = _FakeMci({"stop ": 277})
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+    path = recorder.start()
+
+    with pytest.raises(RuntimeError, match="gestoppt.*MCI 277"):
+        recorder.stop()
+
+    assert recorder.alias is None
+    assert recorder.mci is None
+    assert not path.exists()
+    assert any(command.startswith("close ") for command in mci.commands)
+
+
+def test_microphone_stop_close_error_keeps_handle_for_retry(tmp_path):
+    mci = _FakeMci({"close ": 277})
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+    path = recorder.start()
+
+    with pytest.raises(RuntimeError, match="freigegeben.*MCI 277"):
+        recorder.stop()
+
+    assert recorder.alias is not None
+    assert recorder.mci is mci
+    assert recorder.path == path
+    mci.errors.clear()
+    assert recorder.stop() == path
+    assert recorder.alias is None
+    assert path.is_file()
+    path.unlink()
+
+
+def test_microphone_cancel_reports_stop_error_but_clears_after_successful_close(tmp_path):
+    mci = _FakeMci({"stop ": 277})
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+    path = recorder.start()
+
+    with pytest.raises(RuntimeError, match="Abbruch.*MCI 277"):
+        recorder.cancel()
+
+    assert recorder.alias is None
+    assert recorder.mci is None
+    assert not path.exists()
+
+
+def test_microphone_cancel_close_error_preserves_handle_and_retry_cleans(tmp_path):
+    mci = _FakeMci({"close ": 277})
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+    path = recorder.start()
+
+    with pytest.raises(RuntimeError, match="freigegeben.*MCI 277"):
+        recorder.cancel()
+
+    assert recorder.alias is not None
+    assert recorder.mci is mci
+    assert recorder.path == path
+    mci.errors.clear()
+    assert recorder.cancel() == path
+    assert recorder.alias is None
+    assert not path.exists()
+
+
+def test_microphone_cleanup_error_is_reported_on_window_shutdown():
+    from open_compute.chat_ui_process import _WindowSession
+
+    mci = _FakeMci({"close ": 277})
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci))
+    recorder.start()
+    output = SimpleNamespace(sent=[])
+    output.send = lambda message: output.sent.append(message)
+    window = _WindowSession(queue.Queue(), output)
+    window.cleanup_callback = recorder.cancel
+    root = SimpleNamespace(destroy=lambda: None)
+
+    window._close(root)
+
+    assert window.closed.is_set()
+    assert recorder.alias is not None
+    assert [item["type"] for item in output.sent] == ["error", "closed"]
+    assert "MCI 277" in output.sent[0]["detail"]
+
+
+def test_window_shutdown_destroys_root_even_if_client_pipe_is_broken():
+    from open_compute.chat_ui_process import _WindowSession
+
+    class _BrokenOutput:
+        def send(self, _message):
+            raise BrokenPipeError("parent exited")
+
+    destroyed = []
+    window = _WindowSession(queue.Queue(), _BrokenOutput())
+    root = SimpleNamespace(destroy=lambda: destroyed.append(True))
+
+    window._close(root)
+
+    assert window.closed.is_set()
+    assert destroyed == [True]
 
 
 def test_chat_session_only_cleans_its_temporary_audio_paths(tmp_path, monkeypatch):
@@ -227,6 +332,108 @@ def test_close_releases_waiting_turn_and_forgets_session():
     assert session.closed.is_set()
     assert session.next_turn(timeout=0.1) == (None, False)
     assert bridge.close(session.chat_id) is False
+
+
+def test_close_all_cleans_broken_pipe_child_and_continues_to_other_sessions():
+    class _BrokenPipeStream:
+        def write(self, _text):
+            raise BrokenPipeError("pipe closed")
+
+        def flush(self):
+            raise BrokenPipeError("pipe closed")
+
+        def close(self):
+            pass
+
+    class _FakeProcess:
+        def __init__(self):
+            self.stdin = _BrokenPipeStream()
+            self.stdout = SimpleNamespace(close=lambda: None)
+            self.returncode = None
+            self.wait_calls = []
+            self.terminate_calls = 0
+            self.kill_calls = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout):
+            self.wait_calls.append(timeout)
+            self.returncode = 0
+            return self.returncode
+
+        def terminate(self):
+            self.terminate_calls += 1
+            self.returncode = 0
+
+        def kill(self):
+            self.kill_calls += 1
+            self.returncode = 0
+
+    bridge = ChatBridge()
+    disposed = []
+    sessions = []
+    for chat_id in ("broken-child", "second-child"):
+        session = ChatSession(chat_id=chat_id)
+        session.process = _FakeProcess()
+        session.dispose = lambda key=chat_id: disposed.append(key)
+        bridge._sessions[chat_id] = session
+        sessions.append(session)
+
+    bridge.close_all()
+
+    assert bridge._sessions == {}
+    assert all(session.closed.is_set() for session in sessions)
+    assert all(session.process.wait_calls == [3] for session in sessions)
+    assert disposed == ["broken-child", "second-child"]
+
+
+def test_close_escalates_timeout_to_terminate_and_collects_child_exit():
+    class _FakeStream:
+        def write(self, _text):
+            pass
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
+
+    class _SlowProcess:
+        def __init__(self):
+            self.stdin = _FakeStream()
+            self.stdout = _FakeStream()
+            self.returncode = None
+            self.wait_calls = []
+            self.terminate_calls = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout):
+            self.wait_calls.append(timeout)
+            if len(self.wait_calls) == 1:
+                raise subprocess.TimeoutExpired("chat-ui", timeout)
+            self.returncode = 0
+            return 0
+
+        def terminate(self):
+            self.terminate_calls += 1
+
+        def kill(self):
+            raise AssertionError("kill is unnecessary after terminate succeeds")
+
+    bridge = ChatBridge()
+    session = ChatSession(chat_id="slow-child")
+    process = _SlowProcess()
+    session.process = process
+    session.dispose = lambda: None
+    bridge._sessions[session.chat_id] = session
+
+    assert bridge.close(session.chat_id) is True
+    assert process.wait_calls == [3, 2]
+    assert process.terminate_calls == 1
+    assert process.returncode == 0
 
 
 @pytest.mark.skipif(

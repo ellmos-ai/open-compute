@@ -448,8 +448,21 @@ class ChatSession:
                         if register is not None:
                             register(str(active_audio_path))
                     except Exception as exc:
-                        active_audio_path = None
-                        status.set(f"Mikrofon nicht verfügbar: {type(exc).__name__}: {exc}")
+                        if recording.alias is not None:
+                            active_audio_path = recording.path
+                            recording_started = time.monotonic()
+                            if active_audio_path is not None:
+                                register = getattr(self, "register_temp_audio", None)
+                                if register is not None:
+                                    register(str(active_audio_path))
+                            mic_button.configure(text="Aufnahme erneut stoppen", state="normal")
+                            status.set(
+                                f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                                "Erneut stoppen oder Chat beenden."
+                            )
+                        else:
+                            active_audio_path = None
+                            status.set(f"Mikrofon nicht verfügbar: {type(exc).__name__}: {exc}")
                         return
                     recording_started = time.monotonic()
                     mic_button.configure(text="Aufnahme stoppen")
@@ -461,16 +474,25 @@ class ChatSession:
             def stop_microphone() -> None:
                 nonlocal active_audio_path, recording_started
                 path = active_audio_path
-                recording_started = None
                 try:
                     path = recording.stop()
                 except Exception as exc:
+                    if recording.alias is not None:
+                        active_audio_path = recording.path or path
+                        mic_button.configure(text="Aufnahme erneut stoppen", state="normal")
+                        status.set(
+                            f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                            "Erneut stoppen oder Chat beenden."
+                        )
+                        return
+                    recording_started = None
                     if path is not None:
                         unregister_audio(path)
                     active_audio_path = None
                     mic_button.configure(text="Mikrofon starten", state="normal")
                     status.set(f"Aufnahme fehlgeschlagen: {type(exc).__name__}: {exc}")
                     return
+                recording_started = None
                 active_audio_path = None
                 begin_transcription(path)
 
@@ -496,7 +518,14 @@ class ChatSession:
                     status.set("Nachricht zu lang (maximal 20.000 Zeichen).")
                     return
                 if recording_started is not None or transcription_cancelled is not None:
-                    cancel_microphone_work()
+                    try:
+                        cancel_microphone_work()
+                    except Exception as exc:
+                        status.set(
+                            f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                            "Nachricht wurde nicht gesendet."
+                        )
+                        return
                 mic_button.configure(state="disabled")
                 append("human", text)
                 self.turns.put(HumanTurn(
@@ -562,13 +591,24 @@ class ChatSession:
             self.turns.put(_STOP)
 
     def _close(self, root: Any) -> None:
-        if not self.closed.is_set():
+        first_close = not self.closed.is_set()
+        if first_close:
             self.closed.set()
             while True:
                 try:
                     self.turns.get_nowait()
                 except queue.Empty:
                     break
+        cleanup = getattr(self, "cleanup_callback", None)
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception as exc:
+                self.turns.put({
+                    "type": "error",
+                    "detail": f"microphone cleanup failed during chat shutdown: {type(exc).__name__}: {exc}",
+                })
+        if first_close:
             self.turns.put(_STOP)
         try:
             root.destroy()
@@ -664,33 +704,100 @@ class ChatBridge:
 
     def close(self, chat_id: str) -> bool:
         with self._lock:
-            session = self._sessions.pop(chat_id, None)
+            session = self._sessions.get(chat_id)
         if session is None:
             return False
-        if session.process is not None and session.process.poll() is None:
-            session._send_command({"type": "close"})
-        if not session.closed.is_set():
-            session.closed.set()
-            while True:
-                try:
-                    session.turns.get_nowait()
-                except queue.Empty:
-                    break
-            session.turns.put(_STOP)
-        if session.process is not None:
+        failure: str | None = None
+        process = session.process
+
+        def child_running() -> bool:
+            if process is None:
+                return False
             try:
-                session.process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                session.process.terminate()
-                session.process.wait(timeout=2)
-        session.dispose()
+                return process.poll() is None
+            except Exception:
+                return True
+
+        try:
+            if child_running():
+                try:
+                    session._send_command({"type": "close"})
+                except (BrokenPipeError, OSError, ValueError):
+                    # The child may already be exiting. Still run the bounded
+                    # wait/terminate path below before dropping its session.
+                    pass
+            if not session.closed.is_set():
+                session.closed.set()
+                while True:
+                    try:
+                        session.turns.get_nowait()
+                    except queue.Empty:
+                        break
+                session.turns.put(_STOP)
+            if child_running():
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    try:
+                        process.terminate()
+                    except Exception as exc:
+                        failure = f"native chat UI terminate failed: {type(exc).__name__}: {exc}"
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                            process.wait(timeout=2)
+                        except Exception as exc:
+                            failure = f"native chat UI kill failed: {type(exc).__name__}: {exc}"
+            elif process is not None:
+                # A child that exited between the close send and wait still
+                # needs a collected exit status where the platform allows it.
+                try:
+                    process.wait(timeout=3)
+                except Exception:
+                    pass
+            if child_running() and failure is None:
+                failure = "native chat UI child could not be stopped"
+        except Exception as exc:
+            failure = f"native chat UI close failed: {type(exc).__name__}: {exc}"
+        finally:
+            if child_running():
+                try:
+                    process.terminate()
+                    process.wait(timeout=2)
+                except Exception:
+                    try:
+                        process.kill()
+                        process.wait(timeout=2)
+                    except Exception as exc:
+                        if failure is None:
+                            failure = f"native chat UI forced shutdown failed: {type(exc).__name__}: {exc}"
+            if not child_running():
+                failure = None
+            session.closed.set()
+            with self._lock:
+                if self._sessions.get(chat_id) is session:
+                    self._sessions.pop(chat_id, None)
+            try:
+                session.dispose()
+            except Exception as exc:
+                if failure is None:
+                    failure = f"native chat UI dispose failed: {type(exc).__name__}: {exc}"
+        if failure is not None:
+            raise RuntimeError(failure)
         return True
 
     def close_all(self) -> None:
         with self._lock:
             chat_ids = tuple(self._sessions)
         for chat_id in chat_ids:
-            self.close(chat_id)
+            try:
+                self.close(chat_id)
+            except Exception:
+                # One broken child must not keep other native chat windows
+                # from receiving their own close/cleanup attempt.
+                continue
 
 
 __all__ = ["ChatBridge", "ChatSession", "HumanTurn", "MODES"]

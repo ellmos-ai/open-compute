@@ -6,6 +6,7 @@ SDK is an optional extra, so the module is import-or-skipped.
 """
 
 import asyncio
+import pathlib
 import threading
 import time
 from types import SimpleNamespace
@@ -955,22 +956,62 @@ def test_hide_observation_overlay_helper_is_idempotent(_signal_state):
     S._hide_observation_overlay()  # no overlay at all, still nothing raises
 
 
-def test_chat_returns_message_and_shot(monkeypatch, _signal_state, tmp_path):
+def test_tk_chat_only_captures_when_human_turn_checkbox_is_checked(
+    monkeypatch, _signal_state, tmp_path
+):
     from open_compute.chat_ui import HumanTurn
 
     session = SimpleNamespace(chat_id="chat-test")
-    bridge = SimpleNamespace(open=lambda **_kw: (session, HumanTurn("fake message", "Kurz", True), False))
+    captures = []
+    fake_executor = SimpleNamespace(screenshot=lambda: captures.append("capture") or _Obs())
+    monkeypatch.setattr(S._STATE, "executor", lambda: fake_executor)
+    bridge = SimpleNamespace(open=lambda **_kw: (session, HumanTurn("fake message", "Kurz", False), False))
     monkeypatch.setattr(S, "_CHAT_BRIDGE", bridge)
     monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
     result = S.chat(channel="tk", shot=True)
     assert result["chat_message"] == "fake message"
     assert result["mode"] == "Kurz"
     assert result["chat_id"] == "chat-test"
+    assert result["screenshot"] is None
+    assert captures == []
+
+
+def test_tk_chat_captures_when_human_turn_checkbox_is_checked(
+    monkeypatch, _signal_state, tmp_path
+):
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-test")
+    captures = []
+    fake_executor = SimpleNamespace(screenshot=lambda: captures.append("capture") or _Obs())
+    monkeypatch.setattr(S._STATE, "executor", lambda: fake_executor)
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
+        open=lambda **_kw: (session, HumanTurn("fake message", "Kurz", True), False)
+    ))
+    monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
+
+    result = S.chat(channel="tk", shot=False)
+
     assert result["screenshot"] is not None
-    assert (tmp_path / result["screenshot"].split(tmp_path.name + "\\")[-1]
-            if "\\" in result["screenshot"] else True)
-    import pathlib
-    assert pathlib.Path(result["screenshot"]).exists()
+    assert len(captures) == 1
+    assert pathlib.Path(result["screenshot"]).is_file()
+
+
+def test_console_chat_retains_legacy_explicit_shot_contract(
+    monkeypatch, _signal_state, tmp_path
+):
+    captures = []
+    fake_executor = SimpleNamespace(screenshot=lambda: captures.append("capture") or _Obs())
+    monkeypatch.setattr(S._STATE, "executor", lambda: fake_executor)
+    monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
+    monkeypatch.setattr(S, "_prompt_channel", lambda *_args: "legacy console message")
+
+    result = S.chat(channel="console", shot=True)
+
+    assert result["chat_message"] == "legacy console message"
+    assert result["screenshot"] is not None
+    assert len(captures) == 1
+    assert pathlib.Path(result["screenshot"]).is_file()
 
 
 def test_chat_without_shot(monkeypatch, _signal_state):

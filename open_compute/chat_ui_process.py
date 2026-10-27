@@ -81,9 +81,22 @@ class _WindowSession:
     def _close(self, root: Any) -> None:
         if not self.closed.is_set():
             self.closed.set()
-            if self.cleanup_callback is not None:
-                self.cleanup_callback()
-            self.turns.put(_STOP)
+            try:
+                if self.cleanup_callback is not None:
+                    self.cleanup_callback()
+            except Exception as exc:
+                try:
+                    self.turns.output.send({
+                        "type": "error",
+                        "detail": f"microphone cleanup failed during chat shutdown: {type(exc).__name__}: {exc}",
+                    })
+                except Exception:
+                    pass
+            finally:
+                try:
+                    self.turns.put(_STOP)
+                except Exception:
+                    pass
         try:
             root.destroy()
         except Exception:

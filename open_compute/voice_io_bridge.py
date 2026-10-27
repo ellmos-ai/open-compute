@@ -85,7 +85,13 @@ class MicrophoneRecording:
         self.mci, self.alias, self.path = mci, alias, path
         rc = mci(f"record {alias}")
         if rc != 0:
-            self.cancel()
+            try:
+                self.cancel()
+            except RuntimeError as cleanup_error:
+                raise RuntimeError(
+                    f"Mikrofonaufnahme konnte nicht starten (MCI {rc}); "
+                    f"Aufräumen fehlgeschlagen: {cleanup_error}"
+                ) from cleanup_error
             raise RuntimeError(f"Mikrofonaufnahme konnte nicht starten (MCI {rc}).")
         return path
 
@@ -94,41 +100,62 @@ class MicrophoneRecording:
             raise RuntimeError("es läuft gerade keine Mikrofonaufnahme")
         path = self.path
         mci, alias = self.mci, self.alias
-        error: Exception | None = None
+        errors: list[str] = []
         try:
             rc = mci(f"stop {alias}")
             if rc != 0:
-                raise RuntimeError(f"Mikrofonaufnahme konnte nicht gestoppt werden (MCI {rc}).")
-            rc = mci(f'save {alias} "{path}"')
-            if rc != 0:
-                raise RuntimeError(f"WAV-Datei konnte nicht gespeichert werden (MCI {rc}).")
-            if not path.is_file() or path.stat().st_size <= 44:
-                raise RuntimeError("Die Aufnahme enthält keine Audiodaten.")
+                errors.append(f"Mikrofonaufnahme konnte nicht gestoppt werden (MCI {rc})")
+            else:
+                rc = mci(f'save {alias} "{path}"')
+                if rc != 0:
+                    errors.append(f"WAV-Datei konnte nicht gespeichert werden (MCI {rc})")
+                elif not path.is_file() or path.stat().st_size <= 44:
+                    errors.append("Die Aufnahme enthält keine Audiodaten")
         except Exception as exc:
-            error = exc
-        finally:
-            try:
-                mci(f"close {alias}")
-            except OSError:
-                pass
+            errors.append(f"MCI-Stopp/Speichern fehlgeschlagen: {exc}")
+        close_ok = False
+        try:
+            rc = mci(f"close {alias}")
+            if rc != 0:
+                errors.append(f"Mikrofon konnte nicht freigegeben werden (MCI {rc})")
+            else:
+                close_ok = True
+        except Exception as exc:
+            errors.append(f"Mikrofon konnte nicht freigegeben werden: {exc}")
+        if close_ok:
             self.mci = self.alias = self.path = None
-        if error is not None:
-            path.unlink(missing_ok=True)
-            raise error
+        if errors:
+            if close_ok:
+                path.unlink(missing_ok=True)
+            raise RuntimeError("; ".join(errors) + ".")
         return path
 
     def cancel(self) -> Path | None:
         path = self.path
+        errors: list[str] = []
         if self.mci is not None and self.alias is not None:
             try:
-                self.mci(f"stop {self.alias}")
-            except OSError:
-                pass
+                rc = self.mci(f"stop {self.alias}")
+                if rc != 0:
+                    errors.append(f"Mikrofonaufnahme konnte beim Abbruch nicht gestoppt werden (MCI {rc})")
+            except Exception as exc:
+                errors.append(f"Mikrofonaufnahme konnte beim Abbruch nicht gestoppt werden: {exc}")
+            close_ok = False
             try:
-                self.mci(f"close {self.alias}")
-            except OSError:
-                pass
-        self.mci = self.alias = self.path = None
+                rc = self.mci(f"close {self.alias}")
+                if rc != 0:
+                    errors.append(f"Mikrofon konnte beim Abbruch nicht freigegeben werden (MCI {rc})")
+                else:
+                    close_ok = True
+            except Exception as exc:
+                errors.append(f"Mikrofon konnte beim Abbruch nicht freigegeben werden: {exc}")
+            if close_ok:
+                self.mci = self.alias = self.path = None
         if path is not None:
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                errors.append(f"Temporäre Audiodatei konnte nicht gelöscht werden: {exc}")
+        if errors:
+            raise RuntimeError("; ".join(errors) + ".")
         return path
