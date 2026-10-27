@@ -404,12 +404,19 @@ renderer."). Dieser Lauf liefert den Renderer.
   den Zustand für Screenreader lesbar; Farbe, Blinken oder Animation sind keine
   Voraussetzung. Abbruch, Neustart, Nullsekundenfall und fehlgeschlagener Start
   räumen den Countdown deterministisch auf.
-- [x] **Chat-Anbindung über Bildschirminhalt (v0, umgesetzt 2026-07-31):**
-  `oc chat [--channel console|tk] [--shot]` — Kurznachricht des Menschen zum
-  Bildschirminhalt, optional mit Vollbild-Screenshot aus `_session/`, als
-  JSON-Zeile an den aufrufenden Agenten. Bewusst kein Modell-Aufruf im
-  Kommando: der Agent antwortet in seinem eigenen Kanal. Offen bleibt der
-  Ausbau zur laufenden Dialog-Schleife mit `ellmos-chat`/`companion-for-agy`.
+- [x] **Chat-Rückkanal über MCP (Code umgesetzt, T-20261027-247663934):**
+  natives Tk-Desktopfenster mit Rollenverlauf, vier Antwortmodi, anklickbaren
+  Vorschlägen, optionaler Screenshot-Einwilligung sowie Cancel/Close. Das
+  aufrufende Hostmodell liefert echte Antworten über `chat_id` und eine
+  idempotente `assistant_turn_id` zurück; Timeout wird über `poll=true`
+  fortgesetzt. Kein Modell- oder Provideraufruf im open-compute-Server.
+  Mehrturn-, Retry-, Timeout- und Schließtests sowie echter Child-Prozessstart
+  mit sauberem Shutdown sind abgedeckt. Die sichtbare native Desktopabnahme
+  bleibt ein eigenes Prüftor.
+- [x] **CLI-Kurznachricht v0 (umgesetzt 2026-07-31):**
+  `oc chat [--channel console|tk] [--shot]` sendet eine einzelne
+  Menschennachricht als JSON-Zeile an den aufrufenden Agenten; kein eigener
+  Modellaufruf.
 - [x] **Audio / Live-Sprache — Push-to-Talk v0 (umgesetzt 2026-07-31):**
   `open_compute/talk.py` + `oc talk --key F9` — Taste halten → sprechen →
   loslassen, WAV in `_session/` (winmm MCI, zero-dependency). Pfad geht als

@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Native conversational MCP chat bridge** (Ticket `T-20261027-247663934`): `chat` now opens a regular Tk desktop window in a dedicated child process with role-labeled conversation history, four response modes, clickable model suggestions, explicit full-desktop screenshot consent, and cancel/close controls. The calling host model supplies real assistant replies through the same `chat_id`; stable `assistant_turn_id` values make retries idempotent, and `poll=true` resumes after a bounded wait. The server makes no model/provider call. Automated multi-turn tests and a real Tk child-process start/shutdown test pass; native visual acceptance remains pending.
+
 - **Repository Hygiene, Bilingual CONTRIBUTING Guidelines, CI Hardening & Level 1 SBOM Re-Audit (Pfad A)** [G 2026-10-03]:
   - **Bilingual Contributing Guidelines (`CONTRIBUTING.md`):** Authoritative bilingual guide (English & Deutsch) establishing all 10 governance and runtime invariants (`INV-MOD-01` to `INV-SLA-10`), Plan D local development workflow (`C:\_Local_DEV\repos\open-compute`), unprivileged `RunAsInvoker` mode, version freeze discipline (`0.9.1` per `T-20260920-167562623`), § 521 BGB gratuitous liability limitation, and binding 48h Security Response SLA.
   - **PEP 621 Metadata & Pytest Standardization (`pyproject.toml`):** Registered `Contributing` URL under `[project.urls]`; expanded `norecursedirs` with `.turbo`, `.nyc_output`, and `.tox`.

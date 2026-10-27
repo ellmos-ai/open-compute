@@ -1881,6 +1881,7 @@ def _signal_config_path() -> pathlib.Path | None:
 # the same check.
 _MAX_PROMPT_CHOICES = 8
 _MAX_PROMPT_CHOICE_LEN = 120
+_CHAT_BRIDGE: Any = None
 
 
 def _clean_choices(choices: Sequence[str] | None) -> tuple[str, ...]:
@@ -2523,26 +2524,125 @@ def _hide_observation_overlay() -> None:
             pass
 
 
+def _close_chat_sessions() -> None:
+    """Stop UI child processes cleanly when this MCP server shuts down."""
+    bridge = _CHAT_BRIDGE
+    if bridge is not None:
+        try:
+            bridge.close_all()
+        except Exception:  # pragma: no cover - best effort on shutdown
+            pass
+
+
 @mcp.tool(description=mcp_i18n.tool_description("chat", _LANG))
 def chat(
     channel: str = "tk",
     context: str = "",
     shot: bool = False,
     choices: list[str] | None = None,
+    chat_id: str | None = None,
+    assistant_message: str = "",
+    assistant_turn_id: str = "",
+    poll: bool = False,
+    cancel: bool = False,
+    timeout_seconds: float = 300.0,
 ) -> dict:
-    """Human-to-model message about screen content (+ optional screenshot).
+    """Run a native human/host-model conversation through a return channel.
 
-    The message comes back as the tool result; this server never calls a
-    model itself — the client (the reasoner) answers in its own channel.
+    Start with no ``chat_id``. The returned human turn and generated ID are
+    supplied to the host model. The host then calls this tool again with that
+    ID and its natural-language ``assistant_message``; the message appears in
+    the same window and the call waits for the next human turn. Send a unique,
+    stable ``assistant_turn_id`` with every assistant reply so retries return
+    the same human turn without displaying the answer twice. A timeout returns
+    ``status='waiting_for_human'``; call again with the same ``chat_id`` and
+    ``poll=True`` to wait for input. Repeat until closed (``status='closed'``).
+    A retry with ``assistant_turn_replayed=True`` is cached; do not answer it as
+    a new human turn. The server never calls a model.
 
-    ``choices`` renders one 1-click button per option above the free-text
-    entry (same mechanism as the abort dialog's quick reasons), so the human
-    can pick a hypothesis instead of typing one. Free text stays available
-    either way. With options given, the result carries ``choice_index`` — the
-    position of the picked option, or ``None`` for a free-text answer.
+    The Tk window keeps the visible conversation history, lets the human pick
+    a response mode and send suggestions, and captures a screenshot only when
+    the human checks the screenshot box (or explicitly requests ``shot``).
+    Console calls retain the legacy one-message prompt.
     """
-
     cleaned = _clean_choices(choices)
+    try:
+        wait_seconds = float(timeout_seconds)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout_seconds must be numeric") from exc
+    if not 1 <= wait_seconds <= 3600:
+        raise ValueError("timeout_seconds must be between 1 and 3600")
+
+    if channel == "tk":
+        global _CHAT_BRIDGE
+        if _CHAT_BRIDGE is None:
+            from .chat_ui import ChatBridge
+
+            _CHAT_BRIDGE = ChatBridge()
+        if cancel:
+            if chat_id is None:
+                raise ValueError("chat_id is required to cancel a chat")
+            _CHAT_BRIDGE.close(chat_id)
+            return {"status": "closed", "chat_id": chat_id, "screenshot": None}
+        if chat_id is None:
+            if poll:
+                raise ValueError("poll requires an existing chat_id")
+            if assistant_message.strip():
+                raise ValueError("assistant_message needs an existing chat_id")
+            session, turn, timed_out = _CHAT_BRIDGE.open(
+                context=context or "Nachricht ans Modell", choices=cleaned,
+                timeout=wait_seconds,
+            )
+        else:
+            if poll:
+                if assistant_message.strip() or assistant_turn_id.strip():
+                    raise ValueError("poll cannot carry an assistant reply or turn id")
+                session, turn, timed_out = _CHAT_BRIDGE.poll(chat_id, timeout=wait_seconds)
+                replayed = False
+            else:
+                if not assistant_message.strip():
+                    raise ValueError("assistant_message is required when chat_id is provided")
+                if not assistant_turn_id.strip() or len(assistant_turn_id) > 128:
+                    raise ValueError("assistant_turn_id must be a unique non-empty value up to 128 characters")
+                session, turn, timed_out, replayed = _CHAT_BRIDGE.reply(
+                    chat_id, assistant_message=assistant_message,
+                    assistant_turn_id=assistant_turn_id, choices=cleaned,
+                    timeout=wait_seconds,
+                )
+        if turn is None:
+            if session.closed.is_set():
+                _CHAT_BRIDGE._forget(session.chat_id)
+                return {"status": "closed", "chat_id": session.chat_id, "screenshot": None}
+            return {"status": "waiting_for_human", "chat_id": session.chat_id, "screenshot": None}
+        shot_path = None
+        if shot or turn.screenshot:
+            obs = _STATE.executor().screenshot()
+            data = bytes(obs.screenshot)
+            from datetime import datetime, timezone
+
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            shot_file = _module_session_dir() / f"chat_{stamp}.png"
+            shot_file.write_bytes(data)
+            shot_path = str(shot_file)
+        result = {
+            "status": "waiting_for_assistant",
+            "chat_id": session.chat_id,
+            "chat_message": turn.message,
+            "mode": turn.mode,
+            "mode_instruction": {
+                "Allgemein": "Antworte hilfreich und natürlich in normaler Ausführlichkeit.",
+                "Kurz": "Antworte knapp und direkt; nenne nur nötige Schritte.",
+                "Brainstorming": "Biete mehrere kreative Ansätze an und frage nach der bevorzugten Richtung.",
+                "Bildschirmhilfe": "Beziehe dich auf den sichtbaren Bildschirm nur, wenn ein Screenshot mitgeliefert wurde; erkläre konkrete nächste Schritte.",
+            }[turn.mode],
+            "screenshot": shot_path,
+            "choice_index": turn.choice_index,
+            "assistant_turn_replayed": replayed if chat_id is not None and not poll else False,
+        }
+        return result
+
+    if chat_id is not None or assistant_message or assistant_turn_id or poll or cancel:
+        raise ValueError("chat_id and assistant_message are supported only with channel='tk'")
     message = _prompt_channel(channel, context or "Nachricht ans Modell", cleaned)
     shot_path = None
     if shot:
@@ -2550,7 +2650,7 @@ def chat(
         data = bytes(obs.screenshot)
         from datetime import datetime, timezone
 
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         shot_file = _module_session_dir() / f"chat_{stamp}.png"
         shot_file.write_bytes(data)
         shot_path = str(shot_file)
@@ -2665,9 +2765,11 @@ def run_stdio_after_initialize() -> None:
 
     atexit.register(_release_held_input)
     atexit.register(_hide_observation_overlay)
+    atexit.register(_close_chat_sessions)
     try:
         anyio.run(_run_stdio_after_initialize)
     finally:
+        _close_chat_sessions()
         signal_hide()
         _hide_observation_overlay()
         _release_held_input()
@@ -2679,9 +2781,11 @@ def main() -> None:
     # import (or per call) would stack up on repeated imports.
     atexit.register(_release_held_input)
     atexit.register(_hide_observation_overlay)
+    atexit.register(_close_chat_sessions)
     try:
         mcp.run(transport="stdio")
     finally:
+        _close_chat_sessions()
         signal_hide()
         _hide_observation_overlay()
         _release_held_input()

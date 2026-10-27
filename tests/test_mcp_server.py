@@ -956,10 +956,16 @@ def test_hide_observation_overlay_helper_is_idempotent(_signal_state):
 
 
 def test_chat_returns_message_and_shot(monkeypatch, _signal_state, tmp_path):
-    monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-test")
+    bridge = SimpleNamespace(open=lambda **_kw: (session, HumanTurn("fake message", "Kurz", True), False))
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", bridge)
     monkeypatch.setattr(S, "_module_session_dir", lambda: tmp_path)
     result = S.chat(channel="tk", shot=True)
     assert result["chat_message"] == "fake message"
+    assert result["mode"] == "Kurz"
+    assert result["chat_id"] == "chat-test"
     assert result["screenshot"] is not None
     assert (tmp_path / result["screenshot"].split(tmp_path.name + "\\")[-1]
             if "\\" in result["screenshot"] else True)
@@ -968,9 +974,17 @@ def test_chat_returns_message_and_shot(monkeypatch, _signal_state, tmp_path):
 
 
 def test_chat_without_shot(monkeypatch, _signal_state):
-    monkeypatch.setattr(S, "TkAbortChannel", _FakePromptChannel, raising=False)
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-test")
+    bridge = SimpleNamespace(open=lambda **_kw: (session, HumanTurn("fake message", "Allgemein", False), False))
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", bridge)
     assert S.chat(channel="tk") == {
-        "chat_message": "fake message", "screenshot": None,
+        "status": "waiting_for_assistant", "chat_id": "chat-test",
+        "chat_message": "fake message", "mode": "Allgemein",
+        "mode_instruction": "Antworte hilfreich und natürlich in normaler Ausführlichkeit.",
+        "screenshot": None, "choice_index": None,
+        "assistant_turn_replayed": False,
     }
 
 
@@ -1001,20 +1015,29 @@ class _ChoiceChannel:
 def test_chat_choices_returns_clicked_option_and_its_index(
     monkeypatch, _signal_state
 ):
-    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
-    monkeypatch.setattr(_ChoiceChannel, "answer", None, raising=False)
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-choice")
+    seen = {}
+    def fake_open(**kwargs):
+        seen.update(kwargs)
+        return session, HumanTurn("Falsches Fenster", "Allgemein", False, 1), False
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(open=fake_open))
 
     result = S.chat(channel="tk", choices=["Zu langsam", "Falsches Fenster", "Egal"])
 
     assert result["chat_message"] == "Falsches Fenster"
     assert result["choice_index"] == 1
-    # The options reach the dialog as the quick-pick buttons it already knows.
-    assert _ChoiceChannel.seen_reasons == ("Zu langsam", "Falsches Fenster", "Egal")
+    assert seen["choices"] == ("Zu langsam", "Falsches Fenster", "Egal")
 
 
 def test_chat_choices_keeps_free_text_answers(monkeypatch, _signal_state):
-    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
-    monkeypatch.setattr(_ChoiceChannel, "answer", "etwas ganz anderes", raising=False)
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-free")
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
+        open=lambda **_kw: (session, HumanTurn("etwas ganz anderes", "Allgemein", False), False)
+    ))
 
     result = S.chat(channel="tk", choices=["Zu langsam", "Falsches Fenster"])
 
@@ -1023,7 +1046,7 @@ def test_chat_choices_keeps_free_text_answers(monkeypatch, _signal_state):
 
 
 def test_chat_choices_rejects_too_many_or_too_long(monkeypatch, _signal_state):
-    monkeypatch.setattr(S, "TkAbortChannel", _ChoiceChannel, raising=False)
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace())
     with pytest.raises(ValueError):
         S.chat(channel="tk", choices=[f"opt {i}" for i in range(9)])
     with pytest.raises(ValueError):
@@ -1035,11 +1058,97 @@ def test_chat_choices_only_for_the_clickable_channel(monkeypatch, _signal_state)
         S.chat(channel="console", choices=["a", "b"])
 
 
+def test_chat_host_reply_returns_next_human_turn(monkeypatch, _signal_state):
+    from open_compute.chat_ui import HumanTurn
+
+    session = SimpleNamespace(chat_id="chat-roundtrip")
+    seen = {}
+    def fake_reply(chat_id, **kwargs):
+        seen.update(chat_id=chat_id, **kwargs)
+        return session, HumanTurn("Ja, bitte", "Bildschirmhilfe", False, 0), False, False
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(reply=fake_reply))
+
+    result = S.chat(
+        channel="tk", chat_id="chat-roundtrip",
+        assistant_message="Ich kann dir dabei helfen. Soll ich den Dialog öffnen?",
+        assistant_turn_id="assistant-1",
+        choices=["Ja, bitte"],
+    )
+
+    assert seen == {
+        "chat_id": "chat-roundtrip",
+        "assistant_message": "Ich kann dir dabei helfen. Soll ich den Dialog öffnen?",
+        "assistant_turn_id": "assistant-1",
+        "choices": ("Ja, bitte",),
+        "timeout": 300.0,
+    }
+    assert result["chat_message"] == "Ja, bitte"
+    assert result["mode"] == "Bildschirmhilfe"
+    assert result["mode_instruction"].startswith("Beziehe dich")
+    assert result["choice_index"] == 0
+
+
+def test_chat_host_reply_requires_id_and_answer(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace())
+    with pytest.raises(ValueError, match="existing chat_id"):
+        S.chat(channel="tk", assistant_message="Hallo")
+    with pytest.raises(ValueError, match="assistant_message is required"):
+        S.chat(channel="tk", chat_id="unknown")
+
+
+def test_chat_close_returns_closed_status(monkeypatch, _signal_state):
+    session = SimpleNamespace(chat_id="chat-closed", closed=threading.Event())
+    session.closed.set()
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
+        reply=lambda *_a, **_kw: (session, None, False, False),
+        _forget=lambda _chat_id: None,
+    ))
+    assert S.chat(channel="tk", chat_id="chat-closed", assistant_message="Antwort", assistant_turn_id="turn-1") == {
+        "status": "closed", "chat_id": "chat-closed", "screenshot": None,
+    }
+
+
 def test_chat_tool_schema_exposes_choices():
     tool = S.mcp._tool_manager.get_tool("chat")
     prop = (tool.parameters or {}).get("properties", {}).get("choices")
     assert prop is not None, "chat must expose a `choices` parameter"
     assert "array" in str(prop), prop
+
+
+def test_chat_tool_schema_exposes_host_return_channel():
+    tool = S.mcp._tool_manager.get_tool("chat")
+    properties = (tool.parameters or {}).get("properties", {})
+    for name in ("chat_id", "assistant_message", "assistant_turn_id", "poll", "cancel"):
+        assert name in properties, f"chat must expose {name}"
+
+
+def test_chat_timeout_range_is_bounded(monkeypatch, _signal_state):
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace())
+    with pytest.raises(ValueError, match="between 1 and 3600"):
+        S.chat(channel="tk", timeout_seconds=0)
+
+
+def test_chat_poll_and_cancel_controls(monkeypatch, _signal_state):
+    session = SimpleNamespace(chat_id="chat-controls", closed=threading.Event())
+    calls = []
+    def fake_poll(chat_id, *, timeout):
+        calls.append(("poll", chat_id, timeout))
+        return session, None, True
+    def fake_close(chat_id):
+        calls.append(("close", chat_id))
+        session.closed.set()
+        return True
+    bridge = SimpleNamespace(poll=fake_poll, close=fake_close)
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", bridge)
+
+    waiting = S.chat(channel="tk", chat_id="chat-controls", poll=True, timeout_seconds=12)
+    closed = S.chat(channel="tk", chat_id="chat-controls", cancel=True)
+
+    assert waiting == {
+        "status": "waiting_for_human", "chat_id": "chat-controls", "screenshot": None,
+    }
+    assert closed["status"] == "closed"
+    assert calls == [("poll", "chat-controls", 12.0), ("close", "chat-controls")]
 
 
 def test_talk_uses_injected_recorder(monkeypatch, _signal_state, tmp_path):

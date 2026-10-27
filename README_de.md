@@ -518,6 +518,36 @@ Bis zu acht Optionen à höchstens 120 Zeichen erscheinen als 1-Klick-Knöpfe
 über dem gewohnten Freitextfeld, das erhalten bleibt — eine getippte Antwort
 kommt einfach mit `choice_index: null` zurück.
 
+#### Laufender Desktopdialog über MCP
+
+Das MCP-Tool `chat` öffnet ein normales Tk-Desktopfenster und verbindet es
+über einen Rückkanal mit dem aufrufenden Hostmodell. Das Modell antwortet im
+eigenen Kanal und übergibt seine echte Antwort danach mit derselben `chat_id`
+als `assistant_message`. Der Host erzeugt für jede Antwort eine eindeutige
+`assistant_turn_id`; wiederholte Aufrufe derselben ID liefern dieselbe
+Menschennachricht zurück und zeigen die Antwort nicht doppelt an.
+
+```text
+1. chat() -> chat_id, chat_message, mode, screenshot
+2. Hostmodell erstellt eine echte Antwort anhand dieser Nachricht
+3. chat(chat_id=..., assistant_turn_id="turn-1", assistant_message="...")
+   -> nächste chat_message; die Antwort erscheint im selben Fenster
+4. Wiederholen, bis das Fenster geschlossen wird (status="closed")
+```
+
+Das Fenster zeigt den Verlauf mit Rollen, bietet die Modi „Allgemein“, „Kurz“,
+„Brainstorming“ und „Bildschirmhilfe“ sowie Modellvorschläge als anklickbare
+Antworten. Der gewählte Modus kommt samt konkreter Antwortanweisung zum
+Hostmodell zurück. Vollbild-Screenshots werden nur mit gesetzter Einwilligungsbox oder
+explizitem `shot=true` erfasst. Wartende MCP-Aufrufe enden nach höchstens
+3.600 Sekunden; `status="waiting_for_human"` lässt sich mit `poll=true`
+fortsetzen (erneut mit derselben `chat_id`). „Chat beenden“ oder das Schließen
+des Fensters gibt den Aufruf frei. Der Verlauf bleibt während dieser
+Fenstersitzung sichtbar und wird nicht als Chatdatenbank gespeichert.
+
+Das Tool ruft selbst kein Modell und keinen Provider auf. Es nutzt den bereits
+verbundenen Hostreasoner und benötigt daher keine zusätzlichen Provider-Keys.
+
 ### Modus B — Autonomer Loop mit einem API-Backend
 
 Das Backend wird über den Namen gewählt; `claude` und `openai` sind

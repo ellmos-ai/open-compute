@@ -505,6 +505,36 @@ Up to eight options of at most 120 characters each render as one-click
 buttons above the usual free-text entry, which stays available — a typed
 answer simply comes back with `choice_index: null`.
 
+#### Ongoing desktop conversation over MCP
+
+The MCP `chat` tool opens a regular Tk desktop window and connects it to the
+calling host model through a return channel. The host model answers in its own
+channel, then sends its actual response back as `assistant_message` with the
+same `chat_id`. The host assigns a unique `assistant_turn_id` to each reply;
+retries with the same ID return the same human turn and do not display the
+answer twice.
+
+```text
+1. chat() -> chat_id, chat_message, mode, screenshot
+2. Host model creates a real answer based on that message
+3. chat(chat_id=..., assistant_turn_id="turn-1", assistant_message="...")
+   -> next chat_message; the answer appears in the same window
+4. Repeat until the window is closed (status="closed")
+```
+
+The window shows role-labeled history, supports “General”, “Brief”,
+“Brainstorming”, and “Screen help” modes, and renders model suggestions as
+clickable replies. The selected mode and a concrete response instruction are
+returned to the host model. Full-desktop screenshots are captured only when the consent
+box is checked or `shot=true` is explicitly passed. A waiting MCP call ends
+after at most 3,600 seconds; `status="waiting_for_human"` can be resumed with
+`poll=true` with the same `chat_id`. “End chat” or closing the window releases
+the call. History stays visible for that window session and is not stored as a
+chat database.
+
+The tool itself calls no model or provider. It uses the already connected host
+reasoner and needs no additional provider keys.
+
 ### Mode B — Autonomous loop with an API backend
 
 The backend is selected by name; `claude` and `openai` are equally supported
