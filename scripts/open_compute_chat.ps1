@@ -173,6 +173,25 @@ if (-not (Test-Path -LiteralPath $modelPath -PathType Container)) {
 }
 $pythonPath = "$openSnapshot;$voiceSnapshot/src"
 
+$codex = Get-Command codex -ErrorAction Stop
+$legacyProbe = & $codex.Source mcp get open-compute --json 2>&1
+$legacyProbeText = $legacyProbe -join "`n"
+$legacyProbeCode = $LASTEXITCODE
+$legacyServerExists = $false
+if ($legacyProbeCode -eq 0) {
+    try { $null = $legacyProbeText | ConvertFrom-Json }
+    catch { throw "Codex-Basisprofil lieferte ungültigen open-compute-Readback: $legacyProbeText" }
+    $legacyServerExists = $true
+} elseif ($legacyProbeText -match "(?m)^Error: No MCP server named 'open-compute' found\.$") {
+    $legacyServerExists = $false
+} else {
+    throw "Codex-Basisprofil konnte nicht fail-closed gelesen werden: $legacyProbeText"
+}
+$legacyDisableBlock = ''
+if ($legacyServerExists) {
+    $legacyDisableBlock = '[mcp_servers."open-compute"]' + "`n" + 'enabled = false'
+}
+
 $codexHome = $env:CODEX_HOME
 if ([string]::IsNullOrWhiteSpace($codexHome)) {
     $codexHome = Join-Path $env:USERPROFILE '.codex'
@@ -180,8 +199,7 @@ if ([string]::IsNullOrWhiteSpace($codexHome)) {
 New-Item -ItemType Directory -Path $codexHome -Force | Out-Null
 $profilePath = Join-Path $codexHome "$profileName.config.toml"
 $profileText = @"
-[mcp_servers."open-compute"]
-enabled = false
+$legacyDisableBlock
 
 [mcp_servers."open-compute-chat"]
 command = $(ConvertTo-TomlString $python)
@@ -225,7 +243,6 @@ if (Test-Path -LiteralPath $profilePath -PathType Leaf) {
     }
 }
 
-$codex = Get-Command codex -ErrorAction Stop
 $probe = & $codex.Source --profile $profileName mcp get open-compute-chat --json 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Codex konnte das isolierte MCP-Profil nicht laden: $($probe -join "`n")"
@@ -251,13 +268,24 @@ $profileValid = (
 if (-not $profileValid) {
     throw "Codex-Profil-Readback stimmt nicht mit dem chat-only-Serververtrag überein."
 }
-$disabledProbe = & $codex.Source --profile $profileName mcp get open-compute --json 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "Codex konnte den globalen Serverzustand im Profil nicht prüfen: $($disabledProbe -join "`n")"
-}
-$oldServerConfig = ($disabledProbe -join "`n") | ConvertFrom-Json
-if ($oldServerConfig.enabled -ne $false) {
-    throw "Das Profil schaltet den alten globalen open-compute-Server nicht isoliert aus."
+if ($legacyServerExists) {
+    $disabledProbe = & $codex.Source --profile $profileName mcp get open-compute --json 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Codex konnte den globalen Serverzustand im Profil nicht prüfen: $($disabledProbe -join "`n")"
+    }
+    $oldServerConfig = ($disabledProbe -join "`n") | ConvertFrom-Json
+    if ($oldServerConfig.enabled -ne $false) {
+        throw "Das Profil schaltet den alten globalen open-compute-Server nicht isoliert aus."
+    }
+} else {
+    $absentProbe = & $codex.Source --profile $profileName mcp get open-compute --json 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        throw "Das isolierte Profil registriert unerwartet einen globalen open-compute-Server."
+    }
+    $absentText = $absentProbe -join "`n"
+    if ($absentText -notmatch "(?m)^Error: No MCP server named 'open-compute' found\.$") {
+        throw "Codex konnte die Abwesenheit des alten Servers nicht bestätigen: $absentText"
+    }
 }
 
 Write-Output "Profil geprüft: $profileName"
