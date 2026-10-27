@@ -2703,7 +2703,7 @@ def chat(
                     }
 
             outcome = session.capture_observation_once(
-                turn.observation_event_id, capture_observation
+                turn.observation_event_id, capture_observation, replayed=replayed
             )
 
             if outcome.get("status") != "ok":

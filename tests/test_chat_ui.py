@@ -109,7 +109,8 @@ def test_observation_event_is_captured_once_and_only_one_frame_is_cached():
         "event-2", lambda: {"status": "ok", "png": b"new frame"}
     )
     expired = session.capture_observation_once(
-        "event-1", lambda: calls.append("expired recapture") or {"status": "ok", "png": b"wrong"}
+        "event-1", lambda: calls.append("expired recapture") or {"status": "ok", "png": b"wrong"},
+        replayed=True,
     )
     assert expired["status"] == "expired"
     assert "expired recapture" not in calls
@@ -127,6 +128,14 @@ def test_observation_event_rejects_empty_or_oversized_id_without_capture():
             event_id, lambda: calls.append(event_id) or {"status": "ok", "png": b"frame"}
         )
         assert result["status"] == "error"
+    assert calls == []
+
+    replay = session.capture_observation_once(
+        "uncached-replay",
+        lambda: calls.append("replay recapture") or {"status": "ok", "png": b"frame"},
+        replayed=True,
+    )
+    assert replay["status"] == "expired"
     assert calls == []
 
 

@@ -288,7 +288,9 @@ class ChatSession:
             return
         self._send_command({"type": "observation_error", "message": safe_message})
 
-    def capture_observation_once(self, event_id: str, capture: Any) -> dict[str, Any]:
+    def capture_observation_once(
+        self, event_id: str, capture: Any, *, replayed: bool = False
+    ) -> dict[str, Any]:
         """Capture at most once per UI event and cache only one <=2-MB frame."""
         key = str(event_id).strip()
         if not key or len(key) > 128:
@@ -297,7 +299,7 @@ class ChatSession:
             cached = self.observation_reply_cache
             if cached is not None and cached[0] == key:
                 return dict(cached[1])
-            if key in self.observation_processed_ids:
+            if replayed or key in self.observation_processed_ids:
                 return {
                     "status": "expired",
                     "message": "Dieses Beobachtungsbild ist nicht mehr im begrenzten Cache.",
