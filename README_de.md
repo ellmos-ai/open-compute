@@ -605,10 +605,13 @@ Vorbereitung und Profilreadback starten kein Modell:
 ```
 
 Für den Dialog muss ein im eigenen Codex-Konto verfügbares Modell ausdrücklich
-angegeben werden; der Launcher nimmt keinen Modell-Fallback:
+angegeben werden; zusätzlich muss der gewünschte Arbeitsordner ausdrücklich
+mit `-Workspace` gewählt werden. Der Host startet dann in diesem Nutzerordner,
+nicht im schreibgeschützten App-Serversnapshot. Der Launcher nimmt weder einen
+Modell-Fallback noch einen stillen Workspace-Default:
 
 ```powershell
-.\scripts\open_compute_chat.ps1 -Model "<Modellname aus deinem Codex-Konto>" -Context "Wobei soll ich dir helfen?"
+.\scripts\open_compute_chat.ps1 -Model "<Modellname aus deinem Codex-Konto>" -Workspace "<Ordner für diese Aufgabe>" -Context "Wobei soll ich dir helfen?"
 ```
 
 Der Aufruf verwendet die vorhandene Codex-Anmeldung und zeigt das native

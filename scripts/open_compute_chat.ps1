@@ -1,5 +1,6 @@
 param(
     [string]$Model,
+    [string]$Workspace,
     [string]$Context = "Was möchtest du besprechen?",
     [switch]$PrepareOnly
 )
@@ -108,6 +109,16 @@ if ($LASTEXITCODE -ne 0) {
 $repoRoot = $repoRoot.Replace('/', '\').TrimEnd('\')
 if ($repoRoot -ine $repo.TrimEnd('\')) {
     throw "Die Chat-Startdatei muss aus dem Open-Compute-Git-Worktree gestartet werden: $repo"
+}
+if (-not $PrepareOnly -and [string]::IsNullOrWhiteSpace($Workspace)) {
+    throw 'Bitte den gewünschten Arbeitsordner ausdrücklich mit -Workspace auswählen.'
+}
+if (-not $PrepareOnly) {
+    $workspaceItem = Get-Item -LiteralPath $Workspace -ErrorAction Stop
+    if (-not $workspaceItem.PSIsContainer) {
+        throw "Der gewählte Host-Arbeitsordner ist kein Ordner: $Workspace"
+    }
+    $hostWorkspace = $workspaceItem.FullName
 }
 $dirty = & git -C $repo status --porcelain --untracked-files=all
 if ($LASTEXITCODE -ne 0 -or $dirty) {
@@ -241,6 +252,7 @@ Write-Output "Profil geprüft: $profileName"
 Write-Output "MCP-Server: open-compute-chat; einziges Werkzeug: chat"
 Write-Output "Gepinnte Quelle: $openComputeCommit"
 Write-Output "Gepinnte VoiceIO-Quelle: $voiceIoCommit"
+if (-not $PrepareOnly) { Write-Output "Host-Arbeitsordner: $hostWorkspace" }
 Write-Output "Codex-Basisconfig wurde nicht verändert: $(Join-Path $codexHome 'config.toml')"
 
 if ($PrepareOnly) {
@@ -257,7 +269,7 @@ $codexArgs = @(
     '--model', $Model,
     '--sandbox', 'read-only',
     '--ask-for-approval', 'on-request',
-    '--cd', $openSnapshot,
+    '--cd', $hostWorkspace,
     $prompt
 )
 & $codex.Source @codexArgs
