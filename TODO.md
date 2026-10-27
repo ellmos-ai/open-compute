@@ -404,15 +404,25 @@ renderer."). Dieser Lauf liefert den Renderer.
   den Zustand für Screenreader lesbar; Farbe, Blinken oder Animation sind keine
   Voraussetzung. Abbruch, Neustart, Nullsekundenfall und fehlgeschlagener Start
   räumen den Countdown deterministisch auf.
-- [x] **Chat-Rückkanal über MCP (Code umgesetzt, T-20261027-247663934):**
+- [ ] **Chat-Rückkanal über MCP (Teilstand, T-20261027-247663934):**
   natives Tk-Desktopfenster mit Rollenverlauf, vier Antwortmodi, anklickbaren
-  Vorschlägen, optionaler Screenshot-Einwilligung sowie Cancel/Close. Das
+  Vorschlägen und editierbaren Zusammenarbeitsprompts („Kurz weg“, „Wieder
+  da“, „Hilfe und Vorschläge“), optionaler Screenshot-Einwilligung sowie
+  Cancel/Close. Die Prompts werden nicht automatisch gesendet. Das
   aufrufende Hostmodell liefert echte Antworten über `chat_id` und eine
   idempotente `assistant_turn_id` zurück; Timeout wird über `poll=true`
   fortgesetzt. Kein Modell- oder Provideraufruf im open-compute-Server.
   Mehrturn-, Retry-, Timeout- und Schließtests sowie echter Child-Prozessstart
-  mit sauberem Shutdown sind abgedeckt. Die sichtbare native Desktopabnahme
-  bleibt ein eigenes Prüftor.
+  mit sauberem Shutdown sind abgedeckt. Laufende Bildschirmbeobachtung ist
+  nicht implementiert; Bildschirmhilfe nutzt nur den freigegebenen Screenshot
+  des jeweiligen Turns. Die optionale Mikrofontaste startet/stoppt die
+  vorhandene Windows-MCI-Aufnahme (maximal 60 Sekunden); `ellmos-voice-io`
+  0.2.1 und Vosk 0.3.45 transkribieren mit einem lokalen deutschen Modell.
+  Der Text landet als bearbeitbarer Entwurf im Eingabefeld; die temporäre WAV
+  wird nach Transkription/Abbruch/Schließen gelöscht. Der optionale Laufzeit- und
+  Modellbedarf ist dokumentiert. Automatisierte WAV-Transkriptions- und
+  Aufräumtests sind abgedeckt; persönliche Mikrofon- und sichtbare
+  Desktopabnahme sowie unabhängiger Code-Review bleiben offen.
 - [x] **CLI-Kurznachricht v0 (umgesetzt 2026-07-31):**
   `oc chat [--channel console|tk] [--shot]` sendet eine einzelne
   Menschennachricht als JSON-Zeile an den aufrufenden Agenten; kein eigener

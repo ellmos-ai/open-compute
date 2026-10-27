@@ -545,6 +545,36 @@ fortsetzen (erneut mit derselben `chat_id`). „Chat beenden“ oder das Schlie�
 des Fensters gibt den Aufruf frei. Der Verlauf bleibt während dieser
 Fenstersitzung sichtbar und wird nicht als Chatdatenbank gespeichert.
 
+Drei Zusammenarbeitsprompts („Kurz weg“, „Wieder da“ und „Hilfe und
+Vorschläge“) übernehmen bearbeitbare Entwürfe in das Texteingabefeld. Sie
+senden den Text nicht und starten keine Arbeit im Hintergrund. Eine laufende
+Bildschirmbeobachtung ist nicht implementiert; die Bildschirmhilfe verwendet
+nur den für diesen Turn ausdrücklich freigegebenen Screenshot.
+
+Die Mikrofontaste ist aktiv, wenn das lokale Sprachmodul und das deutsche
+Modell installiert sind. Ein Klick startet die Aufnahme, der nächste beendet
+sie; die Höchstdauer beträgt 60 Sekunden. Der vorhandene Windows-MCI-Rekorder
+schreibt eine temporäre WAV-Datei. `ellmos-voice-io` transkribiert sie lokal
+mit Vosk und fügt den Text als bearbeitbaren Entwurf in das Texteingabefeld
+ein. Der Text wird nicht automatisch gesendet. Audio ist kein Bestandteil der
+MCP-Nachrichten. Die WAV wird nach Transkription, Abbruch oder Schließen des
+Fensters gelöscht. Das Chat-Tool lädt kein Modell herunter.
+
+Installiere das Vosk-Extra und den lokalen `ellmos-voice-io`-Checkout in
+derselben virtuellen Umgebung wie den MCP-Server:
+
+```powershell
+python -m pip install ".[voice-vosk]"
+python -m pip install --no-deps --editable "<Pfad zum ellmos-voice-io-Checkout>"
+```
+
+Lege das offizielle deutsche Small-Modell unter
+`%LOCALAPPDATA%\open-compute\models\vosk-model-small-de-0.15` ab oder setze
+`OPEN_COMPUTE_VOSK_MODEL` auf ein anderes lokales Modellverzeichnis. Das
+Modellarchiv ist 45 MB groß und steht unter Apache-2.0. Ohne Laufzeitmodul oder
+Modell bleibt die Mikrofontaste deaktiviert und das Fenster nennt die fehlende
+lokale Voraussetzung.
+
 Das Tool ruft selbst kein Modell und keinen Provider auf. Es nutzt den bereits
 verbundenen Hostreasoner und benötigt daher keine zusätzlichen Provider-Keys.
 

@@ -532,6 +532,35 @@ after at most 3,600 seconds; `status="waiting_for_human"` can be resumed with
 the call. History stays visible for that window session and is not stored as a
 chat database.
 
+Three collaboration shortcuts — “Short break”, “I’m back”, and “Help and
+suggestions” — insert editable drafts into the message field. They do not send
+the draft or start background work. Continuous screen observation is not
+implemented; screen help uses only the explicitly consented screenshot for
+that turn.
+
+The microphone button is enabled when the local voice runtime and German model
+are installed. Click once to start recording and again to stop; recordings are
+limited to 60 seconds. The existing Windows MCI recorder writes a temporary WAV,
+and `ellmos-voice-io` transcribes it locally through Vosk. The transcript is
+inserted into the editable message field and is never sent automatically. Audio
+is not part of MCP messages; the temporary WAV is deleted after transcription,
+cancellation, or window shutdown. No model is downloaded by the chat tool.
+
+In the same virtual environment that runs the MCP server, install the Vosk extra
+and the local `ellmos-voice-io` checkout:
+
+```powershell
+python -m pip install ".[voice-vosk]"
+python -m pip install --no-deps --editable "<path to ellmos-voice-io checkout>"
+```
+
+Place the official German small model under
+`%LOCALAPPDATA%\open-compute\models\vosk-model-small-de-0.15`, or set
+`OPEN_COMPUTE_VOSK_MODEL` to another local model directory. The model archive is
+45 MB and is Apache-2.0 licensed. The runtime stays optional: without the
+package or model, the microphone button is disabled and the window gives the
+missing local requirement.
+
 The tool itself calls no model or provider. It uses the already connected host
 reasoner and needs no additional provider keys.
 

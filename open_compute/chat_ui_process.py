@@ -67,13 +67,22 @@ class _WindowSession:
         self.ready = _ReadySignal(self, output)
         self.closed = threading.Event()
         self.startup_error: BaseException | None = None
+        self.cleanup_callback: Any = None
 
     def progress(self, _stage: str) -> None:
         return None
 
+    def register_temp_audio(self, path: str) -> None:
+        self.turns.output.send({"type": "temp_audio", "path": path})
+
+    def unregister_temp_audio(self, path: str) -> None:
+        self.turns.output.send({"type": "temp_audio_removed", "path": path})
+
     def _close(self, root: Any) -> None:
         if not self.closed.is_set():
             self.closed.set()
+            if self.cleanup_callback is not None:
+                self.cleanup_callback()
             self.turns.put(_STOP)
         try:
             root.destroy()

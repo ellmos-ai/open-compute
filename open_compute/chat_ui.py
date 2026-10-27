@@ -13,14 +13,58 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 
 MODES: tuple[str, ...] = ("Allgemein", "Kurz", "Brainstorming", "Bildschirmhilfe")
+COLLABORATION_PROMPTS: tuple[tuple[str, str], ...] = (
+    (
+        "Kurz weg",
+        "Ich bin kurz weg. Arbeite am aktuellen Anliegen weiter und halte deine "
+        "nächsten konkreten Schritte fest, bis ich zurück bin.",
+    ),
+    (
+        "Wieder da",
+        "Ich bin wieder da. Fasse kurz zusammen, woran du gearbeitet hast und "
+        "was als Nächstes ansteht.",
+    ),
+    (
+        "Hilfe und Vorschläge",
+        "Gib mir Hilfestellungen oder konkrete Vorschläge zum aktuellen Schritt.",
+    ),
+)
 _STOP = "__OPEN_COMPUTE_CHAT_STOP__"
+
+
+def insert_collaboration_prompt(entry: Any, prompt: str) -> None:
+    """Put a preset into the editable message field without sending it."""
+    if entry.tag_ranges("sel"):
+        entry.delete("sel.first", "sel.last")
+    entry.insert("insert", prompt)
+    entry.focus_set()
+
+
+def _voice_status() -> tuple[bool, str]:
+    from .voice_io_bridge import transcription_status
+
+    return transcription_status()
+
+
+def _microphone_recording() -> Any:
+    from .voice_io_bridge import MicrophoneRecording
+
+    return MicrophoneRecording()
+
+
+def _transcribe_local_wav(path: Path) -> str:
+    from .voice_io_bridge import transcribe_local_wav
+
+    return transcribe_local_wav(path)
 
 
 @dataclass(frozen=True)
@@ -44,6 +88,7 @@ class ChatSession:
     exchange_lock: threading.Lock = field(default_factory=threading.Lock)
     input_lock: threading.Lock = field(default_factory=threading.Lock)
     replies: dict[str, tuple[str, HumanTurn | None, bool]] = field(default_factory=dict)
+    temp_audio_paths: set[Path] = field(default_factory=set)
 
     def start(self, *, title: str, context: str, choices: tuple[str, ...]) -> None:
         if len(context) > 8_000:
@@ -113,12 +158,54 @@ class ChatSession:
                     self.turns.put({"type": "error", "detail": "native chat IPC response exceeds the size limit"})
                     break
                 try:
-                    self.turns.put(json.loads(line))
+                    message = json.loads(line)
+                    if message.get("type") == "temp_audio":
+                        self._track_temp_audio(message.get("path"))
+                    elif message.get("type") == "temp_audio_removed":
+                        self._untrack_temp_audio(message.get("path"))
+                    else:
+                        self.turns.put(message)
                 except json.JSONDecodeError as exc:
                     self.turns.put({"type": "error", "detail": f"invalid UI child output: {exc}"})
         finally:
             exit_code = self.process.wait()
+            self._cleanup_temp_audio()
             self.turns.put({"type": "eof", "exit_code": exit_code})
+
+    @staticmethod
+    def _owned_temp_audio_path(value: Any) -> Path | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            path = Path(value)
+            if (
+                path.suffix.lower() != ".wav"
+                or not path.name.startswith("open-compute-chat-audio-")
+                or path.parent.resolve() != Path(tempfile.gettempdir()).resolve()
+            ):
+                return None
+            return path
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+    def _track_temp_audio(self, value: Any) -> None:
+        path = self._owned_temp_audio_path(value)
+        if path is not None:
+            self.temp_audio_paths.add(path)
+
+    def _untrack_temp_audio(self, value: Any) -> None:
+        path = self._owned_temp_audio_path(value)
+        if path is not None:
+            self.temp_audio_paths.discard(path)
+
+    def _cleanup_temp_audio(self) -> None:
+        for path in tuple(self.temp_audio_paths):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            else:
+                self._untrack_temp_audio(str(path))
 
     def dispose(self) -> None:
         if self.process is not None and self.process.poll() is None:
@@ -244,11 +331,162 @@ class ChatSession:
             suggestions = ttk.Frame(outer)
             suggestions.pack(fill="x", pady=(2, 5))
 
+            collaboration = ttk.Frame(outer)
+            collaboration.pack(fill="x", pady=(0, 5))
+            ttk.Label(collaboration, text="Zusammenarbeit:").pack(side="left")
+            for label, prompt in COLLABORATION_PROMPTS:
+                ttk.Button(
+                    collaboration,
+                    text=label,
+                    command=lambda value=prompt: insert_collaboration_prompt(entry, value),
+                ).pack(side="left", padx=(6, 0))
+
             entry = tk.Text(outer, height=4, wrap="word", font=("Segoe UI", 10))
             entry.pack(fill="x")
 
             status = tk.StringVar(value="Der Assistent wartet auf deine Nachricht.")
             ttk.Label(outer, textvariable=status).pack(anchor="w", pady=(5, 0))
+
+            voice_row = ttk.Frame(outer)
+            voice_row.pack(fill="x", pady=(5, 0))
+            voice_ready, voice_detail = _voice_status()
+            recording = _microphone_recording()
+            active_audio_path: Path | None = None
+            recording_started: float | None = None
+            transcription_cancelled: threading.Event | None = None
+            transcription_results: queue.Queue[tuple[str | None, str | None]] = queue.Queue()
+            mic_button = ttk.Button(
+                voice_row,
+                text="Mikrofon starten" if voice_ready else "Mikrofon nicht verfügbar",
+                state="normal" if voice_ready else "disabled",
+            )
+            mic_button.pack(side="left")
+            if not voice_ready:
+                status.set(voice_detail)
+
+            def unregister_audio(path: Path) -> None:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    return
+                unregister = getattr(self, "unregister_temp_audio", None)
+                if unregister is not None:
+                    unregister(str(path))
+
+            def cancel_microphone_work() -> None:
+                nonlocal active_audio_path, recording_started
+                if transcription_cancelled is not None:
+                    transcription_cancelled.set()
+                path = recording.cancel()
+                if active_audio_path is not None:
+                    path = active_audio_path
+                recording_started = None
+                if path is not None:
+                    unregister_audio(path)
+                active_audio_path = None
+
+            if hasattr(self, "cleanup_callback"):
+                self.cleanup_callback = cancel_microphone_work
+
+            def poll_transcription() -> None:
+                nonlocal transcription_cancelled
+                try:
+                    transcript, error = transcription_results.get_nowait()
+                except queue.Empty:
+                    if not self.closed.is_set():
+                        root.after(100, poll_transcription)
+                    return
+                cancelled = transcription_cancelled is not None and transcription_cancelled.is_set()
+                transcription_cancelled = None
+                mic_button.configure(text="Mikrofon starten", state="normal")
+                if cancelled:
+                    status.set("Transkription verworfen; temporäre Audiodaten wurden gelöscht.")
+                elif error:
+                    status.set(f"Transkription fehlgeschlagen: {error}")
+                elif transcript:
+                    insert_collaboration_prompt(entry, transcript)
+                    status.set("Transkript eingefügt. Bitte prüfen und normal senden.")
+                else:
+                    status.set("Kein Text erkannt. Bitte erneut aufnehmen oder tippen.")
+                if not self.closed.is_set():
+                    root.after(100, poll_transcription)
+
+            def begin_transcription(path: Path) -> None:
+                nonlocal transcription_cancelled
+                transcription_cancelled = threading.Event()
+                mic_button.configure(text="Transkript verwerfen", state="normal")
+                status.set("Sprache wird lokal transkribiert …")
+
+                def worker() -> None:
+                    transcript: str | None = None
+                    error: str | None = None
+                    try:
+                        transcript = _transcribe_local_wav(path)
+                    except Exception as exc:
+                        error = f"{type(exc).__name__}: {exc}"
+                    finally:
+                        unregister_audio(path)
+                    if not self.closed.is_set():
+                        transcription_results.put((transcript, error))
+
+                threading.Thread(
+                    target=worker, name="open-compute-local-transcription", daemon=True
+                ).start()
+                root.after(100, poll_transcription)
+
+            def toggle_microphone() -> None:
+                nonlocal active_audio_path, recording_started
+                if transcription_cancelled is not None:
+                    transcription_cancelled.set()
+                    mic_button.configure(text="Verwerfe …", state="disabled")
+                    status.set("Transkript wird verworfen, sobald die lokale Verarbeitung endet.")
+                    return
+                if recording_started is None:
+                    try:
+                        active_audio_path = recording.start()
+                        register = getattr(self, "register_temp_audio", None)
+                        if register is not None:
+                            register(str(active_audio_path))
+                    except Exception as exc:
+                        active_audio_path = None
+                        status.set(f"Mikrofon nicht verfügbar: {type(exc).__name__}: {exc}")
+                        return
+                    recording_started = time.monotonic()
+                    mic_button.configure(text="Aufnahme stoppen")
+                    status.set("Mikrofonaufnahme läuft. Stoppen, um lokal zu transkribieren.")
+                    root.after(500, update_recording_timer)
+                    return
+                stop_microphone()
+
+            def stop_microphone() -> None:
+                nonlocal active_audio_path, recording_started
+                path = active_audio_path
+                recording_started = None
+                try:
+                    path = recording.stop()
+                except Exception as exc:
+                    if path is not None:
+                        unregister_audio(path)
+                    active_audio_path = None
+                    mic_button.configure(text="Mikrofon starten", state="normal")
+                    status.set(f"Aufnahme fehlgeschlagen: {type(exc).__name__}: {exc}")
+                    return
+                active_audio_path = None
+                begin_transcription(path)
+
+            def update_recording_timer() -> None:
+                if recording_started is None or self.closed.is_set():
+                    return
+                elapsed = time.monotonic() - recording_started
+                if elapsed >= 60:
+                    status.set("Maximale Aufnahmedauer von 60 Sekunden erreicht.")
+                    stop_microphone()
+                    return
+                status.set(f"Mikrofonaufnahme läuft ({int(elapsed)} s). Stoppen zum Transkribieren.")
+                root.after(500, update_recording_timer)
+
+            mic_button.configure(command=toggle_microphone)
+            root.after(100, poll_transcription)
 
             def submit(message: str | None = None, choice_index: int | None = None) -> None:
                 text = message if message is not None else entry.get("1.0", "end-1c").strip()
@@ -257,6 +495,9 @@ class ChatSession:
                 if len(text) > 20_000:
                     status.set("Nachricht zu lang (maximal 20.000 Zeichen).")
                     return
+                if recording_started is not None or transcription_cancelled is not None:
+                    cancel_microphone_work()
+                mic_button.configure(state="disabled")
                 append("human", text)
                 self.turns.put(HumanTurn(
                     message=text.strip(), mode=mode.get(),
@@ -300,6 +541,7 @@ class ChatSession:
                             set_choices(next_choices)
                             entry.configure(state="normal")
                             send_button.configure(state="normal")
+                            mic_button.configure(state="normal" if voice_ready else "disabled")
                             entry.focus_set()
                             status.set("Der Assistent wartet auf deine Nachricht.")
                         elif kind == "close":

@@ -3,10 +3,156 @@
 import os
 import sys
 import time
+from pathlib import Path
+import tempfile
+from types import SimpleNamespace
 
 import pytest
 
-from open_compute.chat_ui import ChatBridge, ChatSession, HumanTurn
+from open_compute.chat_ui import (
+    COLLABORATION_PROMPTS,
+    ChatBridge,
+    ChatSession,
+    HumanTurn,
+    insert_collaboration_prompt,
+)
+from open_compute.voice_io_bridge import (
+    MODEL_ENV,
+    MicrophoneRecording,
+    transcribe_local_wav,
+    transcription_status,
+)
+
+
+class _PromptEntry:
+    def __init__(self, selection=()):
+        self.selection = selection
+        self.operations = []
+
+    def tag_ranges(self, _tag):
+        return self.selection
+
+    def delete(self, *args):
+        self.operations.append(("delete", *args))
+
+    def insert(self, *args):
+        self.operations.append(("insert", *args))
+
+    def focus_set(self):
+        self.operations.append(("focus",))
+
+
+class _FakeMci:
+    def __init__(self):
+        self.commands = []
+
+    def __call__(self, command):
+        self.commands.append(command)
+        if command.startswith("save "):
+            path = Path(command.split('"')[1])
+            path.write_bytes(b"RIFF" + b"0" * 64)
+        return 0
+
+
+def _mci_factory(fake):
+    return lambda: fake
+
+
+def test_collaboration_prompts_are_inserted_for_editing_without_sending():
+    assert [label for label, _ in COLLABORATION_PROMPTS] == [
+        "Kurz weg", "Wieder da", "Hilfe und Vorschläge",
+    ]
+    entry = _PromptEntry()
+
+    insert_collaboration_prompt(entry, COLLABORATION_PROMPTS[0][1])
+
+    assert entry.operations == [
+        ("insert", "insert", COLLABORATION_PROMPTS[0][1]),
+        ("focus",),
+    ]
+
+
+def test_collaboration_prompt_replaces_selected_text_in_editable_field():
+    entry = _PromptEntry(selection=("sel.first", "sel.last"))
+
+    insert_collaboration_prompt(entry, "Bearbeite diesen Vorschlag")
+
+    assert entry.operations == [
+        ("delete", "sel.first", "sel.last"),
+        ("insert", "insert", "Bearbeite diesen Vorschlag"),
+        ("focus",),
+    ]
+
+
+def test_microphone_recording_saves_one_temporary_wav_and_closes_device(tmp_path):
+    mci = _FakeMci()
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+
+    path = recorder.start()
+    assert not path.exists()
+    recorded_path = recorder.stop()
+
+    assert recorded_path == path
+    assert recorded_path.read_bytes().startswith(b"RIFF")
+    assert any(command.startswith("record ") for command in mci.commands)
+    assert any(command.startswith("save ") for command in mci.commands)
+    assert any(command.startswith("close ") for command in mci.commands)
+    recorded_path.unlink()
+
+
+def test_microphone_cancel_closes_device_and_deletes_temporary_audio(tmp_path):
+    mci = _FakeMci()
+    recorder = MicrophoneRecording(mci_factory=_mci_factory(mci), temp_dir=tmp_path)
+    path = recorder.start()
+
+    assert recorder.cancel() == path
+    assert not path.exists()
+    assert recorder.alias is None
+    assert any(command.startswith("close ") for command in mci.commands)
+
+
+def test_chat_session_only_cleans_its_temporary_audio_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    session = ChatSession(chat_id="temp-audio-cleanup")
+    owned = tmp_path / "open-compute-chat-audio-owned.wav"
+    other = tmp_path / "user-audio.wav"
+    owned.write_bytes(b"temporary")
+    other.write_bytes(b"preserve")
+
+    session._track_temp_audio(str(owned))
+    session._track_temp_audio(str(other))
+    session._cleanup_temp_audio()
+
+    assert not owned.exists()
+    assert other.read_bytes() == b"preserve"
+
+
+def test_voice_io_bridge_uses_the_configured_local_model_and_german(tmp_path, monkeypatch):
+    model = tmp_path / "vosk"
+    model.mkdir()
+    monkeypatch.setenv(MODEL_ENV, str(model))
+    audio = tmp_path / "spoken.wav"
+    audio.write_bytes(b"local audio")
+    calls = []
+
+    class FakeSpeechToText:
+        def __init__(self, *, engine, model_path):
+            calls.append(("init", engine, Path(model_path)))
+
+        def available(self):
+            return True, "vosk"
+
+        def transcribe_file(self, path, *, language):
+            calls.append(("transcribe", Path(path), language))
+            return "Das ist ein lokaler Test."
+
+    monkeypatch.setitem(
+        sys.modules, "ellmos_voice_io", SimpleNamespace(SpeechToText=FakeSpeechToText)
+    )
+
+    assert transcription_status() == (True, "Bereit: Sprache wird lokal transkribiert.")
+    assert transcribe_local_wav(audio) == "Das ist ein lokaler Test."
+    assert calls[-1] == ("transcribe", audio, "de")
 
 
 def _bridge_with_pending_turn() -> tuple[ChatBridge, ChatSession]:
@@ -101,5 +247,3 @@ def test_native_tk_child_starts_and_shuts_down_cleanly():
         if session.process is not None and session.process.poll() is None:
             session.process.terminate()
             session.process.wait(timeout=2)
-
-\n
