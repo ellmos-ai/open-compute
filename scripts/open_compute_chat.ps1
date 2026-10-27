@@ -102,7 +102,11 @@ function ConvertTo-TomlString([string]$Value) {
 
 $repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $repoRoot = (& git -C $repo rev-parse --show-toplevel).Trim()
-if ($LASTEXITCODE -ne 0 -or $repoRoot -ne $repo) {
+if ($LASTEXITCODE -ne 0) {
+    throw "Git konnte den Chat-Quellworktree nicht bestimmen: $repo"
+}
+$repoRoot = $repoRoot.Replace('/', '\').TrimEnd('\')
+if ($repoRoot -ine $repo.TrimEnd('\')) {
     throw "Die Chat-Startdatei muss aus dem Open-Compute-Git-Worktree gestartet werden: $repo"
 }
 $dirty = & git -C $repo status --porcelain --untracked-files=all
