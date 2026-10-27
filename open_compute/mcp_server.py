@@ -969,7 +969,13 @@ def capture(window: str | None = None) -> CallToolResult:
     )
 
 
-def _capture_chat_observation(window: dict[str, Any] | None) -> tuple[dict[str, Any], bytes]:
+class _ObservationConsentRevoked(RuntimeError):
+    """Raised when a chat observation loses consent during its capture path."""
+
+
+def _capture_chat_observation(
+    window: dict[str, Any] | None, *, authorize: Any | None = None,
+) -> tuple[dict[str, Any], bytes]:
     """Capture one explicitly scoped chat frame without retaining it on disk.
 
     The desktop child supplies only a window identity. Resolve it again against
@@ -988,9 +994,17 @@ def _capture_chat_observation(window: dict[str, Any] | None) -> tuple[dict[str, 
         raise ValueError("Das ausgewählte Zielfenster ist ungültig.") from None
     if requested["hwnd"] <= 0 or requested["pid"] <= 0 or not requested["title"].strip():
         raise ValueError("Das ausgewählte Zielfenster ist ungültig.")
+
+    def require_current_consent() -> None:
+        if authorize is not None and not authorize():
+            raise _ObservationConsentRevoked(
+                "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert."
+            )
+
     grace_blocked = _await_grace_period()
     if grace_blocked is not None:
         raise PermissionError(grace_blocked["reason"])
+    require_current_consent()
     live_windows = _current_windows(issue_tokens=True)
     matches = [
         live for live in live_windows
@@ -1004,7 +1018,12 @@ def _capture_chat_observation(window: dict[str, Any] | None) -> tuple[dict[str, 
             "bitte das Fenster erneut auswählen."
         )
     identity = matches[0]
+    # This is the last consent/scope check before the actual pixel read.
+    require_current_consent()
     png = _capture_window_png(identity)
+    # A revoke during the pixel read discards those bytes before resize, cache,
+    # or delivery. This is a return-boundary check, not an OS-atomic promise.
+    require_current_consent()
     from datetime import datetime, timezone
 
     metadata = {
@@ -1021,6 +1040,7 @@ def _capture_chat_observation(window: dict[str, Any] | None) -> tuple[dict[str, 
     payload = _shrink_png(png)
     if len(payload) > 2_000_000:
         raise ValueError("Das Beobachtungsbild überschreitet das 2-MB-Limit.")
+    require_current_consent()
     return metadata, payload
 
 
@@ -2695,12 +2715,15 @@ def chat(
                     }
                 try:
                     observation_meta, observation_png = _capture_chat_observation(
-                        turn.observation_window
+                        turn.observation_window,
+                        authorize=lambda: session.observation_authorizes(turn),
                     )
                     return {
                         "status": "ok", "metadata": observation_meta,
                         "png": observation_png,
                     }
+                except _ObservationConsentRevoked as exc:
+                    return {"status": "revoked", "message": str(exc)}
                 except Exception as exc:
                     return {
                         "status": "error",
@@ -2711,6 +2734,13 @@ def chat(
                 turn.observation_event_id, capture_observation, replayed=replayed,
                 authorized=lambda: session.observation_authorizes(turn),
             )
+
+            if outcome.get("status") == "ok" and not session.observation_authorizes(turn):
+                session.discard_observation(turn.observation_event_id)
+                outcome = {
+                    "status": "revoked",
+                    "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
+                }
 
             if outcome.get("status") != "ok":
                 message = str(outcome.get("message", "Beobachtung fehlgeschlagen."))

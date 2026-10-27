@@ -311,12 +311,11 @@ class ChatSession:
             return {"status": "error", "message": "Ungültige Beobachtungs-ID."}
         with self.observation_capture_lock:
             if authorized is not None and not authorized():
-                return {
-                    "status": "revoked",
-                    "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
-                }
+                return self._mark_observation_revoked(key)
             cached = self.observation_reply_cache
             if cached is not None and cached[0] == key:
+                if authorized is not None and not authorized():
+                    return self._mark_observation_revoked(key)
                 return dict(cached[1])
             if replayed or key in self.observation_processed_ids:
                 return {
@@ -332,6 +331,10 @@ class ChatSession:
                 }
             if not isinstance(result, dict):
                 result = {"status": "error", "message": "Ungültiges Beobachtungsergebnis."}
+            if result.get("status") == "revoked":
+                return self._mark_observation_revoked(key, result.get("message"))
+            if authorized is not None and not authorized():
+                return self._mark_observation_revoked(key)
             image = result.get("png")
             if result.get("status") == "ok" and (
                 not isinstance(image, bytes) or len(image) > 2_000_000
@@ -340,11 +343,36 @@ class ChatSession:
                     "status": "error",
                     "message": "Beobachtungsbild fehlt oder überschreitet das 2-MB-Limit.",
                 }
+            if authorized is not None and not authorized():
+                return self._mark_observation_revoked(key)
             self.observation_reply_cache = (key, dict(result))
             self.observation_processed_ids.append(key)
             if len(self.observation_processed_ids) > 64:
                 self.observation_processed_ids.pop(0)
+            if authorized is not None and not authorized():
+                self.observation_reply_cache = None
+                return self._mark_observation_revoked(key)
             return dict(result)
+
+    def _mark_observation_revoked(self, key: str, message: Any = None) -> dict[str, Any]:
+        if self.observation_reply_cache is not None and self.observation_reply_cache[0] == key:
+            self.observation_reply_cache = None
+        if key not in self.observation_processed_ids:
+            self.observation_processed_ids.append(key)
+            if len(self.observation_processed_ids) > 64:
+                self.observation_processed_ids.pop(0)
+        return {
+            "status": "revoked",
+            "message": str(message or "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.")[:2_000],
+        }
+
+    def discard_observation(self, event_id: str) -> None:
+        """Drop a captured frame if consent changes before MCP result delivery."""
+        key = str(event_id).strip()
+        if not key or len(key) > 128:
+            return
+        with self.observation_capture_lock:
+            self._mark_observation_revoked(key)
 
     def update_observation_state(
         self, *, enabled: bool, screenshot_consent: bool,

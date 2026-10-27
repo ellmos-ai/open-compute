@@ -1027,7 +1027,7 @@ def test_tk_observation_replay_returns_same_frame_without_second_capture(
     monkeypatch.setattr(S, "_CHAT_BRIDGE", Bridge())
     monkeypatch.setattr(
         S, "_capture_chat_observation",
-        lambda _window: captures.append("capture") or ({"kind": "chat_observation"}, b"png-bytes"),
+        lambda _window, **_kwargs: captures.append("capture") or ({"kind": "chat_observation"}, b"png-bytes"),
     )
 
     initial = S.chat(channel="tk")
@@ -1099,6 +1099,114 @@ def test_chat_observation_resolves_exact_live_window_and_rejects_stale_scope(
     with pytest.raises(ValueError, match="verschwunden oder hat sich geändert"):
         S._capture_chat_observation(requested)
     assert captured == []
+
+
+def test_chat_observation_rechecks_after_grace_before_any_pixel_read(monkeypatch):
+    from open_compute.chat_ui import ChatSession, HumanTurn
+
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session = ChatSession(chat_id="grace-revoke")
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="grace-event",
+        observation_generation=session.observation_generation,
+    )
+
+    def revoke_during_grace():
+        session.update_observation_state(
+            enabled=False, screenshot_consent=False, window=None
+        )
+        return None
+
+    live = {**target, "window_token": "fake"}
+    captured = []
+    monkeypatch.setattr(S, "_await_grace_period", revoke_during_grace)
+    monkeypatch.setattr(S, "_current_windows", lambda **_kwargs: [live])
+    monkeypatch.setattr(S, "_capture_window_png", lambda window: captured.append(window) or b"fake")
+
+    with pytest.raises(S._ObservationConsentRevoked):
+        S._capture_chat_observation(
+            target, authorize=lambda: session.observation_authorizes(turn)
+        )
+    assert captured == []
+
+
+def test_chat_observation_rechecks_after_pixel_read_and_discards_bytes(monkeypatch):
+    from open_compute.chat_ui import ChatSession, HumanTurn
+
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session = ChatSession(chat_id="pixel-revoke")
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="pixel-event",
+        observation_generation=session.observation_generation,
+    )
+    live = {**target, "window_token": "fake"}
+    pixels = []
+    resize = []
+    monkeypatch.setattr(S, "_await_grace_period", lambda: None)
+    monkeypatch.setattr(S, "_current_windows", lambda **_kwargs: [live])
+
+    def read_pixels(_window):
+        pixels.append(True)
+        session.update_observation_state(
+            enabled=False, screenshot_consent=False, window=None
+        )
+        return b"synthetic-pixels"
+
+    monkeypatch.setattr(S, "_capture_window_png", read_pixels)
+    monkeypatch.setattr(S, "_shrink_png", lambda png: resize.append(png) or png)
+
+    with pytest.raises(S._ObservationConsentRevoked):
+        S._capture_chat_observation(
+            target, authorize=lambda: session.observation_authorizes(turn)
+        )
+    assert pixels == [True]
+    assert resize == []
+
+
+def test_tk_observation_revoke_after_capture_callback_blocks_host_image(monkeypatch, _signal_state):
+    from open_compute.chat_ui import ChatSession, HumanTurn
+
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session = ChatSession(chat_id="host-return-revoke")
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target, generation=1
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="host-return-event",
+        observation_generation=1,
+    )
+
+    def capture_and_revoke(_window, *, authorize):
+        assert authorize()
+        session.update_observation_state(
+            enabled=False, screenshot_consent=False, window=None, generation=2
+        )
+        assert not authorize()
+        return {"kind": "chat_observation"}, b"synthetic-frame"
+
+    monkeypatch.setattr(S, "_CHAT_BRIDGE", SimpleNamespace(
+        open=lambda **_kwargs: (session, turn, False),
+        report_observation_error=lambda *_args: None,
+    ))
+    monkeypatch.setattr(S, "_capture_chat_observation", capture_and_revoke)
+
+    result = S.chat(channel="tk")
+
+    assert result["status"] == "observation_failed"
+    assert "Freigabe, Fenster oder Sitzung wurde geändert" in result["error"]
+    assert session.observation_reply_cache is None
 
 
 def test_console_chat_retains_legacy_explicit_shot_contract(

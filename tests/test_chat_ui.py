@@ -146,6 +146,83 @@ def test_observation_revocation_invalidates_queued_and_cached_frame_before_retur
     assert captures == []
 
 
+def test_observation_revocation_during_capture_discards_bytes_before_cache():
+    session = ChatSession(chat_id="observation-revoked-in-flight")
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="pixel-read-revoke",
+        observation_generation=session.observation_generation,
+    )
+    checks = []
+
+    def authorized():
+        checks.append(session.observation_authorizes(turn))
+        return checks[-1]
+
+    def capture():
+        session.update_observation_state(
+            enabled=False, screenshot_consent=False, window=None
+        )
+        return {"status": "ok", "metadata": {"kind": "fake"}, "png": b"synthetic-frame"}
+
+    result = session.capture_observation_once(
+        turn.observation_event_id, capture, authorized=authorized
+    )
+    assert checks[0] is True and checks[-1] is False
+    assert result["status"] == "revoked"
+    assert session.observation_reply_cache is None
+    replay = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: pytest.fail("revoked event must not be captured again"),
+        replayed=True, authorized=authorized,
+    )
+    assert replay["status"] == "revoked"
+
+
+def test_observation_revocation_after_cache_lookup_discards_replay_frame():
+    session = ChatSession(chat_id="observation-cache-revoked-return")
+    target = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
+    session.update_observation_state(
+        enabled=True, screenshot_consent=True, window=target
+    )
+    turn = HumanTurn(
+        "Prüfe das Fenster", "Bildschirmhilfe", True,
+        observation_update=True, observation_enabled=True,
+        observation_window=target, observation_event_id="cached-revoke-event",
+        observation_generation=session.observation_generation,
+    )
+    first = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: {"status": "ok", "metadata": {"kind": "fake"}, "png": b"synthetic"},
+        authorized=lambda: session.observation_authorizes(turn),
+    )
+    assert first["status"] == "ok"
+    checks = 0
+
+    def revoke_after_cache_lookup():
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            return True
+        session.update_observation_state(
+            enabled=False, screenshot_consent=False, window=None
+        )
+        return False
+
+    replay = session.capture_observation_once(
+        turn.observation_event_id,
+        lambda: pytest.fail("cached frame path must not recapture"),
+        authorized=revoke_after_cache_lookup,
+    )
+    assert replay["status"] == "revoked"
+    assert session.observation_reply_cache is None
+
+
 def test_observation_scope_change_invalidates_turn_and_previously_cached_image():
     session = ChatSession(chat_id="observation-window-change")
     first = {"hwnd": 44, "pid": 55, "title": "Testfenster"}
