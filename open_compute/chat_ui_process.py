@@ -68,10 +68,17 @@ class _ReadySignal:
 
 
 class _WindowSession:
-    def __init__(self, commands: queue.Queue[tuple[Any, ...]], output: _ProtocolOutput) -> None:
+    def __init__(
+        self,
+        commands: queue.Queue[tuple[Any, ...]],
+        output: _ProtocolOutput,
+        *,
+        chat_id: str = "",
+    ) -> None:
         self.commands = commands
         self.turns = _TurnSink(output)
         self.ready = _ReadySignal(self, output)
+        self.chat_id = chat_id
         self.closed = threading.Event()
         self.startup_error: BaseException | None = None
         self.cleanup_callback: Any = None
@@ -162,8 +169,15 @@ def main() -> int:
             raise ValueError("first IPC message must be init")
         title = str(init.get("title", "open-compute — Chat"))[:256]
         context = str(init.get("context", ""))
+        chat_id = init.get("chat_id", "")
         choices = init.get("choices", [])
-        if len(context) > 8_000 or not isinstance(choices, list) or len(choices) > 8:
+        if (
+            len(context) > 8_000
+            or not isinstance(choices, list)
+            or len(choices) > 8
+            or not isinstance(chat_id, str)
+            or len(chat_id) > 128
+        ):
             raise ValueError("chat initialization exceeds its size limit")
         if any(not isinstance(c, str) or len(c) > 120 for c in choices):
             raise ValueError("chat initialization choices exceed their size limit")
@@ -176,7 +190,7 @@ def main() -> int:
         target=_read_commands, args=(commands, output),
         name="open-compute-chat-stdin", daemon=True,
     ).start()
-    session = _WindowSession(commands, output)
+    session = _WindowSession(commands, output, chat_id=chat_id)
     ChatSession._run_ui(session, title, context, tuple(str(c) for c in choices))
     return 0
 

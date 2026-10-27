@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -18,6 +19,9 @@ from open_compute.chat_ui import (
     ChatBridge,
     ChatSession,
     HumanTurn,
+    MessagesLineAdapter,
+    MessagesLineUnavailable,
+    MessagesLineWorker,
     insert_collaboration_prompt,
     observation_capture_allowed,
 )
@@ -65,6 +69,183 @@ class _FakeMci:
 
 def _mci_factory(fake):
     return lambda: fake
+
+
+def _messages_line_fixture(tmp_path, monkeypatch, *, mode="chat_start", gui_open=True):
+    library = os.environ.get("OPEN_COMPUTE_MESSAGES_LIB", "")
+    if not library or not (Path(library) / "messages_line.py").is_file():
+        pytest.skip("needs the independently pinned Ticket-Master Messages-Line library")
+    config = {
+        "schema": "ellmos.ticket.messages-line-config.v1",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "enabled": True,
+        "delivery_modes": {
+            "chat_start": True,
+            "on_demand": True,
+            "active_chat": True,
+        },
+        "targets": [{"target_ref": "gui:open-compute-test", "surface": "local_gui"}],
+        "gui_open_counts_as_delivery": gui_open,
+        "message_content_logging": False,
+        "audio_logging": False,
+        "transport_contract_ref": "ellmos.ticket.route-intent.v1",
+    }
+    base = Path(tmp_path)
+    base.mkdir(parents=True, exist_ok=True)
+    store = base / "messages"
+    store.mkdir()
+    config_path = base / "messages-line.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    adapter = MessagesLineAdapter(
+        library_dir=library,
+        messages_dir=store,
+        config_path=config_path,
+        target_ref="gui:open-compute-test",
+        chat_id="synthetic-chat-session",
+    )
+    now = datetime.now(timezone.utc)
+    message = adapter._line.create(
+        config=config,
+        origin_ref="test:synthetic",
+        recipient_ref="principal:self",
+        content_text="Künstliche Nachricht für den GUI-Adaptertest.",
+        delivery_mode=mode,
+        created_at=now,
+        today=now.date().isoformat(),
+    )
+    return adapter, config_path, config, message
+
+
+def test_messages_line_lists_start_demand_and_active_modes_without_content(tmp_path, monkeypatch):
+    adapters = {}
+    for mode in ("chat_start", "on_demand", "active_chat"):
+        adapter, _config_path, _config, message = _messages_line_fixture(
+            tmp_path / mode, monkeypatch, mode=mode
+        )
+        # A fresh directory is used per mode; the ticket core creates only its
+        # canonical MessageID/ReceiptID artifacts.
+        adapters[mode] = (adapter, message)
+
+    for mode, (adapter, message) in adapters.items():
+        listed = adapter.list_for_delivery(mode)
+        assert [item["message_id"] for item in listed] == [message["message_id"]]
+        assert all("content_text" not in item for item in listed)
+        assert adapter._line.receipts(message["message_id"]) == []
+        assert adapter.read_for_display(message["message_id"])["content_text"].startswith("Künstliche")
+
+
+def test_messages_line_rechecks_current_policy_before_open_and_explicit_ack_is_manual(
+    tmp_path, monkeypatch
+):
+    adapter, config_path, config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    assert adapter.list_for_delivery("chat_start")
+
+    config["enabled"] = False
+    config["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(MessagesLineUnavailable):
+        adapter.read_for_display(message["message_id"])
+
+    receipt = adapter.acknowledge_explicitly(message["message_id"])
+    assert receipt["receipt_id"] == message["receipt_id"]
+    assert receipt["delivery_state"] == "delivered"
+    assert adapter.list_for_delivery("chat_start") == []
+
+
+@pytest.mark.parametrize("change", ["mode_off", "target_removed"])
+def test_messages_line_rechecks_mode_and_target_after_list_before_open(
+    tmp_path, monkeypatch, change
+):
+    adapter, config_path, config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    assert adapter.list_for_delivery("chat_start")
+    if change == "mode_off":
+        config["delivery_modes"]["chat_start"] = False
+    else:
+        config["targets"] = []
+    config["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(MessagesLineUnavailable):
+        adapter.read_for_display(message["message_id"])
+    assert adapter._line.receipts(message["message_id"]) == []
+
+
+def test_messages_line_rechecks_policy_again_after_render_before_gui_open_ack(
+    tmp_path, monkeypatch
+):
+    adapter, config_path, config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    assert adapter.read_for_display(message["message_id"])["content_text"]
+    config["enabled"] = False
+    config["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    with pytest.raises(MessagesLineUnavailable):
+        adapter.record_gui_open(message["message_id"])
+    assert adapter._line.receipts(message["message_id"]) == []
+
+
+def test_messages_line_gui_open_ack_reuses_canonical_receipt_and_restart_hides_delivery(
+    tmp_path, monkeypatch
+):
+    adapter, _config_path, _config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    displayed = adapter.read_for_display(message["message_id"])
+    assert displayed["receipt_id"] == message["receipt_id"]
+
+    receipt = adapter.record_gui_open(message["message_id"])
+    assert receipt is not None
+    assert receipt["receipt_id"] == message["receipt_id"]
+    assert receipt["delivery_state"] == "delivered"
+
+    restarted = MessagesLineAdapter(
+        library_dir=adapter.library_dir,
+        messages_dir=adapter.messages_dir,
+        config_path=adapter.config_path,
+        target_ref=adapter.target_ref,
+        chat_id="restarted-chat-session",
+    )
+    assert restarted.list_for_delivery("chat_start") == []
+    assert restarted._line.delivery_state(message["message_id"]) == "delivered"
+    assert restarted._line.receipts(message["message_id"])[0]["receipt_id"] == message["receipt_id"]
+
+
+def test_messages_line_gui_open_opt_out_does_not_ack_but_thread_ack_isolated(tmp_path, monkeypatch):
+    adapter, _config_path, _config, first = _messages_line_fixture(
+        tmp_path / "first", monkeypatch, gui_open=False
+    )
+    core = adapter._module
+    now = datetime.now(timezone.utc)
+    sibling = adapter._line.create(
+        config=adapter._current_config(),
+        origin_ref="test:synthetic",
+        recipient_ref="principal:self",
+        content_text="Zweite künstliche Nachricht im selben Thread.",
+        delivery_mode="chat_start",
+        thread_id=first["thread_id"],
+        created_at=now,
+        today=now.date().isoformat(),
+    )
+
+    assert adapter.record_gui_open(first["message_id"]) is None
+    assert adapter._line.delivery_state(first["message_id"]) == "prepared"
+    assert adapter._line.delivery_state(sibling["message_id"]) == "prepared"
+    receipt = adapter.acknowledge_explicitly(first["message_id"])
+    assert receipt["delivery_state"] == "delivered"
+    assert adapter._line.delivery_state(sibling["message_id"]) == "prepared"
+    assert core.MESSAGE_ROUTE_SCHEMA == "ellmos.ticket.message-route-intent.v1"
+
+
+def test_messages_line_worker_keeps_store_access_off_the_caller_thread(tmp_path, monkeypatch):
+    adapter, _config_path, _config, message = _messages_line_fixture(tmp_path, monkeypatch)
+    worker = MessagesLineWorker(adapter)
+    try:
+        assert worker.request("list", "chat_start", "chat_start")
+        _key, action, result, error = worker.results.get(timeout=2)
+        assert action == "list"
+        assert error is None
+        assert result[0]["message_id"] == message["message_id"]
+        assert "content_text" not in result[0]
+    finally:
+        worker.close()
 
 
 def test_collaboration_prompts_are_inserted_for_editing_without_sending():

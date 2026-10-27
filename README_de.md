@@ -589,6 +589,65 @@ Modellarchiv ist 45 MB groß und steht unter Apache-2.0. Ohne Laufzeitmodul oder
 Modell bleibt die Mikrofontaste deaktiviert und das Fenster nennt die fehlende
 lokale Voraussetzung.
 
+#### Lokale Messages-Line im Chatfenster
+
+Das Chatfenster kann die lokale Ticket-Master-Messages-Line direkt anzeigen.
+Es verwendet dafür ausschließlich `MessagesLine.list_for_delivery()`,
+`read_for_delivery()`, `delivery_targets()`, `record_observation()` und die
+bewusste API `acknowledge()` aus dem gepinnten Ticket-Master-Commit
+`3b3fc86f2b9e2aedc8886cd737d439d70a1e3b2a`. Der Launcher legt dafür einen
+unveränderlichen Snapshot neben open-compute und VoiceIO an; es gibt keine
+globale Python-Installation und kein zweites Inbox- oder Receipt-Ledger.
+
+Ohne ausdrücklich übergebene Policy, Store und vorhandenes `local_gui`-Ziel
+bleibt die Messages-Line-Anzeige AUS. Das Beispiel
+`C:\_Local_DEV\repos\ticket-master\config\messages-line.example.json` ist
+deaktiviert und wird vom Launcher nicht als Produktivkonfiguration verwendet.
+Der Ticket-Master-Core hat keinen automatischen Nachrichten-Storepfad; es
+existiert aktuell auch kein vom Chat verwendeter aktiver Messages-Line-Pfad.
+Darum legt der Launcher weder eine Policydatei noch einen Store an.
+
+Wenn Ticket-Master später einen kanonischen lokalen Store, eine aktuelle
+Policydatei und ein dazu passendes lokales GUI-Ziel registriert hat, werden
+genau diese bestehenden Werte beim Start übergeben:
+
+```powershell
+.\scripts\open_compute_chat.ps1 `
+  -Model "<verfügbares Hostmodell>" `
+  -Workspace "<gewählter Arbeitsordner>" `
+  -MessagesDir "<bestehender Ticket-Master-Message-Line-Store>" `
+  -MessagesConfig "<aktuelle Ticket-Master-Policydatei>" `
+  -MessagesTargetRef "<bereits konfiguriertes local_gui-Ziel>"
+```
+
+Der spätere Einrichtungsweg ist an Ticket-Masters vorhandene Konfiguration
+gebunden: zuerst `C:\_Local_DEV\repos\ticket-master\config\ticket-master.config.json`
+für den aktuellen `tickets_dir` und `systems_registry` lesen und den dort
+verwalteten lokalen Messages-Line-Store samt Zielzuordnung beim Ticket-Master-
+Betreiber bestätigen. Diese Datei enthält derzeit keinen `messages_line`-
+Eintrag; deshalb wird daraus kein Speicherpfad abgeleitet. Für die Form der
+Policy ist ausschließlich
+`C:\_Local_DEV\worktrees\ticket-master-message-route-T-20261027-482327593\config\messages-line.example.json`
+im gepinnten Core eine Schema-Referenz. Die Beispieleinstellung ist deaktiviert
+und keine Produktivdatei. Nach Registrierung des kanonischen Stores, der aktiven
+Policy und des bestehenden `local_gui`-Ziels werden deren konkrete Pfade mit
+den drei optionalen `-Messages…`-Parametern an den Launcher übergeben; bei
+fehlendem oder ungültigem Wert bleibt die Integration AUS. Dieser Ausbau legt
+keine Ticket-Master-Konfiguration an und aktiviert kein Ziel.
+
+Die Fensterleiste lädt `chat_start` beim Öffnen, `on_demand` erst nach Klick
+auf „Jetzt nachfragen“ und `active_chat` höchstens alle 15 Sekunden, solange
+der Dialog offen ist. Listen zeigen nur IDs und Modi. Erst eine bewusste
+Auswahl löst den Inhalt auf; die aktuelle Policy wird vor Anzeige, Ack und
+weiterem Sichtbarhalten erneut geprüft. Das automatische GUI-open-Ack folgt
+erst nach dem Rendern und nur, wenn die aktuelle Policy es erlaubt. „Empfang
+bewusst bestätigen“ ruft ausschließlich die manuelle Ack-API auf. Die
+Nachricht wird weder automatisch in den Hostchat injiziert noch dort geloggt;
+Nachrichteninhalt gilt als Dateninhalt und nicht als Modell-/Systemanweisung.
+Eine deaktivierte oder unlesbare Policy blendet nicht mehr erlaubte Inhalte
+aus. Die BACH-/Ocean-Server-GUI, deren Konfigurationsschalter und deren
+sichtbare Laufzeitabnahme bleiben ein eigener Folgeauftrag.
+
 Das Tool ruft selbst kein Modell und keinen Provider auf. Es nutzt den bereits
 verbundenen Hostreasoner und benötigt daher keine zusätzlichen Provider-Keys.
 

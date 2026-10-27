@@ -2,6 +2,9 @@ param(
     [string]$Model,
     [string]$Workspace,
     [string]$Context = "Was möchtest du besprechen?",
+    [string]$MessagesDir,
+    [string]$MessagesConfig,
+    [string]$MessagesTargetRef,
     [switch]$PrepareOnly
 )
 
@@ -153,6 +156,38 @@ $voiceHead = (& git -C $voiceIoRepo rev-parse $voiceIoCommit).Trim()
 if ($voiceHead -ne $voiceIoCommit) {
     throw "Der ellmos-voice-io-Pin stimmt nicht mit dem Quell-Commit überein."
 }
+$ticketMasterRepo = 'C:\_Local_DEV\repos\ticket-master'
+$ticketMasterCommit = '3b3fc86f2b9e2aedc8886cd737d439d70a1e3b2a'
+$ticketMasterKnown = & git -C $ticketMasterRepo cat-file -e "$ticketMasterCommit^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "Der lokal geprüfte Messages-Line-Core $ticketMasterCommit ist nicht verfügbar."
+}
+$ticketMasterHead = (& git -C $ticketMasterRepo rev-parse $ticketMasterCommit).Trim()
+if ($ticketMasterHead -ne $ticketMasterCommit) {
+    throw "Der Messages-Line-Core-Pin stimmt nicht mit dem Quell-Commit überein."
+}
+
+$messageValues = @($MessagesDir, $MessagesConfig, $MessagesTargetRef)
+$messagesConfigured = @($messageValues | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0
+if ($messagesConfigured -and @($messageValues | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+    throw 'Messages-Line benötigt gemeinsam -MessagesDir, -MessagesConfig und -MessagesTargetRef.'
+}
+if ($messagesConfigured) {
+    $messagesStoreItem = Get-Item -LiteralPath $MessagesDir -ErrorAction Stop
+    $messagesConfigItem = Get-Item -LiteralPath $MessagesConfig -ErrorAction Stop
+    if (-not $messagesStoreItem.PSIsContainer -or $messagesConfigItem.PSIsContainer) {
+        throw 'MessagesDir muss ein vorhandener Ordner und MessagesConfig eine vorhandene Datei sein.'
+    }
+    if ($MessagesTargetRef.Length -gt 256 -or $MessagesTargetRef -match '[\x00-\x20\x7f]') {
+        throw 'MessagesTargetRef muss eine kurze, nicht lokale opaque Referenz sein.'
+    }
+    $messagesStorePath = $messagesStoreItem.FullName
+    $messagesConfigPath = $messagesConfigItem.FullName
+} else {
+    $messagesStorePath = ''
+    $messagesConfigPath = ''
+    $MessagesTargetRef = ''
+}
 
 $shortCommit = $openComputeCommit.Substring(0, 12)
 $profileName = "open-compute-chat-$shortCommit"
@@ -160,8 +195,11 @@ $localRoot = Join-Path $env:LOCALAPPDATA 'open-compute\chat-builds'
 New-Item -ItemType Directory -Path $localRoot -Force | Out-Null
 $openSnapshot = Join-Path $localRoot "open-compute-$openComputeCommit"
 $voiceSnapshot = Join-Path $localRoot "ellmos-voice-io-$voiceIoCommit"
+$messagesSnapshot = Join-Path $localRoot "ticket-master-messages-$ticketMasterCommit"
+$messagesLibPath = Join-Path $messagesSnapshot 'lib'
 Install-PinnedArchive -Repo $repo -Commit $openComputeCommit -ArchivePaths @('open_compute') -Target $openSnapshot -Purpose 'open-compute'
 Install-PinnedArchive -Repo $voiceIoRepo -Commit $voiceIoCommit -ArchivePaths @('src') -Target $voiceSnapshot -Purpose 'ellmos-voice-io'
+Install-PinnedArchive -Repo $ticketMasterRepo -Commit $ticketMasterCommit -ArchivePaths @('lib') -Target $messagesSnapshot -Purpose 'ticket-master-messages-line'
 
 $python = Join-Path $env:USERPROFILE '.venvs\open-compute-mcp\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
@@ -171,7 +209,7 @@ $modelPath = Join-Path $env:LOCALAPPDATA 'open-compute\models\vosk-model-small-d
 if (-not (Test-Path -LiteralPath $modelPath -PathType Container)) {
     $modelPath = ''
 }
-$pythonPath = "$openSnapshot;$voiceSnapshot/src"
+$pythonPath = "$openSnapshot;$voiceSnapshot/src;$messagesSnapshot/lib"
 
 $codex = Get-Command codex -ErrorAction Stop
 $legacyProbe = & $codex.Source mcp get open-compute --json 2>&1
@@ -217,6 +255,10 @@ PYTHONPATH = $(ConvertTo-TomlString $pythonPath)
 PYTHONIOENCODING = "utf-8"
 PYTHONDONTWRITEBYTECODE = "1"
 OPEN_COMPUTE_VOSK_MODEL = $(ConvertTo-TomlString $modelPath)
+OPEN_COMPUTE_MESSAGES_LIB = $(ConvertTo-TomlString $messagesLibPath)
+OPEN_COMPUTE_MESSAGES_DIR = $(ConvertTo-TomlString $messagesStorePath)
+OPEN_COMPUTE_MESSAGES_CONFIG = $(ConvertTo-TomlString $messagesConfigPath)
+OPEN_COMPUTE_MESSAGES_TARGET_REF = $(ConvertTo-TomlString $MessagesTargetRef)
 OC_LANGUAGE = "de"
 OC_SAFETY_MODE = "confirm"
 OC_SIGNAL_AUTO = "off"
@@ -260,6 +302,10 @@ $profileValid = (
     (($effectiveArgs -join '|') -eq ($expectedArgs -join '|')) -and
     ($serverConfig.transport.cwd -eq $expectedOpenSnapshot) -and
     ($serverConfig.transport.env.PYTHONPATH -eq $expectedPythonPath) -and
+    ($serverConfig.transport.env.OPEN_COMPUTE_MESSAGES_LIB -eq $messagesLibPath.Replace('\', '/')) -and
+    ($serverConfig.transport.env.OPEN_COMPUTE_MESSAGES_DIR -eq $messagesStorePath.Replace('\', '/')) -and
+    ($serverConfig.transport.env.OPEN_COMPUTE_MESSAGES_CONFIG -eq $messagesConfigPath.Replace('\', '/')) -and
+    ($serverConfig.transport.env.OPEN_COMPUTE_MESSAGES_TARGET_REF -eq $MessagesTargetRef) -and
     ($serverConfig.transport.env.OC_SAFETY_MODE -eq 'confirm') -and
     ($serverConfig.transport.env.OC_SIGNAL_AUTO -eq 'off') -and
     ($effectiveTools.Count -eq 1) -and
@@ -292,6 +338,12 @@ Write-Output "Profil geprüft: $profileName"
 Write-Output "MCP-Server: open-compute-chat; einziges Werkzeug: chat"
 Write-Output "Gepinnte Quelle: $openComputeCommit"
 Write-Output "Gepinnte VoiceIO-Quelle: $voiceIoCommit"
+Write-Output "Gepinnter Messages-Line-Core: $ticketMasterCommit"
+if ($messagesConfigured) {
+    Write-Output "Messages-Line Policy/Store/Ziel: $messagesConfigPath / $messagesStorePath / $MessagesTargetRef"
+} else {
+    Write-Output 'Messages-Line-Anzeige bleibt aus: keine aktive lokale Policy/Store/Zielauswahl übergeben.'
+}
 if (-not $PrepareOnly) { Write-Output "Host-Arbeitsordner: $hostWorkspace" }
 Write-Output "Codex-Basisconfig wurde nicht verändert: $(Join-Path $codexHome 'config.toml')"
 

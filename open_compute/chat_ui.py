@@ -8,6 +8,7 @@ receives the next queued human turn. No model client or provider lives here.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import importlib.util
 import json
 import os
 import queue
@@ -41,6 +42,261 @@ COLLABORATION_PROMPTS: tuple[tuple[str, str], ...] = (
 _STOP = "__OPEN_COMPUTE_CHAT_STOP__"
 OBSERVATION_INTERVAL_SECONDS = 15
 MAX_OBSERVATION_WINDOWS = 64
+MESSAGE_REFRESH_SECONDS = 15
+MESSAGE_MODES: tuple[str, ...] = ("chat_start", "on_demand", "active_chat")
+MESSAGE_LIMIT = 20
+
+
+class MessagesLineUnavailable(RuntimeError):
+    """The canonical Messages-Line adapter is not configured or readable."""
+
+
+class MessagesLineAdapter:
+    """Thin local GUI adapter over the pinned Ticket-Master Messages-Line core.
+
+    This adapter never creates a store or configuration. It reads the selected
+    local policy for every list, read, visibility check and acknowledgement.
+    Message text remains in this UI process and is not added to the host chat.
+    """
+
+    def __init__(
+        self,
+        *,
+        library_dir: str | Path,
+        messages_dir: str | Path,
+        config_path: str | Path,
+        target_ref: str,
+        chat_id: str,
+    ) -> None:
+        self.library_dir = Path(library_dir).resolve(strict=True)
+        self.messages_dir = Path(messages_dir).resolve(strict=True)
+        self.config_path = Path(config_path).resolve(strict=True)
+        self.target_ref = target_ref
+        self.chat_id = chat_id
+        if not self.library_dir.is_dir() or not (self.library_dir / "messages_line.py").is_file():
+            raise MessagesLineUnavailable("pinned Messages-Line library is unavailable")
+        if not self.messages_dir.is_dir() or not self.config_path.is_file():
+            raise MessagesLineUnavailable("local Messages-Line store/configuration is unavailable")
+        if not target_ref or len(target_ref) > 256:
+            raise MessagesLineUnavailable("local Messages-Line target is invalid")
+        resolved_library = str(self.library_dir)
+        if resolved_library not in sys.path:
+            sys.path.insert(0, resolved_library)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "_open_compute_pinned_messages_line", self.library_dir / "messages_line.py"
+            )
+            if spec is None or spec.loader is None:
+                raise ImportError("Messages-Line source has no import loader")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            raise MessagesLineUnavailable("pinned Messages-Line core could not be loaded") from exc
+        module_path = Path(str(getattr(module, "__file__", ""))).resolve()
+        if module_path.parent != self.library_dir:
+            raise MessagesLineUnavailable("Messages-Line import did not resolve to the pinned library")
+        for dependency in ("ticket_writer", "unicorn_intake"):
+            dependency_path = Path(
+                str(getattr(importlib.util.find_spec(dependency), "origin", ""))
+            ).resolve()
+            if dependency_path.parent != self.library_dir:
+                raise MessagesLineUnavailable(
+                    f"Messages-Line dependency {dependency} did not resolve to the pinned library"
+                )
+        self._module = module
+        self._line = module.MessagesLine(self.messages_dir)
+
+    @classmethod
+    def from_environment(cls, chat_id: str) -> "MessagesLineAdapter | None":
+        names = (
+            "OPEN_COMPUTE_MESSAGES_LIB",
+            "OPEN_COMPUTE_MESSAGES_DIR",
+            "OPEN_COMPUTE_MESSAGES_CONFIG",
+            "OPEN_COMPUTE_MESSAGES_TARGET_REF",
+        )
+        values = tuple(os.environ.get(name, "").strip() for name in names)
+        if not any(values[1:]):
+            return None
+        if not all(values):
+            raise MessagesLineUnavailable("Messages-Line needs its pinned library, store, config and target")
+        return cls(
+            library_dir=values[0],
+            messages_dir=values[1],
+            config_path=values[2],
+            target_ref=values[3],
+            chat_id=chat_id,
+        )
+
+    def _current_config(self) -> dict[str, Any]:
+        try:
+            raw = json.loads(self.config_path.read_text(encoding="utf-8"))
+            return self._module.validate_messages_config(raw)
+        except Exception as exc:
+            raise MessagesLineUnavailable("current Messages-Line policy is unreadable or invalid") from exc
+
+    def list_for_delivery(self, delivery_mode: str) -> list[dict[str, str]]:
+        if delivery_mode not in MESSAGE_MODES:
+            raise MessagesLineUnavailable("unsupported Messages-Line delivery mode")
+        try:
+            records = self._line.list_for_delivery(
+                delivery_mode=delivery_mode,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                current_config=self._current_config(),
+            )
+            # Do not send or copy message text into the MCP host; the list is
+            # metadata only and opening a row resolves content again.
+            return [
+                {
+                    "message_id": record["message_id"],
+                    "receipt_id": record["receipt_id"],
+                    "thread_id": record["thread_id"],
+                    "delivery_mode": record["delivery_mode"],
+                    "created_at": record["created_at"],
+                }
+                for record in records[-MESSAGE_LIMIT:]
+            ]
+        except Exception as exc:
+            raise MessagesLineUnavailable("Messages-Line list is currently gated") from exc
+
+    def read_for_display(self, message_id: str) -> dict[str, str]:
+        try:
+            config = self._current_config()
+            message = self._line.read_for_delivery(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                current_config=config,
+            )
+            return {
+                "message_id": message["message_id"],
+                "receipt_id": message["receipt_id"],
+                "thread_id": message["thread_id"],
+                "delivery_mode": message["delivery_mode"],
+                "content_text": message["content_text"],
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("current policy does not permit opening this message") from exc
+
+    def is_currently_routable(self, message_id: str) -> bool:
+        try:
+            targets = self._line.delivery_targets(message_id, self._current_config())
+        except Exception:
+            return False
+        return any(
+            target["target_ref"] == self.target_ref and target["surface"] == "local_gui"
+            for target in targets
+        )
+
+    def gui_open_counts_as_delivery(self) -> bool:
+        return bool(self._current_config()["gui_open_counts_as_delivery"])
+
+    def record_gui_open(self, message_id: str) -> dict[str, str] | None:
+        config = self._current_config()
+        if not config["gui_open_counts_as_delivery"]:
+            return None
+        try:
+            receipt = self._line.record_observation(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                channel_ref="client:open-compute-chat",
+                actor_ref="principal:self",
+                evidence_ref=f"ui:open-compute-chat:{self.chat_id}:{message_id}",
+                event="gui_opened",
+                current_config=config,
+            )
+            return {
+                "message_id": receipt["message_id"],
+                "receipt_id": receipt["receipt_id"],
+                "observation_id": receipt["observation_id"],
+                "delivery_state": self._line.delivery_state(message_id),
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("current policy did not permit GUI-open acknowledgement") from exc
+
+    def acknowledge_explicitly(self, message_id: str) -> dict[str, str]:
+        try:
+            receipt = self._line.acknowledge(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                channel_ref="client:open-compute-chat",
+                actor_ref="principal:self",
+                evidence_ref=f"ui:user-confirm:{self.chat_id}:{message_id}",
+                current_config=self._current_config(),
+            )
+            return {
+                "message_id": receipt["message_id"],
+                "receipt_id": receipt["receipt_id"],
+                "observation_id": receipt["observation_id"],
+                "delivery_state": self._line.delivery_state(message_id),
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("explicit acknowledgement could not be recorded") from exc
+
+
+class MessagesLineWorker:
+    """Keep local message-store IO off Tk's event thread."""
+
+    def __init__(self, adapter: MessagesLineAdapter):
+        self.adapter = adapter
+        self.commands: queue.Queue[tuple[str, str, Any]] = queue.Queue()
+        self.results: queue.Queue[tuple[str, str, Any, str | None]] = queue.Queue()
+        self._pending: set[str] = set()
+        self._lock = threading.Lock()
+        self._closed = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run, name="open-compute-messages-line", daemon=True
+        )
+        self._thread.start()
+
+    def request(self, action: str, key: str, payload: Any = None) -> bool:
+        if self._closed.is_set():
+            return False
+        pending_key = action if action in {"visibility"} else f"{action}:{key}"
+        with self._lock:
+            if pending_key in self._pending:
+                return False
+            self._pending.add(pending_key)
+        self.commands.put((pending_key, action, payload))
+        return True
+
+    def _run(self) -> None:
+        while not self._closed.is_set():
+            pending_key, action, payload = self.commands.get()
+            if action == "stop" or self._closed.is_set():
+                return
+            result: Any = None
+            error: str | None = None
+            try:
+                if action == "list":
+                    mode = str(payload)
+                    result = self.adapter.list_for_delivery(mode)
+                elif action == "read":
+                    result = self.adapter.read_for_display(str(payload))
+                elif action == "visibility":
+                    result = {
+                        message_id: self.adapter.is_currently_routable(message_id)
+                        for message_id in payload
+                    }
+                elif action == "gui_open":
+                    result = self.adapter.record_gui_open(str(payload))
+                elif action == "explicit_ack":
+                    result = self.adapter.acknowledge_explicitly(str(payload))
+                else:
+                    raise MessagesLineUnavailable("unknown Messages-Line request")
+            except Exception as exc:
+                error = type(exc).__name__
+            self.results.put((pending_key, action, result, error))
+            with self._lock:
+                self._pending.discard(pending_key)
+
+    def close(self) -> None:
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        self.commands.put(("stop", "stop", None))
 
 
 def insert_collaboration_prompt(entry: Any, prompt: str) -> None:
@@ -158,7 +414,7 @@ class ChatSession:
         )
         self._send_command({
             "type": "init", "title": title, "context": context,
-            "choices": list(choices),
+            "choices": list(choices), "chat_id": self.chat_id,
         })
         self.reader_thread = threading.Thread(
             target=self._read_child_output,
@@ -471,6 +727,7 @@ class ChatSession:
                 ), False
 
     def _run_ui(self, title: str, context: str, choices: tuple[str, ...]) -> None:
+        message_worker: MessagesLineWorker | None = None
         try:
             import tkinter as tk
             from tkinter import ttk
@@ -489,6 +746,53 @@ class ChatSession:
             ttk.Label(outer, text=title, font=("Segoe UI", 13, "bold")).pack(
                 anchor="w", pady=(0, 8)
             )
+
+            messages_frame = ttk.LabelFrame(
+                outer,
+                text="Eingehende Nachrichten (Daten, keine Aufgabenanweisungen; nicht automatisch im Modellchat)",
+                padding=6,
+            )
+            messages_frame.pack(fill="x", pady=(0, 6))
+            messages_toolbar = ttk.Frame(messages_frame)
+            messages_toolbar.pack(fill="x")
+            message_status = tk.StringVar(
+                value="Messages-Line wird geprüft; ohne lokale Policy bleibt die Anzeige aus."
+            )
+            message_status_label = ttk.Label(messages_toolbar, textvariable=message_status)
+            message_status_label.pack(side="left", fill="x", expand=True)
+            chat_start_button = ttk.Button(messages_toolbar, text="Chatstart laden")
+            chat_start_button.pack(side="right", padx=(4, 0))
+            on_demand_button = ttk.Button(messages_toolbar, text="Jetzt nachfragen")
+            on_demand_button.pack(side="right", padx=(4, 0))
+            open_message_button = ttk.Button(messages_toolbar, text="Ausgewählte öffnen")
+            open_message_button.pack(side="right", padx=(4, 0))
+
+            message_list_frame = ttk.Frame(messages_frame)
+            message_list_frame.pack(fill="x", pady=(4, 3))
+            message_list = tk.Listbox(message_list_frame, height=3, exportselection=False)
+            message_scroll = ttk.Scrollbar(
+                message_list_frame, orient="vertical", command=message_list.yview
+            )
+            message_list.configure(yscrollcommand=message_scroll.set)
+            message_list.pack(side="left", fill="x", expand=True)
+            message_scroll.pack(side="right", fill="y")
+
+            message_detail_row = ttk.Frame(messages_frame)
+            message_detail_row.pack(fill="x")
+            message_detail = tk.Text(
+                message_detail_row, wrap="word", state="disabled", height=4,
+                font=("Segoe UI", 9), padx=6, pady=4,
+            )
+            message_detail_scroll = ttk.Scrollbar(
+                message_detail_row, orient="vertical", command=message_detail.yview
+            )
+            message_detail.configure(yscrollcommand=message_detail_scroll.set)
+            message_detail.pack(side="left", fill="x", expand=True)
+            message_detail_scroll.pack(side="right", fill="y")
+            explicit_ack_button = ttk.Button(
+                messages_frame, text="Empfang bewusst bestätigen", state="disabled"
+            )
+            explicit_ack_button.pack(anchor="e", pady=(3, 0))
 
             history = tk.Text(
                 outer, wrap="word", state="disabled", height=20,
@@ -585,6 +889,258 @@ class ChatSession:
 
             status = tk.StringVar(value="Der Assistent wartet auf deine Nachricht.")
             ttk.Label(outer, textvariable=status).pack(anchor="w", pady=(5, 0))
+
+            message_adapter: MessagesLineAdapter | None = None
+            message_rows: dict[str, dict[str, str]] = {}
+            message_row_ids: list[str] = []
+            selected_message_id: str | None = None
+            auto_ack_pending: set[str] = set()
+            auto_ack_done: set[str] = set()
+            try:
+                message_adapter = MessagesLineAdapter.from_environment(
+                    str(getattr(self, "chat_id", ""))
+                )
+            except MessagesLineUnavailable:
+                message_status.set(
+                    "Messages-Line gesperrt: lokale Bibliothek, Policy, Store oder Ziel fehlt/ist ungültig."
+                )
+            if message_adapter is None and message_status.get().startswith("Messages-Line wird geprüft"):
+                message_status.set(
+                    "Messages-Line aus: keine lokale Policy/Store/Ziel konfiguriert; es werden keine Daten gelesen."
+                )
+            elif message_adapter is not None:
+                message_worker = MessagesLineWorker(message_adapter)
+                message_status.set(
+                    "Bereit: Chatstart, manuelle Nachfrage und aktive Chatabfrage (15 s); Nachrichten bleiben lokal."
+                )
+
+            def clear_message_detail() -> None:
+                message_detail.configure(state="normal")
+                message_detail.delete("1.0", "end")
+                message_detail.configure(state="disabled")
+                explicit_ack_button.configure(state="disabled")
+
+            def rebuild_message_list() -> None:
+                selected = selected_message_id
+                message_row_ids.clear()
+                message_list.delete(0, "end")
+                for message_id, record in sorted(
+                    message_rows.items(), key=lambda item: (item[1]["created_at"], item[0])
+                ):
+                    message_row_ids.append(message_id)
+                    message_list.insert(
+                        "end",
+                        f"{message_id} · {record['delivery_mode']} · Thread {record['thread_id']}",
+                    )
+                if selected in message_row_ids:
+                    index = message_row_ids.index(selected)
+                    message_list.selection_set(index)
+                    message_list.activate(index)
+
+            def request_message_list(delivery_mode: str) -> None:
+                if message_worker is None or self.closed.is_set():
+                    return
+                if message_worker.request("list", delivery_mode, delivery_mode):
+                    message_status.set(f"Prüfe Nachrichten für {delivery_mode} …")
+
+            def open_selected_message(_event: Any = None) -> None:
+                nonlocal selected_message_id
+                selected = message_list.curselection()
+                if not selected or message_worker is None:
+                    return
+                index = int(selected[0])
+                if index >= len(message_row_ids):
+                    return
+                message_id = message_row_ids[index]
+                selected_message_id = message_id
+                clear_message_detail()
+                message_status.set("Öffne Nachricht nach erneuter Policyprüfung …")
+                message_worker.request("read", message_id, message_id)
+
+            def acknowledge_selected_message() -> None:
+                if selected_message_id is None or message_worker is None:
+                    return
+                message_status.set("Bewusste Bestätigung wird gespeichert …")
+                message_worker.request(
+                    "explicit_ack", selected_message_id, selected_message_id
+                )
+
+            def apply_message_result(
+                pending_key: str, action: str, result: Any, error: str | None
+            ) -> None:
+                nonlocal selected_message_id
+                if action == "list":
+                    if error:
+                        message_status.set(
+                            "Nachrichtenliste derzeit durch die aktuelle Policy gesperrt oder nicht lesbar."
+                        )
+                        return
+                    for record in result:
+                        message_rows.setdefault(record["message_id"], record)
+                    if len(message_rows) > MESSAGE_LIMIT:
+                        ordered_ids = [
+                            message_id
+                            for message_id, _record in sorted(
+                                message_rows.items(),
+                                key=lambda item: (item[1]["created_at"], item[0]),
+                            )
+                        ]
+                        for message_id in ordered_ids[:-MESSAGE_LIMIT]:
+                            message_rows.pop(message_id, None)
+                            auto_ack_pending.discard(message_id)
+                            auto_ack_done.discard(message_id)
+                            if selected_message_id == message_id:
+                                selected_message_id = None
+                                clear_message_detail()
+                    rebuild_message_list()
+                    message_status.set(
+                        f"{len(message_rows)} Nachricht(en) aktuell für die lokale GUI verfügbar; Öffnen zum Anzeigen."
+                    )
+                    return
+                if action == "visibility":
+                    if error:
+                        message_rows.clear()
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Policy nicht lesbar; lokale Nachrichtenanzeige gesperrt.")
+                        return
+                    revoked = [
+                        message_id for message_id, permitted in result.items() if not permitted
+                    ]
+                    for message_id in revoked:
+                        message_rows.pop(message_id, None)
+                    if selected_message_id in revoked:
+                        selected_message_id = None
+                        clear_message_detail()
+                    if revoked:
+                        rebuild_message_list()
+                        message_status.set("Policy geändert; nicht mehr freigegebene Inhalte wurden ausgeblendet.")
+                    return
+                if action == "read":
+                    message_id = (
+                        str(result.get("message_id")) if isinstance(result, dict)
+                        else pending_key.removeprefix("read:")
+                    )
+                    if message_id != selected_message_id:
+                        return
+                    if error or not message_id:
+                        message_rows.pop(message_id, None)
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Öffnen durch die aktuelle Policy gesperrt oder abgebrochen.")
+                        return
+                    try:
+                        # Final current-policy read immediately before the Tk render.
+                        current = message_adapter.read_for_display(message_id) if message_adapter else None
+                    except MessagesLineUnavailable:
+                        message_rows.pop(message_id, None)
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Policy vor Anzeige geändert; Nachricht wurde nicht geöffnet.")
+                        return
+                    if current is None or current["message_id"] != message_id:
+                        return
+                    message_detail.configure(state="normal")
+                    message_detail.delete("1.0", "end")
+                    message_detail.insert(
+                        "end",
+                        f"MessageID: {current['message_id']}  ·  ReceiptID: {current['receipt_id']}\n"
+                        f"ThreadID: {current['thread_id']}  ·  Modus: {current['delivery_mode']}\n\n"
+                        f"{current['content_text']}\n",
+                    )
+                    message_detail.configure(state="disabled")
+                    message_detail.see("1.0")
+                    message_detail.update_idletasks()
+                    explicit_ack_button.configure(state="normal")
+                    message_status.set("Nachricht sichtbar. Automatisches GUI-Open-Ack wird live geprüft.")
+                    if (
+                        message_adapter is not None
+                        and message_id not in auto_ack_pending
+                        and message_id not in auto_ack_done
+                    ):
+                        try:
+                            auto_ack_enabled = message_adapter.gui_open_counts_as_delivery()
+                        except MessagesLineUnavailable:
+                            auto_ack_enabled = False
+                        if auto_ack_enabled and message_worker is not None:
+                            auto_ack_pending.add(message_id)
+                            message_worker.request("gui_open", message_id, message_id)
+                    return
+                if action == "gui_open":
+                    message_id = (
+                        str(result.get("message_id")) if isinstance(result, dict)
+                        else pending_key.removeprefix("gui_open:")
+                    )
+                    if message_id:
+                        auto_ack_pending.discard(message_id)
+                    if error or not result:
+                        message_status.set(
+                            "Anzeige erfolgt; aktuelle Policy erlaubt kein automatisches Ack."
+                        )
+                        return
+                    auto_ack_done.add(message_id)
+                    message_status.set(
+                        f"GUI-Open bestätigt; Zustand {result['delivery_state']}, ReceiptID {result['receipt_id']}."
+                    )
+                    return
+                if action == "explicit_ack":
+                    if error or not result:
+                        message_status.set("Bewusste Bestätigung konnte nicht gespeichert werden.")
+                        return
+                    message_status.set(
+                        f"Bewusst bestätigt; Zustand {result['delivery_state']}, ReceiptID {result['receipt_id']}."
+                    )
+
+            def poll_message_results() -> None:
+                if message_worker is not None:
+                    try:
+                        while True:
+                            pending_key, action, result, error = message_worker.results.get_nowait()
+                            apply_message_result(pending_key, action, result, error)
+                    except queue.Empty:
+                        pass
+                if not self.closed.is_set():
+                    root.after(100, poll_message_results)
+
+            def refresh_message_visibility() -> None:
+                if (
+                    message_worker is not None and message_rows
+                    and not self.closed.is_set()
+                ):
+                    message_worker.request(
+                        "visibility", "all", tuple(message_rows)
+                    )
+                if not self.closed.is_set():
+                    root.after(2_000, refresh_message_visibility)
+
+            def refresh_active_chat_messages() -> None:
+                if self.closed.is_set():
+                    return
+                request_message_list("active_chat")
+                root.after(MESSAGE_REFRESH_SECONDS * 1_000, refresh_active_chat_messages)
+
+            chat_start_button.configure(
+                command=lambda: request_message_list("chat_start"),
+                state="normal" if message_worker is not None else "disabled",
+            )
+            on_demand_button.configure(
+                command=lambda: request_message_list("on_demand"),
+                state="normal" if message_worker is not None else "disabled",
+            )
+            open_message_button.configure(
+                command=open_selected_message,
+                state="normal" if message_worker is not None else "disabled",
+            )
+            explicit_ack_button.configure(command=acknowledge_selected_message)
+            message_list.bind("<<ListboxSelect>>", open_selected_message)
+            if message_worker is not None:
+                root.after(100, lambda: request_message_list("chat_start"))
+                root.after(100, poll_message_results)
+                root.after(2_000, refresh_message_visibility)
+                root.after(MESSAGE_REFRESH_SECONDS * 1_000, refresh_active_chat_messages)
 
             observation_after_id: str | None = None
             last_observation_at = 0.0
@@ -686,6 +1242,8 @@ class ChatSession:
                 cancel_observation_timer()
                 publish_observation_state(False, False, None)
                 cancel_microphone_work()
+                if message_worker is not None:
+                    message_worker.close()
 
             refresh_window_choices()
             observe_enabled.trace_add("write", refresh_observation_state)
@@ -974,6 +1532,8 @@ class ChatSession:
             poll_commands()
             root.mainloop()
         except BaseException as exc:
+            if message_worker is not None:
+                message_worker.close()
             self.startup_error = exc
             self.closed.set()
             self.ready.set()
