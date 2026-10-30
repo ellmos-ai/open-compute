@@ -114,7 +114,8 @@ def _tool_names():
 
 def test_tools_registered():
     assert _tool_names() == [
-        "capture", "capture_filtered", "chat", "click_name", "do", "get_screen_size", "invoke",
+        "capture", "capture_filtered", "chat", "click_name", "cowork_lens", "cowork_next",
+        "cowork_observe", "cowork_reply", "cowork_status", "do", "get_screen_size", "invoke",
         "list_windows", "note_observation", "observe_filtered", "push_status",
         "rec_replay", "signal_abort", "signal_hide", "signal_show",
         "signal_status", "talk", "tree", "watch_dir",

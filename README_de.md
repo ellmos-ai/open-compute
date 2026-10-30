@@ -24,6 +24,14 @@
 
 **Ein modellagnostischer Computer-Use-Kern: ein Agenten-Loop, jedes Reasoning-Modell hinter einer einzigen Schnittstelle.**
 
+**Eigenständiger Cowork-Modus (Entwicklungsstand):** `oc cowork` öffnet ein eigenes
+lokales App-Fenster mit Text, optionaler Browsersprache, vier Arbeitsrollen,
+begrenzter Modellsicht und ausdrücklichen Auftragsfreigaben. Ein laufender Codex-Worker
+nutzt die bestehende Anmeldung (Standard `gpt-6-astra`, konfigurierbar);
+`--worker none` ermöglicht einen externen MCP-Host. Cowork Protocol und ein Node-Dienst
+sind nicht erforderlich. Siehe
+[Einrichtung, Verträge und Prüfgrenzen](docs/cowork/README.md).
+
 open-compute ist ein kleiner, abhängigkeitsarmer Python-Kern zum Bau von
 Computer-Use-Agenten (LLM-gesteuerte GUI-/Desktop-/Browser-Automatisierung). Er
 realisiert den Loop **Wahrnehmung → Modell-Tool-Call → Aktion → Rückkopplung**
