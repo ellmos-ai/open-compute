@@ -509,3 +509,93 @@ def excluded_window_rectangles(
         if all(isinstance(value, int) for value in values.values()):
             out.append(values)
     return out
+
+
+# 3-stage frugal escalation ladder (Ticket T-20260920-442706213 / D-20261030-016):
+# Stage 1: observe-lite (text-only minimal semantic budget)
+# Stage 2: observe-full (text-only expanded semantic budget)
+# Stage 3: act (action + bounded visual lens; requires explicit reason + budget gate)
+ESCALATION_LADDER: tuple[str, ...] = ("observe-lite", "observe-full", "act")
+
+
+def refine(
+    current_mode: str = "observe-lite",
+    *,
+    packet: dict[str, Any] | None = None,
+    reason: str = "",
+    remaining_budget: int = 1,
+) -> dict[str, Any]:
+    """Advance one step up the 3-stage frugal perception escalation ladder.
+
+    Enforces a strict budget gate and justification rule:
+    - If `remaining_budget <= 0`, escalation is denied (`escalated=False`) and
+      the caller stays on `current_mode`.
+    - From `observe-lite` -> `observe-full`: allowed when `packet` shows omitted
+      elements or empty matches, or when an explicit non-empty `reason` is given.
+    - From `observe-full` -> `act` (visual/action stage): always requires an
+      explicit non-empty `reason` (at most 350 chars).
+    - At `act`, no further escalation exists (`escalated=False`).
+    """
+
+    if current_mode not in ESCALATION_LADDER:
+        raise ValueError(f"current_mode must be one of {list(ESCALATION_LADDER)}")
+    if not isinstance(remaining_budget, int) or isinstance(remaining_budget, bool):
+        raise ValueError("remaining_budget must be an integer")
+
+    clean_reason = reason.strip() if isinstance(reason, str) else ""
+    if len(clean_reason) > 350:
+        raise ValueError("reason must be at most 350 characters")
+
+    idx = ESCALATION_LADDER.index(current_mode)
+    if idx >= len(ESCALATION_LADDER) - 1:
+        profile = resolve_filter_profile(mode=current_mode)
+        return {
+            "previousMode": current_mode,
+            "mode": current_mode,
+            "stage": idx + 1,
+            "escalated": False,
+            "budgetRemaining": max(0, remaining_budget),
+            "reason": clean_reason or "already_at_top_stage",
+            "profile": profile.to_dict(),
+        }
+
+    if remaining_budget <= 0:
+        profile = resolve_filter_profile(mode=current_mode)
+        return {
+            "previousMode": current_mode,
+            "mode": current_mode,
+            "stage": idx + 1,
+            "escalated": False,
+            "budgetRemaining": 0,
+            "reason": "budget_exhausted",
+            "profile": profile.to_dict(),
+        }
+
+    next_mode = ESCALATION_LADDER[idx + 1]
+    if current_mode == "observe-lite":
+        metrics = packet.get("metrics", {}) if isinstance(packet, dict) else {}
+        included = metrics.get("includedElements", 0)
+        omitted = metrics.get("omittedElements", 0)
+        auto_justified = isinstance(packet, dict) and (included == 0 or omitted > 0)
+        if not clean_reason and not auto_justified:
+            raise ValueError(
+                "refine from 'observe-lite' to 'observe-full' requires a reason when packet is sufficient"
+            )
+        effective_reason = clean_reason or ("empty_elements" if included == 0 else "omitted_elements")
+    else:
+        if not clean_reason:
+            raise ValueError(
+                "refine from 'observe-full' to 'act' requires an explicit non-empty `reason`"
+            )
+        effective_reason = clean_reason
+
+    next_profile = resolve_filter_profile(mode=next_mode)
+    return {
+        "previousMode": current_mode,
+        "mode": next_mode,
+        "stage": idx + 2,
+        "escalated": True,
+        "budgetRemaining": remaining_budget - 1,
+        "reason": effective_reason,
+        "profile": next_profile.to_dict(),
+    }
