@@ -969,6 +969,81 @@ def capture(window: str | None = None) -> CallToolResult:
     )
 
 
+class _ObservationConsentRevoked(RuntimeError):
+    """Raised when a chat observation loses consent during its capture path."""
+
+
+def _capture_chat_observation(
+    window: dict[str, Any] | None, *, authorize: Any | None = None,
+) -> tuple[dict[str, Any], bytes]:
+    """Capture one explicitly scoped chat frame without retaining it on disk.
+
+    The desktop child supplies only a window identity. Resolve it again against
+    the live top-level window list before capture so a stale UI selection cannot
+    silently broaden or redirect the observation.
+    """
+    if not isinstance(window, dict):
+        raise ValueError("Bitte vor dem Beobachten ein Zielfenster auswählen.")
+    try:
+        requested = {
+            "hwnd": int(window.get("hwnd", window.get("window_id"))),
+            "pid": int(window.get("pid", window.get("process_id"))),
+            "title": str(window.get("title", "")),
+        }
+    except (TypeError, ValueError):
+        raise ValueError("Das ausgewählte Zielfenster ist ungültig.") from None
+    if requested["hwnd"] <= 0 or requested["pid"] <= 0 or not requested["title"].strip():
+        raise ValueError("Das ausgewählte Zielfenster ist ungültig.")
+
+    def require_current_consent() -> None:
+        if authorize is not None and not authorize():
+            raise _ObservationConsentRevoked(
+                "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert."
+            )
+
+    grace_blocked = _await_grace_period()
+    if grace_blocked is not None:
+        raise PermissionError(grace_blocked["reason"])
+    require_current_consent()
+    live_windows = _current_windows(issue_tokens=True)
+    matches = [
+        live for live in live_windows
+        if int(live["hwnd"]) == requested["hwnd"]
+        and int(live["pid"]) == requested["pid"]
+        and str(live["title"]) == requested["title"]
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "Das ausgewählte Zielfenster ist verschwunden oder hat sich geändert; "
+            "bitte das Fenster erneut auswählen."
+        )
+    identity = matches[0]
+    # This is the last consent/scope check before the actual pixel read.
+    require_current_consent()
+    png = _capture_window_png(identity)
+    # A revoke during the pixel read discards those bytes before resize, cache,
+    # or delivery. This is a return-boundary check, not an OS-atomic promise.
+    require_current_consent()
+    from datetime import datetime, timezone
+
+    metadata = {
+        "kind": "chat_observation",
+        "window": {
+            "window_id": int(identity["hwnd"]),
+            "process_id": int(identity["pid"]),
+            "title": str(identity["title"]),
+        },
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "minimum_interval_seconds": 15,
+        "retention": "not written to disk or the observation registry",
+    }
+    payload = _shrink_png(png)
+    if len(payload) > 2_000_000:
+        raise ValueError("Das Beobachtungsbild überschreitet das 2-MB-Limit.")
+    require_current_consent()
+    return metadata, payload
+
+
 def _require_profile_tool(profile: FilterProfile, tool: str) -> None:
     if tool not in profile.allowed_tools:
         raise PermissionError(
@@ -1881,6 +1956,7 @@ def _signal_config_path() -> pathlib.Path | None:
 # the same check.
 _MAX_PROMPT_CHOICES = 8
 _MAX_PROMPT_CHOICE_LEN = 120
+_CHAT_BRIDGE: Any = None
 
 
 def _clean_choices(choices: Sequence[str] | None) -> tuple[str, ...]:
@@ -2523,26 +2599,217 @@ def _hide_observation_overlay() -> None:
             pass
 
 
+def _close_chat_sessions() -> None:
+    """Stop UI child processes cleanly when this MCP server shuts down."""
+    bridge = _CHAT_BRIDGE
+    if bridge is not None:
+        try:
+            bridge.close_all()
+        except Exception:  # pragma: no cover - best effort on shutdown
+            pass
+
+
 @mcp.tool(description=mcp_i18n.tool_description("chat", _LANG))
 def chat(
     channel: str = "tk",
     context: str = "",
     shot: bool = False,
     choices: list[str] | None = None,
+    chat_id: str | None = None,
+    assistant_message: str = "",
+    assistant_turn_id: str = "",
+    poll: bool = False,
+    cancel: bool = False,
+    timeout_seconds: float = 300.0,
 ) -> dict:
-    """Human-to-model message about screen content (+ optional screenshot).
+    """Run a native human/host-model conversation through a return channel.
 
-    The message comes back as the tool result; this server never calls a
-    model itself — the client (the reasoner) answers in its own channel.
+    Start with no ``chat_id``. The returned human turn and generated ID are
+    supplied to the host model. The host then calls this tool again with that
+    ID and its natural-language ``assistant_message``; the message appears in
+    the same window and the call waits for the next human turn. Send a unique,
+    stable ``assistant_turn_id`` with every assistant reply so retries return
+    the same human turn without displaying the answer twice. A timeout returns
+    ``status='waiting_for_human'``; call again with the same ``chat_id`` and
+    ``poll=True`` to wait for input. Repeat until closed (``status='closed'``).
+    A retry with ``assistant_turn_replayed=True`` is cached; do not answer it as
+    a new human turn. The server never calls a model.
 
-    ``choices`` renders one 1-click button per option above the free-text
-    entry (same mechanism as the abort dialog's quick reasons), so the human
-    can pick a hypothesis instead of typing one. Free text stays available
-    either way. With options given, the result carries ``choice_index`` — the
-    position of the picked option, or ``None`` for a free-text answer.
+    The Tk window keeps the visible conversation history, lets the human pick
+    a response mode and send suggestions, and captures a screenshot only when
+    the human checks the screenshot box for that turn. Console calls retain
+    the legacy one-message prompt and its explicit ``shot`` option. Ongoing
+    observation is off by default and needs the visible Observe toggle, one
+    selected top-level window, and current screenshot consent. It captures at
+    most once every 15 seconds, returns one image to the host, and does not
+    persist observation images. Every automatic observation has a stable
+    event ID; repeated delivery reuses the one-frame cache and never takes a
+    second screenshot for the same UI event.
     """
-
     cleaned = _clean_choices(choices)
+    try:
+        wait_seconds = float(timeout_seconds)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout_seconds must be numeric") from exc
+    if not 1 <= wait_seconds <= 3600:
+        raise ValueError("timeout_seconds must be between 1 and 3600")
+
+    if channel == "tk":
+        global _CHAT_BRIDGE
+        if _CHAT_BRIDGE is None:
+            from .chat_ui import ChatBridge
+
+            _CHAT_BRIDGE = ChatBridge()
+        if cancel:
+            if chat_id is None:
+                raise ValueError("chat_id is required to cancel a chat")
+            _CHAT_BRIDGE.close(chat_id)
+            return {"status": "closed", "chat_id": chat_id, "screenshot": None}
+        replayed = False
+        if chat_id is None:
+            if poll:
+                raise ValueError("poll requires an existing chat_id")
+            if assistant_message.strip():
+                raise ValueError("assistant_message needs an existing chat_id")
+            session, turn, timed_out = _CHAT_BRIDGE.open(
+                context=context or "Nachricht ans Modell", choices=cleaned,
+                timeout=wait_seconds,
+            )
+        else:
+            if poll:
+                if assistant_message.strip() or assistant_turn_id.strip():
+                    raise ValueError("poll cannot carry an assistant reply or turn id")
+                session, turn, timed_out = _CHAT_BRIDGE.poll(chat_id, timeout=wait_seconds)
+                replayed = False
+            else:
+                if not assistant_message.strip():
+                    raise ValueError("assistant_message is required when chat_id is provided")
+                if not assistant_turn_id.strip() or len(assistant_turn_id) > 128:
+                    raise ValueError("assistant_turn_id must be a unique non-empty value up to 128 characters")
+                session, turn, timed_out, replayed = _CHAT_BRIDGE.reply(
+                    chat_id, assistant_message=assistant_message,
+                    assistant_turn_id=assistant_turn_id, choices=cleaned,
+                    timeout=wait_seconds,
+                )
+        if turn is None:
+            if session.closed.is_set():
+                _CHAT_BRIDGE._forget(session.chat_id)
+                return {"status": "closed", "chat_id": session.chat_id, "screenshot": None}
+            return {"status": "waiting_for_human", "chat_id": session.chat_id, "screenshot": None}
+        if turn.observation_update:
+            def capture_observation() -> dict[str, Any]:
+                if not session.observation_authorizes(turn):
+                    return {
+                        "status": "revoked",
+                        "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
+                    }
+                if not turn.observation_enabled:
+                    return {
+                        "status": "error",
+                        "message": "Beobachtung abgelehnt: Der Beobachtungsmodus ist für diesen Turn aus.",
+                    }
+                if not turn.screenshot:
+                    return {
+                        "status": "error",
+                        "message": "Beobachtung abgelehnt: Die Screenshotfreigabe für diesen Turn ist aus.",
+                    }
+                try:
+                    observation_meta, observation_png = _capture_chat_observation(
+                        turn.observation_window,
+                        authorize=lambda: session.observation_authorizes(turn),
+                    )
+                    return {
+                        "status": "ok", "metadata": observation_meta,
+                        "png": observation_png,
+                    }
+                except _ObservationConsentRevoked as exc:
+                    return {"status": "revoked", "message": str(exc)}
+                except Exception as exc:
+                    return {
+                        "status": "error",
+                        "message": f"Bildschirmbeobachtung fehlgeschlagen: {type(exc).__name__}: {exc}",
+                    }
+
+            outcome = session.capture_observation_once(
+                turn.observation_event_id, capture_observation, replayed=replayed,
+                authorized=lambda: session.observation_authorizes(turn),
+            )
+
+            if outcome.get("status") == "ok" and not session.observation_authorizes(turn):
+                session.discard_observation(turn.observation_event_id)
+                outcome = {
+                    "status": "revoked",
+                    "message": "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.",
+                }
+
+            if outcome.get("status") != "ok":
+                message = str(outcome.get("message", "Beobachtung fehlgeschlagen."))
+                if not replayed:
+                    report_error = getattr(_CHAT_BRIDGE, "report_observation_error", None)
+                    if report_error is not None:
+                        report_error(session.chat_id, message)
+                return {
+                    "status": "observation_failed",
+                    "chat_id": session.chat_id,
+                    "assistant_turn_replayed": replayed,
+                    "error": message,
+                }
+
+            result = {
+                "status": "waiting_for_assistant",
+                "chat_id": session.chat_id,
+                "chat_message": turn.message,
+                "mode": turn.mode,
+                "mode_instruction": {
+                    "Allgemein": "Antworte hilfreich und natürlich in normaler Ausführlichkeit.",
+                    "Kurz": "Antworte knapp und direkt; nenne nur nötige Schritte.",
+                    "Brainstorming": "Biete mehrere kreative Ansätze an und frage nach der bevorzugten Richtung.",
+                    "Bildschirmhilfe": "Beziehe dich auf das freigegebene Zielfensterbild; nenne konkrete nächste Schritte.",
+                }[turn.mode],
+                "observation_update": True,
+                "screenshot": outcome["metadata"],
+                "choice_index": turn.choice_index,
+                "assistant_turn_replayed": replayed,
+            }
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=json.dumps(result, ensure_ascii=False)),
+                    Image(data=outcome["png"], format="png").to_image_content(),
+                ],
+                structuredContent=result,
+            )
+        shot_path = None
+        # In the persistent Tk dialog, only the human's checkbox on this
+        # specific turn grants capture consent. The legacy host-side ``shot``
+        # flag remains meaningful for the one-shot console path below.
+        if turn.screenshot:
+            obs = _STATE.executor().screenshot()
+            data = bytes(obs.screenshot)
+            from datetime import datetime, timezone
+
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            shot_file = _module_session_dir() / f"chat_{stamp}.png"
+            shot_file.write_bytes(data)
+            shot_path = str(shot_file)
+        result = {
+            "status": "waiting_for_assistant",
+            "chat_id": session.chat_id,
+            "chat_message": turn.message,
+            "mode": turn.mode,
+            "mode_instruction": {
+                "Allgemein": "Antworte hilfreich und natürlich in normaler Ausführlichkeit.",
+                "Kurz": "Antworte knapp und direkt; nenne nur nötige Schritte.",
+                "Brainstorming": "Biete mehrere kreative Ansätze an und frage nach der bevorzugten Richtung.",
+                "Bildschirmhilfe": "Beziehe dich auf den sichtbaren Bildschirm nur, wenn ein Screenshot mitgeliefert wurde; erkläre konkrete nächste Schritte.",
+            }[turn.mode],
+            "screenshot": shot_path,
+            "choice_index": turn.choice_index,
+            "assistant_turn_replayed": replayed if chat_id is not None and not poll else False,
+        }
+        return result
+
+    if chat_id is not None or assistant_message or assistant_turn_id or poll or cancel:
+        raise ValueError("chat_id and assistant_message are supported only with channel='tk'")
     message = _prompt_channel(channel, context or "Nachricht ans Modell", cleaned)
     shot_path = None
     if shot:
@@ -2550,7 +2817,7 @@ def chat(
         data = bytes(obs.screenshot)
         from datetime import datetime, timezone
 
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         shot_file = _module_session_dir() / f"chat_{stamp}.png"
         shot_file.write_bytes(data)
         shot_path = str(shot_file)
@@ -2665,9 +2932,11 @@ def run_stdio_after_initialize() -> None:
 
     atexit.register(_release_held_input)
     atexit.register(_hide_observation_overlay)
+    atexit.register(_close_chat_sessions)
     try:
         anyio.run(_run_stdio_after_initialize)
     finally:
+        _close_chat_sessions()
         signal_hide()
         _hide_observation_overlay()
         _release_held_input()
@@ -2743,9 +3012,11 @@ def main() -> None:
     # import (or per call) would stack up on repeated imports.
     atexit.register(_release_held_input)
     atexit.register(_hide_observation_overlay)
+    atexit.register(_close_chat_sessions)
     try:
         mcp.run(transport="stdio")
     finally:
+        _close_chat_sessions()
         signal_hide()
         _hide_observation_overlay()
         _release_held_input()

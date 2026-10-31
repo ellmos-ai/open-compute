@@ -1,0 +1,1763 @@
+"""Native Tk chat window for the host-model conversational bridge.
+
+The MCP handler and Tk live in separate processes. The host model remains the
+reasoner: it sends each assistant turn back through ``chat(chat_id=...)`` and
+receives the next queued human turn. No model client or provider lives here.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import importlib.util
+import json
+import os
+import queue
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Mapping
+
+
+MODES: tuple[str, ...] = ("Allgemein", "Kurz", "Brainstorming", "Bildschirmhilfe")
+COLLABORATION_PROMPTS: tuple[tuple[str, str], ...] = (
+    (
+        "Kurz weg",
+        "Ich bin kurz weg. Arbeite am aktuellen Anliegen weiter und halte deine "
+        "nächsten konkreten Schritte fest, bis ich zurück bin.",
+    ),
+    (
+        "Wieder da",
+        "Ich bin wieder da. Fasse kurz zusammen, woran du gearbeitet hast und "
+        "was als Nächstes ansteht.",
+    ),
+    (
+        "Hilfe und Vorschläge",
+        "Gib mir Hilfestellungen oder konkrete Vorschläge zum aktuellen Schritt.",
+    ),
+)
+_STOP = "__OPEN_COMPUTE_CHAT_STOP__"
+OBSERVATION_INTERVAL_SECONDS = 15
+MAX_OBSERVATION_WINDOWS = 64
+MESSAGE_REFRESH_SECONDS = 15
+MESSAGE_MODES: tuple[str, ...] = ("chat_start", "on_demand", "active_chat")
+MESSAGE_LIMIT = 20
+
+
+class MessagesLineUnavailable(RuntimeError):
+    """The canonical Messages-Line adapter is not configured or readable."""
+
+
+class MessagesLineAdapter:
+    """Thin local GUI adapter over the pinned Ticket-Master Messages-Line core.
+
+    This adapter never creates a store or configuration. It reads the selected
+    local policy for every list, read, visibility check and acknowledgement.
+    Message text remains in this UI process and is not added to the host chat.
+    """
+
+    def __init__(
+        self,
+        *,
+        library_dir: str | Path,
+        messages_dir: str | Path,
+        config_path: str | Path,
+        target_ref: str,
+        chat_id: str,
+    ) -> None:
+        try:
+            self.library_dir = Path(library_dir).resolve(strict=True)
+            self.messages_dir = Path(messages_dir).resolve(strict=True)
+            self.config_path = Path(config_path).resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise MessagesLineUnavailable(
+                "local Messages-Line library, store or configuration path is unavailable"
+            ) from exc
+        self.target_ref = target_ref
+        self.chat_id = chat_id
+        if not self.library_dir.is_dir() or not (self.library_dir / "messages_line.py").is_file():
+            raise MessagesLineUnavailable("pinned Messages-Line library is unavailable")
+        if not self.messages_dir.is_dir() or not self.config_path.is_file():
+            raise MessagesLineUnavailable("local Messages-Line store/configuration is unavailable")
+        if not target_ref or len(target_ref) > 256:
+            raise MessagesLineUnavailable("local Messages-Line target is invalid")
+        resolved_library = str(self.library_dir)
+        if resolved_library not in sys.path:
+            sys.path.insert(0, resolved_library)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "_open_compute_pinned_messages_line", self.library_dir / "messages_line.py"
+            )
+            if spec is None or spec.loader is None:
+                raise ImportError("Messages-Line source has no import loader")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            raise MessagesLineUnavailable("pinned Messages-Line core could not be loaded") from exc
+        module_path = Path(str(getattr(module, "__file__", ""))).resolve()
+        if module_path.parent != self.library_dir:
+            raise MessagesLineUnavailable("Messages-Line import did not resolve to the pinned library")
+        for dependency in ("ticket_writer", "unicorn_intake"):
+            dependency_path = Path(
+                str(getattr(importlib.util.find_spec(dependency), "origin", ""))
+            ).resolve()
+            if dependency_path.parent != self.library_dir:
+                raise MessagesLineUnavailable(
+                    f"Messages-Line dependency {dependency} did not resolve to the pinned library"
+                )
+        self._module = module
+        self._line = module.MessagesLine(self.messages_dir)
+
+    @classmethod
+    def from_environment(cls, chat_id: str) -> "MessagesLineAdapter | None":
+        names = (
+            "OPEN_COMPUTE_MESSAGES_LIB",
+            "OPEN_COMPUTE_MESSAGES_DIR",
+            "OPEN_COMPUTE_MESSAGES_CONFIG",
+            "OPEN_COMPUTE_MESSAGES_TARGET_REF",
+        )
+        values = tuple(os.environ.get(name, "").strip() for name in names)
+        if not any(values[1:]):
+            return None
+        if not all(values):
+            raise MessagesLineUnavailable("Messages-Line needs its pinned library, store, config and target")
+        return cls(
+            library_dir=values[0],
+            messages_dir=values[1],
+            config_path=values[2],
+            target_ref=values[3],
+            chat_id=chat_id,
+        )
+
+    def _current_config(self) -> dict[str, Any]:
+        try:
+            raw = json.loads(self.config_path.read_text(encoding="utf-8"))
+            return self._module.validate_messages_config(raw)
+        except Exception as exc:
+            raise MessagesLineUnavailable("current Messages-Line policy is unreadable or invalid") from exc
+
+    def list_for_delivery(self, delivery_mode: str) -> list[dict[str, str]]:
+        if delivery_mode not in MESSAGE_MODES:
+            raise MessagesLineUnavailable("unsupported Messages-Line delivery mode")
+        try:
+            records = self._line.list_for_delivery(
+                delivery_mode=delivery_mode,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                current_config=self._current_config(),
+            )
+            # Do not send or copy message text into the MCP host; the list is
+            # metadata only and opening a row resolves content again.
+            return [
+                {
+                    "message_id": record["message_id"],
+                    "receipt_id": record["receipt_id"],
+                    "thread_id": record["thread_id"],
+                    "delivery_mode": record["delivery_mode"],
+                    "created_at": record["created_at"],
+                }
+                for record in records[-MESSAGE_LIMIT:]
+            ]
+        except Exception as exc:
+            raise MessagesLineUnavailable("Messages-Line list is currently gated") from exc
+
+    def read_for_display(self, message_id: str) -> dict[str, str]:
+        try:
+            config = self._current_config()
+            message = self._line.read_for_delivery(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                current_config=config,
+            )
+            return {
+                "message_id": message["message_id"],
+                "receipt_id": message["receipt_id"],
+                "thread_id": message["thread_id"],
+                "delivery_mode": message["delivery_mode"],
+                "content_text": message["content_text"],
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("current policy does not permit opening this message") from exc
+
+    def is_currently_routable(self, message_id: str) -> bool:
+        try:
+            targets = self._line.delivery_targets(message_id, self._current_config())
+        except Exception:
+            return False
+        return any(
+            target["target_ref"] == self.target_ref and target["surface"] == "local_gui"
+            for target in targets
+        )
+
+    def gui_open_counts_as_delivery(self) -> bool:
+        return bool(self._current_config()["gui_open_counts_as_delivery"])
+
+    def record_gui_open(self, message_id: str) -> dict[str, str] | None:
+        config = self._current_config()
+        if not config["gui_open_counts_as_delivery"]:
+            return None
+        try:
+            receipt = self._line.record_observation(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                channel_ref="client:open-compute-chat",
+                actor_ref="principal:self",
+                evidence_ref=f"ui:open-compute-chat:{self.chat_id}:{message_id}",
+                event="gui_opened",
+                current_config=config,
+            )
+            return {
+                "message_id": receipt["message_id"],
+                "receipt_id": receipt["receipt_id"],
+                "observation_id": receipt["observation_id"],
+                "delivery_state": self._line.delivery_state(message_id),
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("current policy did not permit GUI-open acknowledgement") from exc
+
+    def acknowledge_explicitly(self, message_id: str) -> dict[str, str]:
+        try:
+            receipt = self._line.acknowledge(
+                message_id,
+                target_ref=self.target_ref,
+                surface="local_gui",
+                channel_ref="client:open-compute-chat",
+                actor_ref="principal:self",
+                evidence_ref=f"ui:user-confirm:{self.chat_id}:{message_id}",
+                current_config=self._current_config(),
+            )
+            return {
+                "message_id": receipt["message_id"],
+                "receipt_id": receipt["receipt_id"],
+                "observation_id": receipt["observation_id"],
+                "delivery_state": self._line.delivery_state(message_id),
+            }
+        except Exception as exc:
+            raise MessagesLineUnavailable("explicit acknowledgement could not be recorded") from exc
+
+
+class MessagesLineWorker:
+    """Keep local message-store IO off Tk's event thread."""
+
+    def __init__(self, adapter: MessagesLineAdapter):
+        self.adapter = adapter
+        self.commands: queue.Queue[tuple[str, str, Any]] = queue.Queue()
+        self.results: queue.Queue[tuple[str, str, Any, str | None]] = queue.Queue()
+        self._pending: set[str] = set()
+        self._lock = threading.Lock()
+        self._closed = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run, name="open-compute-messages-line", daemon=True
+        )
+        self._thread.start()
+
+    def request(self, action: str, key: str, payload: Any = None) -> bool:
+        if self._closed.is_set():
+            return False
+        pending_key = action if action in {"visibility"} else f"{action}:{key}"
+        with self._lock:
+            if pending_key in self._pending:
+                return False
+            self._pending.add(pending_key)
+        self.commands.put((pending_key, action, payload))
+        return True
+
+    def _run(self) -> None:
+        while not self._closed.is_set():
+            pending_key, action, payload = self.commands.get()
+            if action == "stop" or self._closed.is_set():
+                return
+            result: Any = None
+            error: str | None = None
+            try:
+                if action == "list":
+                    mode = str(payload)
+                    result = self.adapter.list_for_delivery(mode)
+                elif action == "read":
+                    result = self.adapter.read_for_display(str(payload))
+                elif action == "visibility":
+                    result = {
+                        message_id: self.adapter.is_currently_routable(message_id)
+                        for message_id in payload
+                    }
+                elif action == "gui_open":
+                    result = self.adapter.record_gui_open(str(payload))
+                elif action == "explicit_ack":
+                    result = self.adapter.acknowledge_explicitly(str(payload))
+                else:
+                    raise MessagesLineUnavailable("unknown Messages-Line request")
+            except Exception as exc:
+                error = type(exc).__name__
+            self.results.put((pending_key, action, result, error))
+            with self._lock:
+                self._pending.discard(pending_key)
+
+    def close(self) -> None:
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        self.commands.put(("stop", "stop", None))
+
+
+def insert_collaboration_prompt(entry: Any, prompt: str) -> None:
+    """Put a preset into the editable message field without sending it."""
+    if entry.tag_ranges("sel"):
+        entry.delete("sel.first", "sel.last")
+    entry.insert("insert", prompt)
+    entry.focus_set()
+
+
+def _voice_status() -> tuple[bool, str]:
+    from .voice_io_bridge import transcription_status
+
+    return transcription_status()
+
+
+def _microphone_recording() -> Any:
+    from .voice_io_bridge import MicrophoneRecording
+
+    return MicrophoneRecording()
+
+
+def _transcribe_local_wav(path: Path) -> str:
+    from .voice_io_bridge import transcribe_local_wav
+
+    return transcribe_local_wav(path)
+
+
+def observation_capture_allowed(
+    *, enabled: bool, screenshot_consent: bool, window: Mapping[str, Any] | None
+) -> bool:
+    """Require explicit observe mode, current screenshot consent, and a scope."""
+    return bool(enabled and screenshot_consent and window and window.get("title"))
+
+
+def _window_identity(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass only the live identity fields needed for a later fail-closed check."""
+    return {
+        "hwnd": int(value.get("hwnd", value.get("window_id"))),
+        "pid": int(value.get("pid", value.get("process_id"))),
+        "title": str(value["title"]).strip(),
+    }
+
+
+def _available_observation_windows(exclude_title: str = "") -> list[dict[str, Any]]:
+    """List visible top-level windows without capturing any pixels."""
+    try:
+        from .drivers.local import list_windows
+
+        windows = list_windows()
+    except Exception:
+        return []
+    result: list[dict[str, Any]] = []
+    for raw in windows:
+        try:
+            window = _window_identity(raw)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not window["title"] or window["title"] == exclude_title:
+            continue
+        result.append(window)
+        if len(result) >= MAX_OBSERVATION_WINDOWS:
+            break
+    return result
+
+
+@dataclass(frozen=True)
+class HumanTurn:
+    message: str
+    mode: str
+    screenshot: bool
+    choice_index: int | None = None
+    observation_update: bool = False
+    observation_enabled: bool = False
+    observation_window: dict[str, Any] | None = None
+    observation_event_id: str = ""
+    observation_generation: int = 0
+
+
+@dataclass
+class ChatSession:
+    chat_id: str
+    commands: queue.Queue[tuple[Any, ...]] = field(default_factory=queue.Queue)
+    turns: queue.Queue[Any] = field(default_factory=queue.Queue)
+    ready: threading.Event = field(default_factory=threading.Event)
+    closed: threading.Event = field(default_factory=threading.Event)
+    startup_error: BaseException | None = None
+    process: subprocess.Popen[str] | None = None
+    reader_thread: threading.Thread | None = None
+    exchange_lock: threading.Lock = field(default_factory=threading.Lock)
+    input_lock: threading.Lock = field(default_factory=threading.Lock)
+    replies: dict[str, tuple[str, HumanTurn | None, bool]] = field(default_factory=dict)
+    observation_reply_cache: tuple[str, dict[str, Any]] | None = None
+    observation_capture_lock: threading.Lock = field(default_factory=threading.Lock)
+    observation_processed_ids: list[str] = field(default_factory=list)
+    observation_state_lock: threading.Lock = field(default_factory=threading.Lock)
+    observation_generation: int = 0
+    observation_enabled: bool = False
+    observation_screenshot_consent: bool = False
+    observation_window: dict[str, Any] | None = None
+    temp_audio_paths: set[Path] = field(default_factory=set)
+
+    def start(self, *, title: str, context: str, choices: tuple[str, ...]) -> None:
+        if len(context) > 8_000:
+            raise ValueError("chat context must be at most 8000 characters")
+        self.process = subprocess.Popen(
+            [sys.executable, "-m", "open_compute.chat_ui_process"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=None,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+        self._send_command({
+            "type": "init", "title": title, "context": context,
+            "choices": list(choices), "chat_id": self.chat_id,
+        })
+        self.reader_thread = threading.Thread(
+            target=self._read_child_output,
+            name=f"open-compute-chat-reader-{self.chat_id[:8]}",
+            daemon=True,
+        )
+        self.reader_thread.start()
+        deadline = time.monotonic() + 20
+        last_stage = "child did not report startup"
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                exit_code = self.process.poll()
+                if self.process.poll() is None:
+                    self.process.terminate()
+                    self.process.wait(timeout=2)
+                self.dispose()
+                raise RuntimeError(
+                    f"native chat startup timed out at {last_stage}; child exit={exit_code}"
+                )
+            try:
+                notice = self.turns.get(timeout=min(remaining, 0.25))
+            except queue.Empty:
+                if self.process.poll() is not None:
+                    exit_code = self.process.returncode
+                    self.dispose()
+                    raise RuntimeError(
+                        f"native chat UI child exited before ready (exit={exit_code}; {last_stage})"
+                    )
+                continue
+            if notice.get("type") == "ready":
+                self.ready.set()
+                break
+            if notice.get("type") == "error":
+                self.closed.set()
+                self.process.wait(timeout=2)
+                self.dispose()
+                raise RuntimeError(f"could not open native chat window: {notice.get('detail', '')}")
+            if notice.get("type") == "eof":
+                raise RuntimeError(
+                    f"native chat UI child exited before ready (exit={notice.get('exit_code')}; {last_stage})"
+                )
+            last_stage = str(notice.get("type", "unknown child message"))
+
+    def _read_child_output(self) -> None:
+        assert self.process is not None and self.process.stdout is not None
+        try:
+            for line in self.process.stdout:
+                if len(line) > 80_000:
+                    self.turns.put({"type": "error", "detail": "native chat IPC response exceeds the size limit"})
+                    break
+                try:
+                    message = json.loads(line)
+                    if message.get("type") == "temp_audio":
+                        self._track_temp_audio(message.get("path"))
+                    elif message.get("type") == "temp_audio_removed":
+                        self._untrack_temp_audio(message.get("path"))
+                    elif message.get("type") == "observation_state":
+                        self.update_observation_state(
+                            enabled=bool(message.get("enabled")),
+                            screenshot_consent=bool(message.get("screenshot_consent")),
+                            window=message.get("window") if isinstance(message.get("window"), dict) else None,
+                            generation=message.get("generation"),
+                        )
+                    else:
+                        self.turns.put(message)
+                except json.JSONDecodeError as exc:
+                    self.turns.put({"type": "error", "detail": f"invalid UI child output: {exc}"})
+        finally:
+            exit_code = self.process.wait()
+            self._cleanup_temp_audio()
+            self.turns.put({"type": "eof", "exit_code": exit_code})
+
+    @staticmethod
+    def _owned_temp_audio_path(value: Any) -> Path | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            path = Path(value)
+            if (
+                path.suffix.lower() != ".wav"
+                or not path.name.startswith("open-compute-chat-audio-")
+                or path.parent.resolve() != Path(tempfile.gettempdir()).resolve()
+            ):
+                return None
+            return path
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+    def _track_temp_audio(self, value: Any) -> None:
+        path = self._owned_temp_audio_path(value)
+        if path is not None:
+            self.temp_audio_paths.add(path)
+
+    def _untrack_temp_audio(self, value: Any) -> None:
+        path = self._owned_temp_audio_path(value)
+        if path is not None:
+            self.temp_audio_paths.discard(path)
+
+    def _cleanup_temp_audio(self) -> None:
+        for path in tuple(self.temp_audio_paths):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            else:
+                self._untrack_temp_audio(str(path))
+
+    def dispose(self) -> None:
+        with self.observation_capture_lock:
+            self.observation_reply_cache = None
+            self.observation_processed_ids.clear()
+        if self.process is not None and self.process.poll() is None:
+            return
+        if self.process is not None:
+            if self.reader_thread is not None and self.reader_thread is not threading.current_thread():
+                self.reader_thread.join(timeout=1)
+            for stream in (self.process.stdin, self.process.stdout):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+
+    def add_assistant(self, message: str, choices: tuple[str, ...]) -> None:
+        if self.closed.is_set():
+            return
+        if len(message) > 20_000:
+            raise ValueError("assistant_message must be at most 20000 characters")
+        if self.process is None:
+            self.commands.put(("assistant", message, choices))
+            return
+        self._send_command({"type": "assistant", "message": message, "choices": list(choices)})
+
+    def report_observation_error(self, message: str) -> None:
+        """Tell the visible UI that an observation was refused or failed."""
+        safe_message = str(message)[:2_000]
+        if self.process is None:
+            self.commands.put(("observation_error", safe_message))
+            return
+        self._send_command({"type": "observation_error", "message": safe_message})
+
+    def capture_observation_once(
+        self, event_id: str, capture: Any, *, replayed: bool = False,
+        authorized: Any | None = None,
+    ) -> dict[str, Any]:
+        """Capture at most once per UI event and cache only one <=2-MB frame."""
+        key = str(event_id).strip()
+        if not key or len(key) > 128:
+            return {"status": "error", "message": "Ungültige Beobachtungs-ID."}
+        with self.observation_capture_lock:
+            if authorized is not None and not authorized():
+                return self._mark_observation_revoked(key)
+            cached = self.observation_reply_cache
+            if cached is not None and cached[0] == key:
+                if authorized is not None and not authorized():
+                    return self._mark_observation_revoked(key)
+                return dict(cached[1])
+            if replayed or key in self.observation_processed_ids:
+                return {
+                    "status": "expired",
+                    "message": "Dieses Beobachtungsbild ist nicht mehr im begrenzten Cache.",
+                }
+            try:
+                result = capture()
+            except Exception as exc:
+                result = {
+                    "status": "error",
+                    "message": f"Bildschirmbeobachtung fehlgeschlagen: {type(exc).__name__}: {exc}",
+                }
+            if not isinstance(result, dict):
+                result = {"status": "error", "message": "Ungültiges Beobachtungsergebnis."}
+            if result.get("status") == "revoked":
+                return self._mark_observation_revoked(key, result.get("message"))
+            if authorized is not None and not authorized():
+                return self._mark_observation_revoked(key)
+            image = result.get("png")
+            if result.get("status") == "ok" and (
+                not isinstance(image, bytes) or len(image) > 2_000_000
+            ):
+                result = {
+                    "status": "error",
+                    "message": "Beobachtungsbild fehlt oder überschreitet das 2-MB-Limit.",
+                }
+            if authorized is not None and not authorized():
+                return self._mark_observation_revoked(key)
+            self.observation_reply_cache = (key, dict(result))
+            self.observation_processed_ids.append(key)
+            if len(self.observation_processed_ids) > 64:
+                self.observation_processed_ids.pop(0)
+            if authorized is not None and not authorized():
+                self.observation_reply_cache = None
+                return self._mark_observation_revoked(key)
+            return dict(result)
+
+    def _mark_observation_revoked(self, key: str, message: Any = None) -> dict[str, Any]:
+        if self.observation_reply_cache is not None and self.observation_reply_cache[0] == key:
+            self.observation_reply_cache = None
+        if key not in self.observation_processed_ids:
+            self.observation_processed_ids.append(key)
+            if len(self.observation_processed_ids) > 64:
+                self.observation_processed_ids.pop(0)
+        return {
+            "status": "revoked",
+            "message": str(message or "Beobachtung abgebrochen: Freigabe, Fenster oder Sitzung wurde geändert.")[:2_000],
+        }
+
+    def discard_observation(self, event_id: str) -> None:
+        """Drop a captured frame if consent changes before MCP result delivery."""
+        key = str(event_id).strip()
+        if not key or len(key) > 128:
+            return
+        with self.observation_capture_lock:
+            self._mark_observation_revoked(key)
+
+    def update_observation_state(
+        self, *, enabled: bool, screenshot_consent: bool,
+        window: Mapping[str, Any] | None, generation: Any = None,
+    ) -> None:
+        """Apply the UI's latest revocable consent state from its IPC stream."""
+        try:
+            identity = _window_identity(window) if window is not None else None
+        except (KeyError, TypeError, ValueError):
+            identity = None
+        with self.observation_state_lock:
+            if self.closed.is_set():
+                enabled = screenshot_consent = False
+                identity = None
+            if generation is not None:
+                try:
+                    supplied = int(generation)
+                except (TypeError, ValueError):
+                    return
+                if supplied <= self.observation_generation:
+                    return
+                self.observation_generation = supplied
+            else:
+                self.observation_generation += 1
+            self.observation_enabled = bool(enabled and identity)
+            self.observation_screenshot_consent = bool(screenshot_consent and identity)
+            self.observation_window = identity
+
+    def observation_authorizes(self, turn: HumanTurn) -> bool:
+        with self.observation_state_lock:
+            return bool(
+                not self.closed.is_set()
+                and turn.observation_generation == self.observation_generation
+                and turn.observation_enabled
+                and turn.screenshot
+                and self.observation_enabled
+                and self.observation_screenshot_consent
+                and turn.observation_window == self.observation_window
+            )
+
+    def _send_command(self, command: dict[str, Any]) -> None:
+        if self.process is None or self.process.stdin is None or self.process.poll() is not None:
+            return
+        with self.input_lock:
+            self.process.stdin.write(json.dumps(command, ensure_ascii=False) + "\n")
+            self.process.stdin.flush()
+
+    def next_turn(self, timeout: float) -> tuple[HumanTurn | None, bool]:
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, True
+            try:
+                value = self.turns.get(timeout=remaining)
+            except queue.Empty:
+                return None, True
+            if isinstance(value, HumanTurn):
+                return value, False
+            if value == _STOP or value.get("type") in {"closed", "eof"}:
+                self.closed.set()
+                if self.process is not None:
+                    try:
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        self.process.terminate()
+                        self.process.wait(timeout=2)
+                return None, False
+            if value.get("type") == "error":
+                self.closed.set()
+                if self.process is not None and self.process.poll() is None:
+                    self._send_command({"type": "close"})
+                    try:
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        self.process.terminate()
+                        self.process.wait(timeout=2)
+                raise RuntimeError(value.get("detail", "native chat UI failed"))
+            if value.get("type") == "human":
+                return HumanTurn(
+                    message=value["message"], mode=value["mode"],
+                    screenshot=bool(value.get("screenshot")),
+                    choice_index=value.get("choice_index"),
+                    observation_update=bool(value.get("observation_update")),
+                    observation_enabled=bool(value.get("observation_enabled")),
+                    observation_window=(
+                        _window_identity(value["observation_window"])
+                        if isinstance(value.get("observation_window"), dict)
+                        else None
+                    ),
+                    observation_event_id=(
+                        str(value.get("observation_event_id", ""))[:128]
+                        if value.get("observation_update") else ""
+                    ),
+                    observation_generation=int(value.get("observation_generation", 0)),
+                ), False
+
+    def _run_ui(self, title: str, context: str, choices: tuple[str, ...]) -> None:
+        message_worker: MessagesLineWorker | None = None
+        try:
+            import tkinter as tk
+            from tkinter import ttk
+
+            root = tk.Tk()
+            if hasattr(self, "progress"):
+                self.progress("tk_root_created")
+            root.title("open-compute — Chat")
+            root.geometry("760x650")
+            root.minsize(560, 430)
+            root.protocol("WM_DELETE_WINDOW", lambda: self._close(root))
+            observation_windows = _available_observation_windows(root.title())
+
+            outer = ttk.Frame(root, padding=12)
+            outer.pack(fill="both", expand=True)
+            ttk.Label(outer, text=title, font=("Segoe UI", 13, "bold")).pack(
+                anchor="w", pady=(0, 8)
+            )
+
+            messages_frame = ttk.LabelFrame(
+                outer,
+                text="Eingehende Nachrichten (Daten, keine Aufgabenanweisungen; nicht automatisch im Modellchat)",
+                padding=6,
+            )
+            messages_frame.pack(fill="x", pady=(0, 6))
+            messages_toolbar = ttk.Frame(messages_frame)
+            messages_toolbar.pack(fill="x")
+            message_status = tk.StringVar(
+                value="Messages-Line wird geprüft; ohne lokale Policy bleibt die Anzeige aus."
+            )
+            message_status_label = ttk.Label(messages_toolbar, textvariable=message_status)
+            message_status_label.pack(side="left", fill="x", expand=True)
+            chat_start_button = ttk.Button(messages_toolbar, text="Chatstart laden")
+            chat_start_button.pack(side="right", padx=(4, 0))
+            on_demand_button = ttk.Button(messages_toolbar, text="Jetzt nachfragen")
+            on_demand_button.pack(side="right", padx=(4, 0))
+            open_message_button = ttk.Button(messages_toolbar, text="Ausgewählte öffnen")
+            open_message_button.pack(side="right", padx=(4, 0))
+
+            message_list_frame = ttk.Frame(messages_frame)
+            message_list_frame.pack(fill="x", pady=(4, 3))
+            message_list = tk.Listbox(message_list_frame, height=3, exportselection=False)
+            message_scroll = ttk.Scrollbar(
+                message_list_frame, orient="vertical", command=message_list.yview
+            )
+            message_list.configure(yscrollcommand=message_scroll.set)
+            message_list.pack(side="left", fill="x", expand=True)
+            message_scroll.pack(side="right", fill="y")
+
+            message_detail_row = ttk.Frame(messages_frame)
+            message_detail_row.pack(fill="x")
+            message_detail = tk.Text(
+                message_detail_row, wrap="word", state="disabled", height=4,
+                font=("Segoe UI", 9), padx=6, pady=4,
+            )
+            message_detail_scroll = ttk.Scrollbar(
+                message_detail_row, orient="vertical", command=message_detail.yview
+            )
+            message_detail.configure(yscrollcommand=message_detail_scroll.set)
+            message_detail.pack(side="left", fill="x", expand=True)
+            message_detail_scroll.pack(side="right", fill="y")
+            explicit_ack_button = ttk.Button(
+                messages_frame, text="Empfang bewusst bestätigen", state="disabled"
+            )
+            explicit_ack_button.pack(anchor="e", pady=(3, 0))
+
+            history = tk.Text(
+                outer, wrap="word", state="disabled", height=20,
+                font=("Segoe UI", 10), padx=8, pady=8,
+            )
+            history.pack(fill="both", expand=True)
+            history.tag_configure("human", foreground="#174b8a", spacing1=10)
+            history.tag_configure("assistant", foreground="#176b44", spacing1=10)
+            history.tag_configure("system", foreground="#666666", spacing1=6)
+            history.tag_configure("observation", foreground="#8a4b08", spacing1=10)
+
+            def append(role: str, message: str) -> None:
+                history.configure(state="normal")
+                label = {
+                    "human": "Du", "assistant": "Assistent", "system": "Hinweis",
+                    "observation": "Beobachtung",
+                }[role]
+                history.insert("end", f"{label}\n", role)
+                history.insert("end", message.strip() + "\n\n", role)
+                history.see("end")
+                history.configure(state="disabled")
+
+            if context.strip():
+                append("system", context.strip())
+
+            mode_row = ttk.Frame(outer)
+            mode_row.pack(fill="x", pady=(10, 5))
+            ttk.Label(mode_row, text="Modus:").pack(side="left")
+            mode = tk.StringVar(value=MODES[0])
+            ttk.Combobox(
+                mode_row, textvariable=mode, values=MODES,
+                state="readonly", width=22,
+            ).pack(side="left", padx=(6, 14))
+            include_shot = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                mode_row, text="Screenshot für diesen Turn freigeben (auch für Beobachtung)",
+                variable=include_shot,
+            ).pack(side="left")
+
+            observation_row = ttk.Frame(outer)
+            observation_row.pack(fill="x", pady=(3, 5))
+            observe_enabled = tk.BooleanVar(value=False)
+            window_choice = tk.StringVar(value="")
+            observation_window_by_label: dict[str, dict[str, Any]] = {}
+            window_selector = ttk.Combobox(
+                observation_row, textvariable=window_choice,
+                values=(), state="readonly", width=48,
+            )
+
+            def refresh_window_choices() -> None:
+                nonlocal observation_windows
+                current = window_choice.get()
+                observation_windows = _available_observation_windows(root.title())
+                observation_window_by_label.clear()
+                labels: list[str] = []
+                for identity in observation_windows:
+                    label = f"{identity['title']} — PID {identity['pid']}"
+                    observation_window_by_label[label] = identity
+                    labels.append(label)
+                window_selector.configure(values=tuple(labels))
+                if current in observation_window_by_label:
+                    window_choice.set(current)
+                else:
+                    window_choice.set("")
+                if not labels:
+                    status.set("Keine sichtbaren Zielfenster gefunden; Beobachtung bleibt aus.")
+
+            observe_toggle = ttk.Checkbutton(
+                observation_row, text="Fenster beobachten (AN/AUS)",
+                variable=observe_enabled,
+            )
+            observe_toggle.pack(side="left")
+            window_selector.pack(side="left", padx=(8, 5))
+            ttk.Button(
+                observation_row, text="Fenster aktualisieren",
+                command=refresh_window_choices,
+            ).pack(side="left")
+
+            suggestions = ttk.Frame(outer)
+            suggestions.pack(fill="x", pady=(2, 5))
+
+            collaboration = ttk.Frame(outer)
+            collaboration.pack(fill="x", pady=(0, 5))
+            ttk.Label(collaboration, text="Zusammenarbeit:").pack(side="left")
+            for label, prompt in COLLABORATION_PROMPTS:
+                ttk.Button(
+                    collaboration,
+                    text=label,
+                    command=lambda value=prompt: insert_collaboration_prompt(entry, value),
+                ).pack(side="left", padx=(6, 0))
+
+            entry = tk.Text(outer, height=4, wrap="word", font=("Segoe UI", 10))
+            entry.pack(fill="x")
+
+            status = tk.StringVar(value="Der Assistent wartet auf deine Nachricht.")
+            ttk.Label(outer, textvariable=status).pack(anchor="w", pady=(5, 0))
+
+            message_adapter: MessagesLineAdapter | None = None
+            message_rows: dict[str, dict[str, str]] = {}
+            message_row_ids: list[str] = []
+            selected_message_id: str | None = None
+            auto_ack_pending: set[str] = set()
+            auto_ack_done: set[str] = set()
+            try:
+                message_adapter = MessagesLineAdapter.from_environment(
+                    str(getattr(self, "chat_id", ""))
+                )
+            except MessagesLineUnavailable:
+                message_status.set(
+                    "Messages-Line gesperrt: lokale Bibliothek, Policy, Store oder Ziel fehlt/ist ungültig."
+                )
+            if message_adapter is None and message_status.get().startswith("Messages-Line wird geprüft"):
+                message_status.set(
+                    "Messages-Line aus: keine lokale Policy/Store/Ziel konfiguriert; es werden keine Daten gelesen."
+                )
+            elif message_adapter is not None:
+                message_worker = MessagesLineWorker(message_adapter)
+                message_status.set(
+                    "Bereit: Chatstart, manuelle Nachfrage und aktive Chatabfrage (15 s); Nachrichten bleiben lokal."
+                )
+
+            def clear_message_detail() -> None:
+                message_detail.configure(state="normal")
+                message_detail.delete("1.0", "end")
+                message_detail.configure(state="disabled")
+                explicit_ack_button.configure(state="disabled")
+
+            def rebuild_message_list() -> None:
+                selected = selected_message_id
+                message_row_ids.clear()
+                message_list.delete(0, "end")
+                for message_id, record in sorted(
+                    message_rows.items(), key=lambda item: (item[1]["created_at"], item[0])
+                ):
+                    message_row_ids.append(message_id)
+                    message_list.insert(
+                        "end",
+                        f"{message_id} · {record['delivery_mode']} · Thread {record['thread_id']}",
+                    )
+                if selected in message_row_ids:
+                    index = message_row_ids.index(selected)
+                    message_list.selection_set(index)
+                    message_list.activate(index)
+
+            def request_message_list(delivery_mode: str) -> None:
+                if message_worker is None or self.closed.is_set():
+                    return
+                if message_worker.request("list", delivery_mode, delivery_mode):
+                    message_status.set(f"Prüfe Nachrichten für {delivery_mode} …")
+
+            def open_selected_message(_event: Any = None) -> None:
+                nonlocal selected_message_id
+                selected = message_list.curselection()
+                if not selected or message_worker is None:
+                    return
+                index = int(selected[0])
+                if index >= len(message_row_ids):
+                    return
+                message_id = message_row_ids[index]
+                selected_message_id = message_id
+                clear_message_detail()
+                message_status.set("Öffne Nachricht nach erneuter Policyprüfung …")
+                message_worker.request("read", message_id, message_id)
+
+            def acknowledge_selected_message() -> None:
+                if selected_message_id is None or message_worker is None:
+                    return
+                message_status.set("Bewusste Bestätigung wird gespeichert …")
+                message_worker.request(
+                    "explicit_ack", selected_message_id, selected_message_id
+                )
+
+            def apply_message_result(
+                pending_key: str, action: str, result: Any, error: str | None
+            ) -> None:
+                nonlocal selected_message_id
+                if action == "list":
+                    if error:
+                        message_status.set(
+                            "Nachrichtenliste derzeit durch die aktuelle Policy gesperrt oder nicht lesbar."
+                        )
+                        return
+                    for record in result:
+                        message_rows.setdefault(record["message_id"], record)
+                    if len(message_rows) > MESSAGE_LIMIT:
+                        ordered_ids = [
+                            message_id
+                            for message_id, _record in sorted(
+                                message_rows.items(),
+                                key=lambda item: (item[1]["created_at"], item[0]),
+                            )
+                        ]
+                        for message_id in ordered_ids[:-MESSAGE_LIMIT]:
+                            message_rows.pop(message_id, None)
+                            auto_ack_pending.discard(message_id)
+                            auto_ack_done.discard(message_id)
+                            if selected_message_id == message_id:
+                                selected_message_id = None
+                                clear_message_detail()
+                    rebuild_message_list()
+                    message_status.set(
+                        f"{len(message_rows)} Nachricht(en) aktuell für die lokale GUI verfügbar; Öffnen zum Anzeigen."
+                    )
+                    return
+                if action == "visibility":
+                    if error:
+                        message_rows.clear()
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Policy nicht lesbar; lokale Nachrichtenanzeige gesperrt.")
+                        return
+                    revoked = [
+                        message_id for message_id, permitted in result.items() if not permitted
+                    ]
+                    for message_id in revoked:
+                        message_rows.pop(message_id, None)
+                    if selected_message_id in revoked:
+                        selected_message_id = None
+                        clear_message_detail()
+                    if revoked:
+                        rebuild_message_list()
+                        message_status.set("Policy geändert; nicht mehr freigegebene Inhalte wurden ausgeblendet.")
+                    return
+                if action == "read":
+                    message_id = (
+                        str(result.get("message_id")) if isinstance(result, dict)
+                        else pending_key.removeprefix("read:")
+                    )
+                    if message_id != selected_message_id:
+                        return
+                    if error or not message_id:
+                        message_rows.pop(message_id, None)
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Öffnen durch die aktuelle Policy gesperrt oder abgebrochen.")
+                        return
+                    try:
+                        # Final current-policy read immediately before the Tk render.
+                        current = message_adapter.read_for_display(message_id) if message_adapter else None
+                    except MessagesLineUnavailable:
+                        message_rows.pop(message_id, None)
+                        selected_message_id = None
+                        rebuild_message_list()
+                        clear_message_detail()
+                        message_status.set("Policy vor Anzeige geändert; Nachricht wurde nicht geöffnet.")
+                        return
+                    if current is None or current["message_id"] != message_id:
+                        return
+                    message_detail.configure(state="normal")
+                    message_detail.delete("1.0", "end")
+                    message_detail.insert(
+                        "end",
+                        f"MessageID: {current['message_id']}  ·  ReceiptID: {current['receipt_id']}\n"
+                        f"ThreadID: {current['thread_id']}  ·  Modus: {current['delivery_mode']}\n\n"
+                        f"{current['content_text']}\n",
+                    )
+                    message_detail.configure(state="disabled")
+                    message_detail.see("1.0")
+                    message_detail.update_idletasks()
+                    explicit_ack_button.configure(state="normal")
+                    message_status.set("Nachricht sichtbar. Automatisches GUI-Open-Ack wird live geprüft.")
+                    if (
+                        message_adapter is not None
+                        and message_id not in auto_ack_pending
+                        and message_id not in auto_ack_done
+                    ):
+                        try:
+                            auto_ack_enabled = message_adapter.gui_open_counts_as_delivery()
+                        except MessagesLineUnavailable:
+                            auto_ack_enabled = False
+                        if auto_ack_enabled and message_worker is not None:
+                            auto_ack_pending.add(message_id)
+                            message_worker.request("gui_open", message_id, message_id)
+                    return
+                if action == "gui_open":
+                    message_id = (
+                        str(result.get("message_id")) if isinstance(result, dict)
+                        else pending_key.removeprefix("gui_open:")
+                    )
+                    if message_id:
+                        auto_ack_pending.discard(message_id)
+                    if error or not result:
+                        message_status.set(
+                            "Anzeige erfolgt; aktuelle Policy erlaubt kein automatisches Ack."
+                        )
+                        return
+                    auto_ack_done.add(message_id)
+                    message_status.set(
+                        f"GUI-Open bestätigt; Zustand {result['delivery_state']}, ReceiptID {result['receipt_id']}."
+                    )
+                    return
+                if action == "explicit_ack":
+                    if error or not result:
+                        message_status.set("Bewusste Bestätigung konnte nicht gespeichert werden.")
+                        return
+                    message_status.set(
+                        f"Bewusst bestätigt; Zustand {result['delivery_state']}, ReceiptID {result['receipt_id']}."
+                    )
+
+            def poll_message_results() -> None:
+                if message_worker is not None:
+                    try:
+                        while True:
+                            pending_key, action, result, error = message_worker.results.get_nowait()
+                            apply_message_result(pending_key, action, result, error)
+                    except queue.Empty:
+                        pass
+                if not self.closed.is_set():
+                    root.after(100, poll_message_results)
+
+            def refresh_message_visibility() -> None:
+                if (
+                    message_worker is not None and message_rows
+                    and not self.closed.is_set()
+                ):
+                    message_worker.request(
+                        "visibility", "all", tuple(message_rows)
+                    )
+                if not self.closed.is_set():
+                    root.after(2_000, refresh_message_visibility)
+
+            def refresh_active_chat_messages() -> None:
+                if self.closed.is_set():
+                    return
+                request_message_list("active_chat")
+                root.after(MESSAGE_REFRESH_SECONDS * 1_000, refresh_active_chat_messages)
+
+            chat_start_button.configure(
+                command=lambda: request_message_list("chat_start"),
+                state="normal" if message_worker is not None else "disabled",
+            )
+            on_demand_button.configure(
+                command=lambda: request_message_list("on_demand"),
+                state="normal" if message_worker is not None else "disabled",
+            )
+            open_message_button.configure(
+                command=open_selected_message,
+                state="normal" if message_worker is not None else "disabled",
+            )
+            explicit_ack_button.configure(command=acknowledge_selected_message)
+            message_list.bind("<<ListboxSelect>>", open_selected_message)
+            if message_worker is not None:
+                root.after(100, lambda: request_message_list("chat_start"))
+                root.after(100, poll_message_results)
+                root.after(2_000, refresh_message_visibility)
+                root.after(MESSAGE_REFRESH_SECONDS * 1_000, refresh_active_chat_messages)
+
+            observation_after_id: str | None = None
+            last_observation_at = 0.0
+            observation_generation = 0
+            published_observation_state: tuple[Any, ...] | None = None
+
+            def publish_observation_state(
+                enabled: bool, screenshot_consent: bool,
+                window: Mapping[str, Any] | None,
+            ) -> None:
+                nonlocal observation_generation, published_observation_state
+                identity = _window_identity(window) if window is not None else None
+                state = (bool(enabled), bool(screenshot_consent), identity)
+                if state == published_observation_state:
+                    return
+                observation_generation += 1
+                published_observation_state = state
+                self.turns.put({
+                    "type": "observation_state",
+                    "generation": observation_generation,
+                    "enabled": bool(enabled),
+                    "screenshot_consent": bool(screenshot_consent),
+                    "window": identity,
+                })
+
+            def cancel_observation_timer() -> None:
+                nonlocal observation_after_id
+                if observation_after_id is not None:
+                    try:
+                        root.after_cancel(observation_after_id)
+                    except Exception:
+                        pass
+                    observation_after_id = None
+
+            def refresh_observation_state(*_args: Any) -> None:
+                nonlocal observation_after_id
+                cancel_observation_timer()
+                selected = observation_window_by_label.get(window_choice.get())
+                allowed = bool(
+                    not self.closed.is_set()
+                    and observation_capture_allowed(
+                        enabled=bool(observe_enabled.get()),
+                        screenshot_consent=bool(include_shot.get()),
+                        window=selected,
+                    )
+                )
+                publish_observation_state(
+                    allowed, bool(include_shot.get()) if allowed else False,
+                    selected if allowed else None,
+                )
+                if not allowed:
+                    if self.closed.is_set() or not observe_enabled.get():
+                        return
+                    if not include_shot.get():
+                        status.set("Beobachtung pausiert: Screenshotfreigabe für den Turn ist aus.")
+                    else:
+                        status.set("Beobachtung pausiert: Bitte ein Zielfenster auswählen.")
+                    return
+                delay = max(
+                    0.0,
+                    OBSERVATION_INTERVAL_SECONDS - (time.monotonic() - last_observation_at),
+                )
+                status.set(
+                    f"Beobachtung AN: {selected['title']} — begrenzte Abfrage alle "
+                    f"{OBSERVATION_INTERVAL_SECONDS} Sekunden. Zum Stoppen AUS wählen."
+                )
+                observation_after_id = root.after(
+                    int(delay * 1_000), capture_observation_turn, observation_generation
+                )
+
+            def capture_observation_turn(expected_generation: int) -> None:
+                nonlocal observation_after_id, last_observation_at
+                observation_after_id = None
+                selected = observation_window_by_label.get(window_choice.get())
+                if expected_generation != observation_generation or not observation_capture_allowed(
+                    enabled=bool(observe_enabled.get()),
+                    screenshot_consent=bool(include_shot.get()),
+                    window=selected,
+                ):
+                    refresh_observation_state()
+                    return
+                if self.closed.is_set():
+                    return
+                last_observation_at = time.monotonic()
+                message = (
+                    "Bitte beobachte das freigegebene Fenster auf relevante Änderungen "
+                    "und gib mir kurze Hilfestellungen oder Vorschläge. "
+                    f"Fenster: {selected['title']}."
+                )
+                submit(
+                    message,
+                    observation_update=True,
+                    observation_window=selected,
+                    observation_event_id=str(uuid.uuid4()),
+                    observation_generation=expected_generation,
+                )
+
+            def cleanup_chat() -> None:
+                cancel_observation_timer()
+                publish_observation_state(False, False, None)
+                cancel_microphone_work()
+                if message_worker is not None:
+                    message_worker.close()
+
+            refresh_window_choices()
+            observe_enabled.trace_add("write", refresh_observation_state)
+            include_shot.trace_add("write", refresh_observation_state)
+            window_choice.trace_add("write", refresh_observation_state)
+
+            voice_row = ttk.Frame(outer)
+            voice_row.pack(fill="x", pady=(5, 0))
+            voice_ready, voice_detail = _voice_status()
+            recording = _microphone_recording()
+            active_audio_path: Path | None = None
+            recording_started: float | None = None
+            transcription_cancelled: threading.Event | None = None
+            transcription_results: queue.Queue[tuple[str | None, str | None]] = queue.Queue()
+            mic_button = ttk.Button(
+                voice_row,
+                text="Mikrofon starten" if voice_ready else "Mikrofon nicht verfügbar",
+                state="normal" if voice_ready else "disabled",
+            )
+            mic_button.pack(side="left")
+            if not voice_ready:
+                status.set(voice_detail)
+
+            def unregister_audio(path: Path) -> None:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    return
+                unregister = getattr(self, "unregister_temp_audio", None)
+                if unregister is not None:
+                    unregister(str(path))
+
+            def cancel_microphone_work() -> None:
+                nonlocal active_audio_path, recording_started
+                if transcription_cancelled is not None:
+                    transcription_cancelled.set()
+                path = recording.cancel()
+                if active_audio_path is not None:
+                    path = active_audio_path
+                recording_started = None
+                if path is not None:
+                    unregister_audio(path)
+                active_audio_path = None
+
+            if hasattr(self, "cleanup_callback"):
+                self.cleanup_callback = cleanup_chat
+
+            def poll_transcription() -> None:
+                nonlocal transcription_cancelled
+                try:
+                    transcript, error = transcription_results.get_nowait()
+                except queue.Empty:
+                    if not self.closed.is_set():
+                        root.after(100, poll_transcription)
+                    return
+                cancelled = transcription_cancelled is not None and transcription_cancelled.is_set()
+                transcription_cancelled = None
+                mic_button.configure(text="Mikrofon starten", state="normal")
+                if cancelled:
+                    status.set("Transkription verworfen; temporäre Audiodaten wurden gelöscht.")
+                elif error:
+                    status.set(f"Transkription fehlgeschlagen: {error}")
+                elif transcript:
+                    insert_collaboration_prompt(entry, transcript)
+                    status.set("Transkript eingefügt. Bitte prüfen und normal senden.")
+                else:
+                    status.set("Kein Text erkannt. Bitte erneut aufnehmen oder tippen.")
+                if not self.closed.is_set():
+                    root.after(100, poll_transcription)
+
+            def begin_transcription(path: Path) -> None:
+                nonlocal transcription_cancelled
+                transcription_cancelled = threading.Event()
+                mic_button.configure(text="Transkript verwerfen", state="normal")
+                status.set("Sprache wird lokal transkribiert …")
+
+                def worker() -> None:
+                    transcript: str | None = None
+                    error: str | None = None
+                    try:
+                        transcript = _transcribe_local_wav(path)
+                    except Exception as exc:
+                        error = f"{type(exc).__name__}: {exc}"
+                    finally:
+                        unregister_audio(path)
+                    if not self.closed.is_set():
+                        transcription_results.put((transcript, error))
+
+                threading.Thread(
+                    target=worker, name="open-compute-local-transcription", daemon=True
+                ).start()
+                root.after(100, poll_transcription)
+
+            def toggle_microphone() -> None:
+                nonlocal active_audio_path, recording_started
+                if transcription_cancelled is not None:
+                    transcription_cancelled.set()
+                    mic_button.configure(text="Verwerfe …", state="disabled")
+                    status.set("Transkript wird verworfen, sobald die lokale Verarbeitung endet.")
+                    return
+                if recording_started is None:
+                    try:
+                        active_audio_path = recording.start()
+                        register = getattr(self, "register_temp_audio", None)
+                        if register is not None:
+                            register(str(active_audio_path))
+                    except Exception as exc:
+                        if recording.alias is not None:
+                            active_audio_path = recording.path
+                            recording_started = time.monotonic()
+                            if active_audio_path is not None:
+                                register = getattr(self, "register_temp_audio", None)
+                                if register is not None:
+                                    register(str(active_audio_path))
+                            mic_button.configure(text="Aufnahme erneut stoppen", state="normal")
+                            status.set(
+                                f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                                "Erneut stoppen oder Chat beenden."
+                            )
+                        else:
+                            active_audio_path = None
+                            status.set(f"Mikrofon nicht verfügbar: {type(exc).__name__}: {exc}")
+                        return
+                    recording_started = time.monotonic()
+                    mic_button.configure(text="Aufnahme stoppen")
+                    status.set("Mikrofonaufnahme läuft. Stoppen, um lokal zu transkribieren.")
+                    root.after(500, update_recording_timer)
+                    return
+                stop_microphone()
+
+            def stop_microphone() -> None:
+                nonlocal active_audio_path, recording_started
+                path = active_audio_path
+                try:
+                    path = recording.stop()
+                except Exception as exc:
+                    if recording.alias is not None:
+                        active_audio_path = recording.path or path
+                        mic_button.configure(text="Aufnahme erneut stoppen", state="normal")
+                        status.set(
+                            f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                            "Erneut stoppen oder Chat beenden."
+                        )
+                        return
+                    recording_started = None
+                    if path is not None:
+                        unregister_audio(path)
+                    active_audio_path = None
+                    mic_button.configure(text="Mikrofon starten", state="normal")
+                    status.set(f"Aufnahme fehlgeschlagen: {type(exc).__name__}: {exc}")
+                    return
+                recording_started = None
+                active_audio_path = None
+                begin_transcription(path)
+
+            def update_recording_timer() -> None:
+                if recording_started is None or self.closed.is_set():
+                    return
+                elapsed = time.monotonic() - recording_started
+                if elapsed >= 60:
+                    status.set("Maximale Aufnahmedauer von 60 Sekunden erreicht.")
+                    stop_microphone()
+                    return
+                status.set(f"Mikrofonaufnahme läuft ({int(elapsed)} s). Stoppen zum Transkribieren.")
+                root.after(500, update_recording_timer)
+
+            mic_button.configure(command=toggle_microphone)
+            root.after(100, poll_transcription)
+
+            def submit(
+                message: str | None = None,
+                choice_index: int | None = None,
+                *,
+                observation_update: bool = False,
+                observation_window: Mapping[str, Any] | None = None,
+                observation_event_id: str = "",
+            ) -> None:
+                text = message if message is not None else entry.get("1.0", "end-1c").strip()
+                if not text.strip() or self.closed.is_set():
+                    return
+                if len(text) > 20_000:
+                    status.set("Nachricht zu lang (maximal 20.000 Zeichen).")
+                    return
+                if observation_update and not observation_capture_allowed(
+                    enabled=bool(observe_enabled.get()),
+                    screenshot_consent=bool(include_shot.get()),
+                    window=observation_window,
+                ):
+                    status.set("Beobachtung gestoppt: Fenster- oder Screenshotfreigabe fehlt.")
+                    refresh_observation_state()
+                    return
+                cancel_observation_timer()
+                if recording_started is not None or transcription_cancelled is not None:
+                    try:
+                        cancel_microphone_work()
+                    except Exception as exc:
+                        status.set(
+                            f"Mikrofon nicht sicher freigegeben: {type(exc).__name__}: {exc}. "
+                            "Nachricht wurde nicht gesendet."
+                        )
+                        return
+                mic_button.configure(state="disabled")
+                if observation_update and observation_window is not None:
+                    append("observation", f"Fenster: {observation_window['title']}\n{text}")
+                else:
+                    append("human", text)
+                self.turns.put(HumanTurn(
+                    message=text.strip(), mode=mode.get(),
+                    screenshot=bool(include_shot.get()), choice_index=choice_index,
+                    observation_update=observation_update,
+                    observation_enabled=(
+                        bool(observe_enabled.get()) if observation_update else False
+                    ),
+                    observation_window=(
+                        _window_identity(observation_window)
+                        if observation_window is not None else None
+                    ),
+                    observation_event_id=(
+                        observation_event_id[:128] if observation_update else ""
+                    ),
+                ))
+                if not observation_update:
+                    entry.delete("1.0", "end")
+                entry.configure(state="disabled")
+                send_button.configure(state="disabled")
+                set_choices(())
+                status.set(
+                    "Beobachtung übergeben. Der Assistent prüft das Fenster …"
+                    if observation_update
+                    else "Nachricht übergeben. Der Assistent denkt …"
+                )
+
+            def set_choices(items: tuple[str, ...]) -> None:
+                for child in suggestions.winfo_children():
+                    child.destroy()
+                if not items:
+                    return
+                ttk.Label(suggestions, text="Vorschläge:").pack(side="left", padx=(0, 6))
+                for index, choice in enumerate(items):
+                    ttk.Button(
+                        suggestions, text=choice,
+                        command=lambda text=choice, i=index: submit(text, i),
+                    ).pack(side="left", padx=(0, 5), pady=2)
+
+            set_choices(choices)
+            send_button = ttk.Button(mode_row, text="Senden", command=submit)
+            send_button.pack(side="right")
+            ttk.Button(
+                mode_row, text="Chat beenden", command=lambda: self._close(root)
+            ).pack(side="right", padx=(0, 8))
+            entry.bind("<Return>", lambda _event: (submit(), "break")[1])
+            entry.bind("<Shift-Return>", lambda _event: None)
+
+            def poll_commands() -> None:
+                try:
+                    while True:
+                        kind, *payload = self.commands.get_nowait()
+                        if kind == "assistant":
+                            message, next_choices = payload
+                            if message:
+                                append("assistant", message)
+                            set_choices(next_choices)
+                            entry.configure(state="normal")
+                            send_button.configure(state="normal")
+                            mic_button.configure(state="normal" if voice_ready else "disabled")
+                            entry.focus_set()
+                            status.set("Der Assistent wartet auf deine Nachricht.")
+                            refresh_observation_state()
+                        elif kind == "observation_error":
+                            append("system", payload[0])
+                            observe_enabled.set(False)
+                            entry.configure(state="normal")
+                            send_button.configure(state="normal")
+                            mic_button.configure(state="normal" if voice_ready else "disabled")
+                            status.set("Beobachtung pausiert. Prüfe Fenster und Freigabe, dann erneut aktivieren.")
+                            entry.focus_set()
+                        elif kind == "close":
+                            self._close(root)
+                except queue.Empty:
+                    pass
+                if not self.closed.is_set():
+                    root.after(100, poll_commands)
+
+            self.ready.set()
+            entry.focus_set()
+            poll_commands()
+            root.mainloop()
+        except BaseException as exc:
+            if message_worker is not None:
+                message_worker.close()
+            self.startup_error = exc
+            self.closed.set()
+            self.ready.set()
+            self.turns.put(_STOP)
+
+    def _close(self, root: Any) -> None:
+        first_close = not self.closed.is_set()
+        if first_close:
+            self.closed.set()
+            while True:
+                try:
+                    self.turns.get_nowait()
+                except queue.Empty:
+                    break
+        cleanup = getattr(self, "cleanup_callback", None)
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception as exc:
+                self.turns.put({
+                    "type": "error",
+                    "detail": f"microphone cleanup failed during chat shutdown: {type(exc).__name__}: {exc}",
+                })
+        if first_close:
+            self.turns.put(_STOP)
+        try:
+            root.destroy()
+        except Exception:
+            pass
+
+
+class ChatBridge:
+    """Own in-memory sessions that pair a native chat window with its host."""
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, ChatSession] = {}
+        self._lock = threading.RLock()
+
+    def open(
+        self, *, context: str = "", choices: tuple[str, ...] = (), timeout: float = 300.0
+    ) -> tuple[ChatSession, HumanTurn | None, bool]:
+        session = ChatSession(chat_id=str(uuid.uuid4()))
+        with self._lock:
+            for old_id, old in tuple(self._sessions.items()):
+                if old.closed.is_set():
+                    self._sessions.pop(old_id, None)
+            if len(self._sessions) >= 32:
+                raise RuntimeError("too many open chat sessions; close an existing chat first")
+            self._sessions[session.chat_id] = session
+        try:
+            session.start(title="Chat mit deinem Desktop-Assistenten", context=context, choices=choices)
+        except Exception:
+            self._forget(session.chat_id)
+            raise
+        try:
+            turn, timed_out = session.next_turn(timeout)
+        except Exception:
+            self.close(session.chat_id)
+            raise
+        if turn is None:
+            if session.closed.is_set():
+                self._forget(session.chat_id)
+        return session, turn, timed_out
+
+    def reply(
+        self, chat_id: str, *, assistant_message: str, assistant_turn_id: str,
+        choices: tuple[str, ...] = (), timeout: float = 300.0,
+    ) -> tuple[ChatSession, HumanTurn | None, bool, bool]:
+        with self._lock:
+            session = self._sessions.get(chat_id)
+        if session is None:
+            raise ValueError("unknown or expired chat_id; start a new chat")
+        import hashlib
+        from json import dumps
+
+        fingerprint = hashlib.sha256(dumps(
+            [assistant_message, choices], ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
+        try:
+            with session.exchange_lock:
+                cached = session.replies.get(assistant_turn_id)
+                if cached is not None:
+                    if cached[0] != fingerprint:
+                        raise ValueError("assistant_turn_id was already used for different content")
+                    return session, cached[1], cached[2], True
+                session.add_assistant(assistant_message, choices)
+                turn, timed_out = session.next_turn(timeout)
+                session.replies[assistant_turn_id] = (fingerprint, turn, timed_out)
+                if len(session.replies) > 64:
+                    session.replies.pop(next(iter(session.replies)))
+        except Exception:
+            self.close(chat_id)
+            raise
+        if turn is None and session.closed.is_set():
+            self._forget(chat_id)
+        return session, turn, timed_out, False
+
+    def poll(self, chat_id: str, *, timeout: float = 300.0) -> tuple[ChatSession, HumanTurn | None, bool]:
+        with self._lock:
+            session = self._sessions.get(chat_id)
+        if session is None:
+            raise ValueError("unknown or expired chat_id; start a new chat")
+        try:
+            turn, timed_out = session.next_turn(timeout)
+        except Exception:
+            self.close(chat_id)
+            raise
+        if turn is None and session.closed.is_set():
+            self._forget(chat_id)
+        return session, turn, timed_out
+
+    def report_observation_error(self, chat_id: str, message: str) -> None:
+        with self._lock:
+            session = self._sessions.get(chat_id)
+        if session is not None and not session.closed.is_set():
+            session.report_observation_error(message)
+
+    def _forget(self, chat_id: str) -> None:
+        with self._lock:
+            session = self._sessions.pop(chat_id, None)
+        if session is not None:
+            session.dispose()
+
+    def close(self, chat_id: str) -> bool:
+        with self._lock:
+            session = self._sessions.get(chat_id)
+        if session is None:
+            return False
+        failure: str | None = None
+        process = session.process
+
+        def child_running() -> bool:
+            if process is None:
+                return False
+            try:
+                return process.poll() is None
+            except Exception:
+                return True
+
+        try:
+            if child_running():
+                try:
+                    session._send_command({"type": "close"})
+                except (BrokenPipeError, OSError, ValueError):
+                    # The child may already be exiting. Still run the bounded
+                    # wait/terminate path below before dropping its session.
+                    pass
+            if not session.closed.is_set():
+                session.closed.set()
+                while True:
+                    try:
+                        session.turns.get_nowait()
+                    except queue.Empty:
+                        break
+                session.turns.put(_STOP)
+            if child_running():
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    try:
+                        process.terminate()
+                    except Exception as exc:
+                        failure = f"native chat UI terminate failed: {type(exc).__name__}: {exc}"
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                            process.wait(timeout=2)
+                        except Exception as exc:
+                            failure = f"native chat UI kill failed: {type(exc).__name__}: {exc}"
+            elif process is not None:
+                # A child that exited between the close send and wait still
+                # needs a collected exit status where the platform allows it.
+                try:
+                    process.wait(timeout=3)
+                except Exception:
+                    pass
+            if child_running() and failure is None:
+                failure = "native chat UI child could not be stopped"
+        except Exception as exc:
+            failure = f"native chat UI close failed: {type(exc).__name__}: {exc}"
+        finally:
+            if child_running():
+                try:
+                    process.terminate()
+                    process.wait(timeout=2)
+                except Exception:
+                    try:
+                        process.kill()
+                        process.wait(timeout=2)
+                    except Exception as exc:
+                        if failure is None:
+                            failure = f"native chat UI forced shutdown failed: {type(exc).__name__}: {exc}"
+            if not child_running():
+                failure = None
+            session.closed.set()
+            with self._lock:
+                if self._sessions.get(chat_id) is session:
+                    self._sessions.pop(chat_id, None)
+            try:
+                session.dispose()
+            except Exception as exc:
+                if failure is None:
+                    failure = f"native chat UI dispose failed: {type(exc).__name__}: {exc}"
+        if failure is not None:
+            raise RuntimeError(failure)
+        return True
+
+    def close_all(self) -> None:
+        with self._lock:
+            chat_ids = tuple(self._sessions)
+        for chat_id in chat_ids:
+            try:
+                self.close(chat_id)
+            except Exception:
+                # One broken child must not keep other native chat windows
+                # from receiving their own close/cleanup attempt.
+                continue
+
+
+__all__ = ["ChatBridge", "ChatSession", "HumanTurn", "MODES"]
