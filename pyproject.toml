@@ -50,6 +50,7 @@ watch = ["watchdog>=3.0"]
 clirec = ["clirec @ git+https://github.com/ellmos-ai/clirec@579c8c199825c92bd01c0afaa6dc68c7804c2721"]
 dev = ["pytest>=7.0"]
 record = ["clirec[record] @ git+https://github.com/ellmos-ai/clirec@579c8c199825c92bd01c0afaa6dc68c7804c2721"]
+voice-vosk = ["vosk==0.3.45"]
 mcp = ["mcp>=1.12,<2"]
 all = ["anthropic>=0.40.0", "openai>=1.40.0", "playwright>=1.40.0", "mss>=9.0", "Pillow>=10.0", "uiautomation>=2.0.18", "windows-capture>=2.0.0; platform_system == 'Windows'", "watchdog>=3.0", "clirec[record] @ git+https://github.com/ellmos-ai/clirec@579c8c199825c92bd01c0afaa6dc68c7804c2721", "mcp>=1.12,<2"]
 

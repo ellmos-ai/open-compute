@@ -526,6 +526,166 @@ Bis zu acht Optionen à höchstens 120 Zeichen erscheinen als 1-Klick-Knöpfe
 über dem gewohnten Freitextfeld, das erhalten bleibt — eine getippte Antwort
 kommt einfach mit `choice_index: null` zurück.
 
+#### Laufender Desktopdialog über MCP
+
+Das MCP-Tool `chat` öffnet ein normales Tk-Desktopfenster und verbindet es
+über einen Rückkanal mit dem aufrufenden Hostmodell. Das Modell antwortet im
+eigenen Kanal und übergibt seine echte Antwort danach mit derselben `chat_id`
+als `assistant_message`. Der Host erzeugt für jede Antwort eine eindeutige
+`assistant_turn_id`; wiederholte Aufrufe derselben ID liefern dieselbe
+Menschennachricht zurück und zeigen die Antwort nicht doppelt an.
+
+```text
+1. chat() -> chat_id, chat_message, mode, screenshot
+2. Hostmodell erstellt eine echte Antwort anhand dieser Nachricht
+3. chat(chat_id=..., assistant_turn_id="turn-1", assistant_message="...")
+   -> nächste chat_message; die Antwort erscheint im selben Fenster
+4. Wiederholen, bis das Fenster geschlossen wird (status="closed")
+```
+
+Das Fenster zeigt den Verlauf mit Rollen, bietet die Modi „Allgemein“, „Kurz“,
+„Brainstorming“ und „Bildschirmhilfe“ sowie Modellvorschläge als anklickbare
+Antworten. Der gewählte Modus kommt samt konkreter Antwortanweisung zum
+Hostmodell zurück. Im dauerhaften Tk-Dialog werden Vollbild-Screenshots nur erfasst,
+wenn der Mensch die Einwilligungsbox für diesen Turn aktiviert. Das Legacy-Argument
+`shot=true` bleibt im einmaligen Konsolenkanal verfügbar und übersteuert die
+Tk-Einwilligung nicht. Wartende MCP-Aufrufe enden nach höchstens
+3.600 Sekunden; `status="waiting_for_human"` lässt sich mit `poll=true`
+fortsetzen (erneut mit derselben `chat_id`). „Chat beenden“ oder das Schließen
+des Fensters gibt den Aufruf frei. Der Verlauf bleibt während dieser
+Fenstersitzung sichtbar und wird nicht als Chatdatenbank gespeichert.
+
+Drei Zusammenarbeitsprompts („Kurz weg“, „Wieder da“ und „Hilfe und
+Vorschläge“) übernehmen bearbeitbare Entwürfe in das Texteingabefeld. Sie
+senden den Text nicht und starten keine Arbeit im Hintergrund.
+
+Die laufende Beobachtung ist standardmäßig AUS. Für den Start muss der Mensch
+„Fenster beobachten (AN/AUS)“ einschalten, genau ein sichtbares Zielfenster
+auswählen und die Screenshotfreigabe für den Turn aktiviert lassen. Die
+Beobachtung erfasst höchstens einmal alle 15 Sekunden ein Bild dieses Fensters
+und sendet es im bestehenden MCP-Chat-Rückkanal zusammen mit der Frage nach
+Hilfestellungen oder Vorschlägen. Das Bild wird weder auf der Festplatte noch
+im Observation-Registry gespeichert. AUS, eine widerrufene Screenshotfreigabe,
+ein geschlossenes Zielfenster, „Chat beenden“, Client-Abbruch und
+Sitzungsende stoppen weitere Aufnahmen. Veraltete oder nicht mehr eindeutige
+Fensteridentitäten werden abgewiesen. Wiederholte Host-Turn-IDs verwenden
+höchstens das zuletzt gespeicherte, auf 2 MB begrenzte Bildresultat und lösen
+keine weitere Aufnahme aus. Ein Bildschirmbild geht nur an den Host, wenn der
+Mensch beide Einwilligungen sichtbar erteilt hat.
+
+Die Mikrofontaste ist aktiv, wenn das lokale Sprachmodul und das deutsche
+Modell installiert sind. Ein Klick startet die Aufnahme, der nächste beendet
+sie; die Höchstdauer beträgt 60 Sekunden. Der vorhandene Windows-MCI-Rekorder
+schreibt eine temporäre WAV-Datei. `ellmos-voice-io` transkribiert sie lokal
+mit Vosk und fügt den Text als bearbeitbaren Entwurf in das Texteingabefeld
+ein. Der Text wird nicht automatisch gesendet. Audio ist kein Bestandteil der
+MCP-Nachrichten. Die WAV wird nach Transkription, Abbruch oder Schließen des
+Fensters gelöscht. Das Chat-Tool lädt kein Modell herunter.
+
+Installiere das Vosk-Extra und den lokalen `ellmos-voice-io`-Checkout in
+derselben virtuellen Umgebung wie den MCP-Server:
+
+```powershell
+python -m pip install ".[voice-vosk]"
+python -m pip install --no-deps --editable "<Pfad zum ellmos-voice-io-Checkout>"
+```
+
+Lege das offizielle deutsche Small-Modell unter
+`%LOCALAPPDATA%\open-compute\models\vosk-model-small-de-0.15` ab oder setze
+`OPEN_COMPUTE_VOSK_MODEL` auf ein anderes lokales Modellverzeichnis. Das
+Modellarchiv ist 45 MB groß und steht unter Apache-2.0. Ohne Laufzeitmodul oder
+Modell bleibt die Mikrofontaste deaktiviert und das Fenster nennt die fehlende
+lokale Voraussetzung.
+
+#### Lokale Messages-Line im Chatfenster
+
+Das Chatfenster kann die lokale Ticket-Master-Messages-Line direkt anzeigen.
+Es verwendet dafür ausschließlich `MessagesLine.list_for_delivery()`,
+`read_for_delivery()`, `delivery_targets()`, `record_observation()` und die
+bewusste API `acknowledge()` aus dem gepinnten Ticket-Master-Commit
+`3b3fc86f2b9e2aedc8886cd737d439d70a1e3b2a`. Der Launcher legt dafür einen
+unveränderlichen Snapshot neben open-compute und VoiceIO an; es gibt keine
+globale Python-Installation und kein zweites Inbox- oder Receipt-Ledger.
+
+Ohne ausdrücklich übergebene Policy, Store und vorhandenes `local_gui`-Ziel
+bleibt die Messages-Line-Anzeige AUS. Das Beispiel
+`C:\_Local_DEV\repos\ticket-master\config\messages-line.example.json` ist
+deaktiviert und wird vom Launcher nicht als Produktivkonfiguration verwendet.
+Der Ticket-Master-Core hat keinen automatischen Nachrichten-Storepfad; es
+existiert aktuell auch kein vom Chat verwendeter aktiver Messages-Line-Pfad.
+Darum legt der Launcher weder eine Policydatei noch einen Store an.
+
+Wenn Ticket-Master später einen kanonischen lokalen Store, eine aktuelle
+Policydatei und ein dazu passendes lokales GUI-Ziel registriert hat, werden
+genau diese bestehenden Werte beim Start übergeben:
+
+```powershell
+.\scripts\open_compute_chat.ps1 `
+  -Model "<verfügbares Hostmodell>" `
+  -Workspace "<gewählter Arbeitsordner>" `
+  -MessagesDir "<bestehender Ticket-Master-Message-Line-Store>" `
+  -MessagesConfig "<aktuelle Ticket-Master-Policydatei>" `
+  -MessagesTargetRef "<bereits konfiguriertes local_gui-Ziel>"
+```
+
+Der spätere Einrichtungsweg ist an Ticket-Masters vorhandene Konfiguration
+gebunden: zuerst `C:\_Local_DEV\repos\ticket-master\config\ticket-master.config.json`
+für den aktuellen `tickets_dir` und `systems_registry` lesen und den dort
+verwalteten lokalen Messages-Line-Store samt Zielzuordnung beim Ticket-Master-
+Betreiber bestätigen. Diese Datei enthält derzeit keinen `messages_line`-
+Eintrag; deshalb wird daraus kein Speicherpfad abgeleitet. Für die Form der
+Policy ist ausschließlich
+`C:\_Local_DEV\worktrees\ticket-master-message-route-T-20261027-482327593\config\messages-line.example.json`
+im gepinnten Core eine Schema-Referenz. Die Beispieleinstellung ist deaktiviert
+und keine Produktivdatei. Nach Registrierung des kanonischen Stores, der aktiven
+Policy und des bestehenden `local_gui`-Ziels werden deren konkrete Pfade mit
+den drei optionalen `-Messages…`-Parametern an den Launcher übergeben; bei
+fehlendem oder ungültigem Wert bleibt die Integration AUS. Dieser Ausbau legt
+keine Ticket-Master-Konfiguration an und aktiviert kein Ziel.
+
+Die Fensterleiste lädt `chat_start` beim Öffnen, `on_demand` erst nach Klick
+auf „Jetzt nachfragen“ und `active_chat` höchstens alle 15 Sekunden, solange
+der Dialog offen ist. Listen zeigen nur IDs und Modi. Erst eine bewusste
+Auswahl löst den Inhalt auf; die aktuelle Policy wird vor Anzeige, Ack und
+weiterem Sichtbarhalten erneut geprüft. Das automatische GUI-open-Ack folgt
+erst nach dem Rendern und nur, wenn die aktuelle Policy es erlaubt. „Empfang
+bewusst bestätigen“ ruft ausschließlich die manuelle Ack-API auf. Die
+Nachricht wird weder automatisch in den Hostchat injiziert noch dort geloggt;
+Nachrichteninhalt gilt als Dateninhalt und nicht als Modell-/Systemanweisung.
+Eine deaktivierte oder unlesbare Policy blendet nicht mehr erlaubte Inhalte
+aus. Die BACH-/Ocean-Server-GUI, deren Konfigurationsschalter und deren
+sichtbare Laufzeitabnahme bleiben ein eigener Folgeauftrag.
+
+Das Tool ruft selbst kein Modell und keinen Provider auf. Es nutzt den bereits
+verbundenen Hostreasoner und benötigt daher keine zusätzlichen Provider-Keys.
+
+Für den direkt verbundenen Codex-Desktopdialog liegt ein eigener Launcher bei.
+Nach einem sauberen Commit bereitet er einen unveränderlichen Snapshot exakt
+dieser Version und ein pro Commit benanntes Codex-Profil vor. Das Profil lässt
+den bisherigen `open-compute`-Eintrag nur innerhalb dieses Profils deaktiviert,
+registriert den gepinnten MCP-Server mit ausschließlich dem Werkzeug `chat`
+und ändert weder die globale `config.toml` noch das globale MCP-Profil.
+Vorbereitung und Profilreadback starten kein Modell:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -PrepareOnly
+```
+
+Für den Dialog muss ein im eigenen Codex-Konto verfügbares Modell ausdrücklich
+angegeben werden; zusätzlich muss der gewünschte Arbeitsordner ausdrücklich
+mit `-Workspace` gewählt werden. Der Host startet dann in diesem Nutzerordner,
+nicht im schreibgeschützten App-Serversnapshot. Der Launcher nimmt weder einen
+Modell-Fallback noch einen stillen Workspace-Default:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -Model "<Modellname aus deinem Codex-Konto>" -Workspace "<Ordner für diese Aufgabe>" -Context "Wobei soll ich dir helfen?"
+```
+
+Der Aufruf verwendet die vorhandene Codex-Anmeldung und zeigt das native
+Chatfenster über den chat-only MCP-Server. Beenden des Codex-Dialogs oder des
+Fensters schließt den Host-Rückkanal. Vor einem Start verweigert der Launcher
+einen veränderten Quellworktree oder einen veränderten/abweichenden Snapshot.
+
 ### Modus B — Autonomer Loop mit einem API-Backend
 
 Das Backend wird über den Namen gewählt; `claude` und `openai` sind
