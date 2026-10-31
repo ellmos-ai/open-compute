@@ -561,8 +561,61 @@ Place the official German small model under
 package or model, the microphone button is disabled and the window gives the
 missing local requirement.
 
+#### Local Messages-Line in the chat window
+
+The chat window can display the local Ticket-Master Messages-Line directly. It
+uses only `MessagesLine.list_for_delivery()`, `read_for_delivery()`,
+`delivery_targets()`, `record_observation()`, and the explicit `acknowledge()`
+API from the pinned Ticket-Master commit
+`3b3fc86f2b9e2aedc8886cd737d439d70a1e3b2a`. The launcher prepares an immutable
+snapshot alongside open-compute and VoiceIO; there is no global Python
+installation and no second inbox or receipt ledger.
+
+Without an explicitly supplied policy, store, and existing `local_gui` target,
+Messages-Line display stays OFF. Once Ticket-Master registers a canonical local
+store, an active policy file, and a matching local GUI target, pass those
+existing paths on launch:
+
+```powershell
+.\scripts\open_compute_chat.ps1 `
+  -Model "<available host model>" `
+  -Workspace "<selected workspace folder>" `
+  -MessagesDir "<existing Ticket-Master Messages-Line store>" `
+  -MessagesConfig "<active Ticket-Master policy file>" `
+  -MessagesTargetRef "<configured local_gui target>"
+```
+
+The window sidebar loads `chat_start` on open, `on_demand` only when “Check
+now” is clicked, and `active_chat` at most every 15 seconds while the dialog is
+open. Lists show only IDs and modes; selecting an item resolves its content and
+re-evaluates the current policy before display, acknowledgement, and continued
+visibility. Automatic GUI-open acknowledgement happens only after rendering and
+only when permitted by the active policy. “Confirm receipt” calls only the
+manual acknowledgement API. Message text is treated strictly as data content,
+not as model or system instructions.
+
 The tool itself calls no model or provider. It uses the already connected host
 reasoner and needs no additional provider keys.
+
+A dedicated launcher is included for the directly connected Codex desktop
+dialog. From a clean commit, it prepares an immutable snapshot of that exact
+revision and a commit-named Codex profile that registers the pinned MCP server
+with only the `chat` tool without modifying global configuration:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -PrepareOnly
+```
+
+For an interactive dialog, explicitly pass both a model available in your Codex
+account and the target workspace directory:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -Model "<model from your Codex account>" -Workspace "<workspace folder>" -Context "How can I help?"
+```
+
+The launcher uses your existing Codex login and opens the native chat window
+through the chat-only MCP server. Closing the Codex session or the window
+closes the host return channel.
 
 ### Mode B — Autonomous loop with an API backend
 
