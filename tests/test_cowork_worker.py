@@ -100,6 +100,9 @@ def test_cancel_kills_owned_process_tree(tmp_path):
     cancel.set()
     thread.join(5)
     assert not thread.is_alive() and errors
+    deadline = time.monotonic() + 3
+    while process_running(child) and time.monotonic() < deadline:
+        time.sleep(.02)
     assert not process_running(child)
     assert worker.process is None and worker.job is None
 

@@ -209,3 +209,58 @@ def test_unknown_mode_is_rejected():
 
     with pytest.raises(ValueError, match="mode"):
         load_mode_profile("observe-turbo")
+
+
+def test_refine_three_stage_escalation_ladder_and_budget_gate():
+    from open_compute.perception_filter import ESCALATION_LADDER, refine
+
+    assert ESCALATION_LADDER == ("observe-lite", "observe-full", "act")
+
+    # Stage 1 -> Stage 2 auto-justified when observe-lite omitted elements
+    step1 = refine(
+        "observe-lite",
+        packet={"metrics": {"includedElements": 3, "omittedElements": 5}},
+        remaining_budget=2,
+    )
+    assert step1["escalated"] is True
+    assert step1["previousMode"] == "observe-lite"
+    assert step1["mode"] == "observe-full"
+    assert step1["stage"] == 2
+    assert step1["budgetRemaining"] == 1
+    assert step1["reason"] == "omitted_elements"
+
+    # Stage 1 -> Stage 2 rejected without reason when packet is already sufficient
+    with pytest.raises(ValueError, match="requires a reason"):
+        refine(
+            "observe-lite",
+            packet={"metrics": {"includedElements": 2, "omittedElements": 0}},
+            remaining_budget=2,
+        )
+
+    # Stage 2 -> Stage 3 requires explicit reason
+    with pytest.raises(ValueError, match="explicit non-empty `reason`"):
+        refine("observe-full", remaining_budget=1)
+
+    step2 = refine(
+        "observe-full",
+        reason="Target control is custom-drawn canvas; need bounded visual lens and click.",
+        remaining_budget=step1["budgetRemaining"],
+    )
+    assert step2["escalated"] is True
+    assert step2["previousMode"] == "observe-full"
+    assert step2["mode"] == "act"
+    assert step2["stage"] == 3
+    assert step2["budgetRemaining"] == 0
+
+    # Budget gate blocks escalation when remaining_budget == 0
+    blocked = refine("observe-lite", reason="want more", remaining_budget=0)
+    assert blocked["escalated"] is False
+    assert blocked["mode"] == "observe-lite"
+    assert blocked["reason"] == "budget_exhausted"
+
+    # Top stage stays at act without consuming budget
+    top = refine("act", reason="already at top", remaining_budget=3)
+    assert top["escalated"] is False
+    assert top["mode"] == "act"
+    assert top["stage"] == 3
+
