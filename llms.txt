@@ -32,6 +32,14 @@ uses.
 - Level 1 SBOM Plain-Text Companion: see [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
 - Contributing Guidelines & Governance Invariants: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Documentation languages
+
+- [English README](README.md)
+- [German README](README_de.md)
+- [Spanish README](README_es.md)
+
+These are documentation languages; they do not imply complete runtime localization.
+
 ## Architecture
 
 ```

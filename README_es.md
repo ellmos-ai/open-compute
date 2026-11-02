@@ -24,6 +24,8 @@
 
 **Un núcleo de uso del ordenador independiente del modelo: un ciclo de agente y cualquier modelo de razonamiento tras una única interfaz.**
 
+**Standalone Cowork (en desarrollo):** `oc cowork` abre una ventana de aplicación local independiente con texto, voz opcional del navegador, cuatro roles de trabajo para personas y modelos, observaciones acotadas de los objetivos y autorizaciones explícitas por tarea. Un worker de Codex en ejecución usa el inicio de sesión existente (predeterminado `gpt-6-astra`, configurable); `--worker none` habilita un host MCP externo. No se requiere una dependencia de Cowork Protocol ni un servicio Node. Consulta [configuración, contratos y límites de verificación](docs/cowork/README.md).
+
 open-compute es un núcleo de Python pequeño y con pocas dependencias para crear agentes de uso del ordenador
 (automatización de GUI, escritorio y navegador impulsada por LLM). Implementa el
 ciclo **percepción → llamada a herramienta del modelo → acción → respuesta**, y mantiene
@@ -504,6 +506,72 @@ chat(
 Se muestran hasta ocho opciones, de un máximo de 120 caracteres cada una, como botones de un clic
 encima del campo de texto libre habitual, que sigue disponible; una
 respuesta escrita simplemente devuelve `choice_index: null`.
+
+#### Conversación continua de escritorio mediante MCP
+
+La herramienta MCP `chat` abre una ventana de escritorio Tk convencional y la conecta con el modelo anfitrión que realiza la llamada mediante un canal de retorno. El modelo anfitrión responde en su propio canal y luego envía su respuesta real de vuelta como `assistant_message` con el mismo `chat_id`. El host asigna un `assistant_turn_id` único a cada respuesta; los reintentos con el mismo ID devuelven el mismo turno de la persona y no muestran la respuesta dos veces.
+
+```text
+1. chat() -> chat_id, chat_message, mode, screenshot
+2. Host model creates a real answer based on that message
+3. chat(chat_id=..., assistant_turn_id="turn-1", assistant_message="...")
+   -> next chat_message; the answer appears in the same window
+4. Repeat until the window is closed (status="closed")
+```
+
+La ventana muestra un historial etiquetado por rol, admite los modos “General”, “Brief”, “Brainstorming” y “Screen help”, y presenta las sugerencias del modelo como respuestas en las que se puede hacer clic. El modo seleccionado y una instrucción concreta para responder se devuelven al modelo anfitrión. Las capturas de todo el escritorio se toman solo cuando la casilla de consentimiento está marcada o se pasa explícitamente `shot=true`. Una llamada MCP en espera termina tras un máximo de 3600 segundos; el estado `status="waiting_for_human"` puede reanudarse con `poll=true` usando el mismo `chat_id`. “End chat” o cerrar la ventana libera la llamada. El historial permanece visible durante la sesión de esa ventana y no se guarda en una base de datos de chat.
+
+Tres atajos de colaboración — “Short break”, “I’m back” y “Help and suggestions” — insertan borradores editables en el campo de mensaje. No envían el borrador ni inician trabajo en segundo plano. La observación continua de pantalla no está implementada; la ayuda en pantalla utiliza únicamente la captura consentida explícitamente para ese turno.
+
+El botón del micrófono se habilita cuando están instalados el entorno de ejecución de voz local y el modelo alemán. Haz clic una vez para iniciar la grabación y otra para detenerla; las grabaciones se limitan a 60 segundos. El grabador MCI existente de Windows escribe un WAV temporal, y `ellmos-voice-io` lo transcribe localmente mediante Vosk. La transcripción se inserta en el campo de mensaje editable y nunca se envía automáticamente. El audio no forma parte de los mensajes MCP; el WAV temporal se elimina después de la transcripción, la cancelación o el cierre de la ventana. La herramienta de chat no descarga ningún modelo.
+
+En el mismo entorno virtual que ejecuta el servidor MCP, instala el extra Vosk y el checkout local de `ellmos-voice-io`:
+
+```powershell
+python -m pip install ".[voice-vosk]"
+python -m pip install --no-deps --editable "<path to ellmos-voice-io checkout>"
+```
+
+Coloca el modelo alemán pequeño oficial en
+`%LOCALAPPDATA%\open-compute\models\vosk-model-small-de-0.15`, o define
+`OPEN_COMPUTE_VOSK_MODEL` con la ruta de otro directorio de modelo local. El archivo del modelo ocupa
+45 MB y tiene licencia Apache-2.0. El runtime sigue siendo opcional: si falta el
+paquete o el modelo, el botón del micrófono queda deshabilitado y la ventana indica
+el requisito local que falta.
+
+#### Línea Messages-Line local en la ventana de chat
+
+La ventana de chat puede mostrar directamente la Messages-Line local de Ticket-Master. Solo utiliza `MessagesLine.list_for_delivery()`, `read_for_delivery()`, `delivery_targets()`, `record_observation()` y la API explícita `acknowledge()` del commit fijado de Ticket-Master
+`3b3fc86f2b9e2aedc8886cd737d439d70a1e3b2a`. El iniciador prepara una instantánea inmutable junto a open-compute y VoiceIO; no hay una instalación global de Python ni una segunda bandeja de entrada ni un registro de recibos adicional.
+
+Sin una política y un almacén proporcionados explícitamente, y sin un destino `local_gui` existente, la visualización de Messages-Line permanece OFF. Cuando Ticket-Master registre un almacén local canónico, un archivo de política activo y un destino `local_gui` coincidente, pasa esas rutas existentes al iniciar:
+
+```powershell
+.\scripts\open_compute_chat.ps1 `
+  -Model "<available host model>" `
+  -Workspace "<selected workspace folder>" `
+  -MessagesDir "<existing Ticket-Master Messages-Line store>" `
+  -MessagesConfig "<active Ticket-Master policy file>" `
+  -MessagesTargetRef "<configured local_gui target>"
+```
+
+La barra lateral de la ventana carga `chat_start` al abrirse, `on_demand` solo cuando se hace clic en “Check now” y `active_chat` como máximo una vez cada 15 segundos mientras el diálogo está abierto. Las listas muestran únicamente IDs y modos; al seleccionar un elemento, se resuelve su contenido y se vuelve a evaluar la política vigente antes de mostrarlo, confirmar su recepción y mantenerlo visible. La confirmación automática de recepción al abrir la GUI solo ocurre después de renderizar y únicamente cuando lo permite la política activa. “Confirm receipt” solo llama a la API de confirmación manual de recepción. El texto de los mensajes se trata estrictamente como contenido de datos, no como instrucciones para el modelo o el sistema.
+
+La herramienta no llama por sí misma a ningún modelo ni proveedor. Utiliza el razonador anfitrión ya conectado y no necesita claves adicionales de proveedores.
+
+Se incluye un iniciador específico para el diálogo de escritorio de Codex conectado directamente. A partir de un commit limpio, prepara una instantánea inmutable de esa revisión exacta y un perfil de Codex cuyo nombre identifica el commit, que registra el servidor MCP fijado con solo la herramienta `chat`, sin modificar la configuración global:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -PrepareOnly
+```
+
+Para un diálogo interactivo, pasa explícitamente tanto un modelo disponible en tu cuenta de Codex como el directorio del espacio de trabajo de destino:
+
+```powershell
+.\scripts\open_compute_chat.ps1 -Model "<model from your Codex account>" -Workspace "<workspace folder>" -Context "How can I help?"
+```
+
+El iniciador usa tu inicio de sesión existente de Codex y abre la ventana de chat nativa mediante el servidor MCP que expone únicamente la herramienta de chat. Al cerrar la sesión de Codex o la ventana se cierra el canal de retorno del host.
 
 ### Modo B: ciclo autónomo con un backend de API
 
