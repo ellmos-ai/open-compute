@@ -212,3 +212,31 @@ class GetLastInputInfoAdapter:
         # DWORD clock as LASTINPUTINFO.dwTime by LastInputSample.
         observed = int(ctypes.windll.kernel32.GetTickCount64())
         return int(info.dwTime), observed
+
+
+def evaluate_sensation_presence_gate(
+    *,
+    camera_enabled: bool = False,
+    idle_seconds: float = 0.0,
+    min_idle_seconds_when_camera_off: float = 120.0,
+) -> dict[str, object]:
+    """Evaluate via `ellmos_sensation.OpenComputePresenceGate` whether Open-Compute should pause."""
+    try:
+        from ellmos_sensation import OpenComputePresenceGate, SensationPermissions
+
+        perms = SensationPermissions(camera=camera_enabled)
+        return OpenComputePresenceGate().evaluate(
+            perms,
+            idle_seconds=idle_seconds,
+            min_idle_seconds_when_camera_off=min_idle_seconds_when_camera_off,
+        )
+    except ImportError:
+        should_pause = True if camera_enabled else (idle_seconds < min_idle_seconds_when_camera_off)
+        return {
+            "should_pause_open_compute": should_pause,
+            "reason": "user_present_via_camera" if camera_enabled else (
+                "recent_input_activity" if should_pause else "idle_timeout_elapsed"
+            ),
+            "camera_checked": bool(camera_enabled),
+            "presence": None,
+        }

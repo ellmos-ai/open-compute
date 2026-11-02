@@ -112,3 +112,17 @@ def test_unreasonably_long_injection_window_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="60 seconds"):
         classifier.record_agent_input("action", 1, 60_002)
+
+
+def test_evaluate_sensation_presence_gate():
+    from open_compute.human_activity import evaluate_sensation_presence_gate
+
+    active_gate = evaluate_sensation_presence_gate(camera_enabled=False, idle_seconds=5.0)
+    assert active_gate["should_pause_open_compute"] is True
+
+    idle_gate = evaluate_sensation_presence_gate(camera_enabled=False, idle_seconds=300.0)
+    assert idle_gate["should_pause_open_compute"] is False
+
+    cam_gate = evaluate_sensation_presence_gate(camera_enabled=True)
+    assert cam_gate["camera_checked"] is True
+    assert cam_gate["should_pause_open_compute"] is True
