@@ -2,7 +2,7 @@
 
 <img src="assets/banner.png" width="100%" alt="banner de open-compute"/>
 
-[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md) | **🇪🇸 Español** | [🇫🇷 Français](README_fr.md)
+[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md) | **🇪🇸 Español** | [🇫🇷 Français](README_fr.md) | [🇨🇳 简体中文](README_zh.md)
 
 [![Estado: producción/estable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
