@@ -37,6 +37,7 @@ uses.
 - [English README](README.md)
 - [German README](README_de.md)
 - [Spanish README](README_es.md)
+- [French README](README_fr.md)
 
 These are documentation languages; they do not imply complete runtime localization.
 

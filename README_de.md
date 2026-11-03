@@ -2,7 +2,7 @@
 
 <img src="assets/banner.png" width="100%" alt="open-compute Banner"/>
 
-[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md) | [🇪🇸 Español](README_es.md)
+[🇬🇧 English](README.md) | **🇩🇪 Deutsch** | [🇪🇸 Español](README_es.md) | [🇫🇷 Français](README_fr.md)
 
 [![Status: Produktion/Stabil v0.9.1](https://img.shields.io/badge/status-0.9.1--stabil-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
