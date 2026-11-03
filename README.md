@@ -2,7 +2,7 @@
 
 <img src="assets/banner.png" width="100%" alt="open-compute banner"/>
 
-[🇬🇧 English](README.md) | [🇩🇪 Deutsch](README_de.md)
+**🇬🇧 English** | [🇩🇪 Deutsch](README_de.md) | [🇪🇸 Español](README_es.md) | [🇫🇷 Français](README_fr.md)
 
 [![Status: Production/Stable v0.9.1](https://img.shields.io/badge/status-0.9.1--stable-blue)](CHANGELOG.md)
 [![Python: 3.10-3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
@@ -12,11 +12,11 @@
 [![Contributing: Welcome](https://img.shields.io/badge/Contributing-Welcome-blue.svg)](CONTRIBUTING.md)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
-[![Architecture: Local-First](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Architecture: offline mock default](https://img.shields.io/badge/architecture-offline%20mock%20default-blueviolet)](SECURITY.md)
 [![Security SLA: 48h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
-[![Third-Party: Audited](https://img.shields.io/badge/third--party-audited%20%7C%20permissive-blue)](THIRD_PARTY_LICENSES.md)
+[![Third-Party License Inventory](https://img.shields.io/badge/third--party-license%20inventory-informational)](THIRD_PARTY_LICENSES.md)
 [![Level 1 SBOM: Plain Text](https://img.shields.io/badge/Level%201%20SBOM-plain%20text%20audited-informational)](THIRD_PARTY_LICENSES.txt)
 [![Ecosystem: ellmos-ai](https://img.shields.io/badge/ecosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Umbrella: open-bricks](https://img.shields.io/badge/umbrella-open--bricks-blue)](https://github.com/open-bricks)
@@ -42,7 +42,7 @@ run that loop either inline or in a self-spawned subagent for context economy
 (see [usage pattern](#usage-pattern--inline-a-vs-self-subagent-b)). The core has
 **zero runtime dependencies**; vendor SDKs (`anthropic`, `openai`) are
 **optional, lazily imported** extras — `import open_compute` works with none of
-them installed, and the default mock wiring runs fully offline.
+them installed, and the default `AgentLoop` mock wiring runs fully offline. This does not apply to configured Claude/OpenAI backends or `oc cowork`, whose default Codex worker can use its existing sign-in.
 
 > [!NOTE]
 > **AI / LLM Integration Notice**: `open-compute` includes a machine-readable [`llms.txt`](llms.txt) file designed for AI agents, RAG crawlers, and LLM-assisted workflows.
@@ -77,10 +77,10 @@ them installed, and the default mock wiring runs fully offline.
 
 - 🎯 **True Model-Agnosticism**: Run Claude (Messages API), OpenAI CUA, or deterministic offline mocks without rewriting your orchestration or prompt logic.
 - 📐 **Unified Normalized Coordinates (0..1)**: Models output invariant floats `[0.0, 1.0]`. Resolution differences, dual-monitor offsets, and OS DPI scaling factors are resolved centrally in `coordinates.py`.
-- 🛡️ **Mandatory Pre-Action Grace Window**: Unconditional 4-second safety window before the first action in any session, empowering operators to interrupt or emergency-abort before any GUI state mutation occurs.
+- 🛡️ **MCP Pre-Action Grace Window**: Gate-relevant MCP calls use the operator-configured wait (4 seconds by default, with a 120-second activity cooldown); the operator can set it to 0. Direct CLI and SDK `AgentLoop` paths do not use this MCP wait.
 - 🚦 **Centralized Safety Gate**: Configurable policy modes (`confirm`, `allow_all`, `read_only`) intercept every mouse click, keypress, drag, and process execution before it hits the operating system.
 - 🔌 **Zero Runtime Dependencies**: Core agent loop and mock executor require only the Python standard library. Vendor SDKs (`anthropic`, `openai`, `mss`, `playwright`) are lazy-loaded extras.
-- 🪟 **Semantic Profile-Filtered Perception**: Strict token-bounded GUI window scoping prevents model context bloat and guarantees background windows remain uncaptured.
+- 🪟 **Profile-Filtered Perception**: The profile-filtered MCP tools apply the selected profile to returned results; ordinary `capture` is unfiltered and may return the full virtual desktop.
 
 ---
 
@@ -112,7 +112,7 @@ you write the loop once and swap the reasoning model freely behind one
 |---|---|---|---|
 | `[PERSONA-01]` | **Enterprise AI Agent Engineers & Platform Architects** | Model-swappable desktop agent core without proprietary vendor lock-in or coordinate fragmentation. | Single `ComputerBackend` protocol, unified canonical `Action` schema (`actions.py`), normalized `[0.0, 1.0]` coordinates (`coordinates.py`), and offline `MockBackend`. |
 | `[PERSONA-02]` | **Open-Source Agent Developers & AI Researchers** | Transparent, lightweight core to benchmark perception-action loops without massive Docker images or cloud costs. | Zero mandatory runtime dependencies (pure Python standard library core), deterministic offline test harness, and pluggable hybrid perception feeds. |
-| `[PERSONA-03]` | **Security, Safety & Governance Compliance Officers** | Enforcing human-in-the-loop oversight, emergency aborts, and strict zero-telemetry boundaries for GUI execution. | Mandatory 4-second `Pre-Action Grace Window` (`INV-GRC-04`), 3-tier fail-closed safety gate (`INV-SAF-05`), unprivileged user mode (`INV-USR-06`), and 100% offline zero-egress by default (`INV-EGR-07`). |
+| `[PERSONA-03]` | **Security, Safety & Governance Compliance Officers** | Enforcing human-in-the-loop oversight, emergency aborts, and strict zero-telemetry boundaries for GUI execution. | Operator-configured MCP grace (4-second default; 0 is allowed) (`INV-GRC-04`), 3-tier fail-closed safety gate (`INV-SAF-05`), and unprivileged user mode (`INV-USR-06`). The default mock loop is offline; configured provider backends and Cowork’s Codex worker may use external providers, while MCP returns content to its caller (`INV-EGR-07`). |
 | `[PERSONA-04]` | **Desktop & GUI Automation Specialists (RPA Modernizers)** | Modernizing brittle pixel-based RPA scripts (PyAutoGUI, AutoHotkey) into robust, semantic LLM-driven actions. | DPI-invariant coordinate rescaling, token-budgeted UIA window scoping (`perception_filter.py`), and native CLI utilities (`oc do`, `oc capture`, `oc click-name`). |
 
 ### High-Intent Search Queries & Discoverability
@@ -138,12 +138,12 @@ The following matrix evaluates `open-compute` against common alternative archite
 | **Model Agnosticism** | `INV-MOD-01` | **Full (Claude, OpenAI CUA, Mock, Mode A)** | Claude Messages API only | Wrapper-based multi-model | None (No LLM reasoning) | None (Hardcoded logic) |
 | **Runtime Dependencies** | `INV-DEP-02` | **0 (Pure Python Stdlib Core)** | Heavy Docker + Node + Python | Massive Docker image (>20 GB) | Heavy native C extensions & drivers | System-dependent binaries |
 | **Coordinate Normalization** | `INV-CRD-03` | **Unified Normalized 0..1 + central DPI rescaling** | Fixed pixel coordinates (1024x768 etc.) | Pixel-based with scaling drift | Fixed screen pixels (breaks on DPI change) | Hardcoded pixel coordinates |
-| **Pre-Action Grace Window** | `INV-GRC-04` | **Mandatory 4s countdown + 120s cooldown + abort latch** | None (Executes immediately) | None (Benchmark execution) | None (Instant execution) | None |
+| **Pre-Action Grace Window** | `INV-GRC-04` | **4s default + 120s cooldown; operator can set 0** | None (Executes immediately) | None (Benchmark execution) | None (Instant execution) | None |
 | **Fail-Closed Safety Gate** | `INV-SAF-05` | **3-Tier Policy Gate (`confirm`, `allow_all`, `read_only`)** | Advisory prompt warnings only | None (Unrestricted in VM) | None (Blind execution) | None |
 | **Unprivileged Execution** | `INV-USR-06` | **Strict RunAsInvoker (Non-elevated user mode)** | Root in Docker container | Root / Sudo inside virtual machine | Often prompts for Admin elevation | Risk of uncontrolled elevation |
-| **Local-First & Zero Egress** | `INV-EGR-07` | **100% Offline by default (0 sockets in mock/local mode)** | Mandatory cloud connection | Network-enabled VM with telemetry | Local execution, but no privacy policy | Script-dependent |
-| **Zero Secret Persistence** | `INV-SEC-08` | **Ephemeral in-memory API keys; never saved to disk/logs** | Environment variables in container | Configuration files with embedded tokens | Hardcoded plain-text credentials | Plain text environment or scripts |
-| **Semantic Window Scoping** | `INV-SCP-09` | **Token-budgeted UIA filter & background blanking** | Full screen capture only | Full desktop screenshots | Window handle search or full desktop | Naive window focus |
+| **Default Mock Egress** | `INV-EGR-07` | **Default mock loop is offline; configured providers/Cowork/MCP hosts may transmit data** | Mandatory cloud connection | Network-enabled VM with telemetry | Local execution, but no privacy policy | Script-dependent |
+| **API-Key Persistence** | `INV-SEC-08` | **No intentional API-key persistence; captures/actions may contain sensitive data and are not universally redacted** | Environment variables in container | Configuration files with embedded tokens | Hardcoded plain-text credentials | Plain text environment or scripts |
+| **Semantic Window Scoping** | `INV-SCP-09` | **Selected-profile filtering; ordinary capture is unfiltered** | Full screen capture only | Full desktop screenshots | Window handle search or full desktop | Naive window focus |
 | **Security & SLA Commitment** | `INV-SLA-10` | **Contractual 48h response & 5-day triage SLA** | Best-effort developer preview | Academic repository (issue backlog) | Community forum / commercial tiers | No security or maintenance SLA |
 
 ---
@@ -180,7 +180,7 @@ flowchart TD
     subgraph SafetyLayer ["Central Safety & Governance"]
         BACK --> ACT[Canonical Action Schema<br/>click, type, key, scroll, drag, wait]
         ACT --> SG[Safety Policy Gate<br/>confirm / allow_all / read_only]
-        SG --> GW[Mandatory Pre-Action Grace Window<br/>4s countdown + 120s cooldown]
+        SG --> GW[MCP grace window<br/>4s default; operator can set 0]
         GW --> ABORT{Emergency Stop /<br/>Operator Interruption?}
         ABORT -- Yes --> STOP[Abort Session & Teardown]
         ABORT -- No --> EXEC[Executor Dispatcher]
@@ -223,7 +223,7 @@ flowchart TD
 |  * Canonical Action Schema (actions.py) -- click, type, key, scroll, drag, wait normalized across models           |
 |  * Unified Coordinate Normalizer (coordinates.py) [INV-CRD-03] -- Normalized [0.0, 1.0] to native resolution/DPI   |
 |  * Central Safety Policy Gate (safety.py) [INV-SAF-05] -- 3-tier policy interception (confirm / allow_all / read)  |
-|  * Mandatory Pre-Action Grace Window (overlay.py, mcp_server.py) [INV-GRC-04] -- 4s countdown, 120s cooldown, abort|
+|  * MCP grace: 4s default, operator can set 0 (mcp_server.py) [INV-GRC-04] -- 120s activity cooldown         |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
@@ -232,15 +232,15 @@ flowchart TD
 |  * Profile-Filtered Perception & Window Scoping (perception_filter.py) [INV-SCP-09] -- Token-budgeted UIA filter   |
 |  * Visual Evidence & Composites (compose / Pillow) -- Before/after screenshots, Set-of-Marks, observation overlays |
 |  * Offline Deterministic Mock Substrate (MockExecutor, MockBackend) [INV-DEP-02] -- 0 mandatory runtime deps      |
-|  * Ephemeral Credential Security [INV-SEC-08] -- In-memory API keys only, zero disk serialization or log leaking  |
+|  * API-key handling [INV-SEC-08] -- no intentional API-key persistence; captures may include sensitive data              |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
 +-------------------------------------------------------------------------------------------------------------------+
-| [VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]                                            |
-|  * 100% Local-First Execution [INV-EGR-07] -- Zero external network telemetry sockets in default/mock mode        |
+| [VIEW 4: DEFAULT-MOCK EGRESS, CONFIGURED NETWORK PATHS & GOVERNANCE BOUNDARY]                                      |
+|  * Default mock loop offline; configured providers/Cowork/MCP hosts may transmit data [INV-EGR-07]             |
 |  * Pure Python Standard Library Core Runtime -- Zero external dependencies (cpython) [INV-DEP-02]                  |
-|  * Zero-Copyleft Isolation Guarantee -- 100% permissive open-source stack (PSFL-2.0, MIT, Apache-2.0, HPND)       |
+|  * Dependency license inventory -- see listed packages; future/transitive terms are not guaranteed                |
 |  * Multi-Host Cloud-Sync & Lock Defense -- Hardened .gitignore, conflict-copy resistance, canonical lock guards   |
 |  * Binding Security Response Commitment [INV-SLA-10] -- 48h initial response SLA & 5-day triage SLA              |
 +===================================================================================================================+
@@ -249,15 +249,17 @@ flowchart TD
 <a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>
 ### Agent Loop & Safety Lifecycle
 
+This is a conceptual host-orchestrated MCP workflow, not the SDK `AgentLoop` call graph: model reasoning runs in the host, not the MCP server. The diagram’s 4.0-second value is the default; the operator can set 0, direct CLI/SDK paths do not use this MCP grace helper, and MCP `capture` calls are gated too.
+
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Operator / Human
-    participant L as Agent Loop (Orchestrator)
+    participant L as Host Orchestrator (MCP Client)
     participant Perc as Perception & Filters
     participant Coord as Coordinate Normalizer
-    participant Model as Reasoning Backend (Claude / CUA / Mock)
-    participant Gate as Safety Policy Gate
+    participant Model as Host Reasoning Backend (Claude / CUA / Mock)
+    participant Gate as MCP Server Safety Policy Gate
     participant Overlay as Grace Window & Abort Overlay
     participant Driver as Local / Browser Executor
 
@@ -337,12 +339,12 @@ The architecture enforces strict operational invariants to guarantee security, r
 | `INV-MOD-01` | **Model-Agnostic Core** | `ComputerBackend` protocol abstraction | Swap Claude, OpenAI CUA, or offline Mock without rewriting the agent loop. |
 | `INV-DEP-02` | **Zero Runtime Dependencies** | Lazy optional imports for SDKs & platform drivers | Pure Python standard library on import; vendor SDKs (`anthropic`, `openai`) are strictly optional. |
 | `INV-CRD-03` | **Normalized Coordinates (0..1)** | Central DPI & resolution rescaling in `coordinates.py` | Display-resolution and DPI scaling solved centrally; models always operate in invariant (0..1) space. |
-| `INV-GRC-04` | **Mandatory Pre-Action Grace Window** | Unconditional session timer (`pre_action_grace_seconds`) | 4-second delay before first state-changing action allows immediate human interruption / emergency stop. |
+| `INV-GRC-04` | **MCP Pre-Action Grace Window** | 4-second default; operator may set 0 | Applies to gate-relevant MCP calls only; direct CLI/SDK `AgentLoop` paths do not use this wait. |
 | `INV-SAF-05` | **Fail-Closed Safety Gate** | Central `SafetyPolicy` evaluator (`confirm`, `allow_all`, `read_only`) | Potentially destructive actions are blocked by default until human confirmation callback approves them. |
 | `INV-USR-06` | **Unprivileged User Mode** | Standard Win32/OS API user permissions | Zero administrative elevation (`RunAsInvoker`); runs safely inside standard user security context. |
-| `INV-EGR-07` | **Local-First & Zero Egress** | Offline mock backend & local-first executor default | Core loop never contacts external network services unless configured with an external LLM backend. |
-| `INV-SEC-08` | **Zero Secret Persistence** | Environment-based API key injection | API keys and session secrets are never persisted in logs, state files, or screenshots. |
-| `INV-SCP-09` | **Profile-Filtered Perception** | Scope filters, visual lenses, and token budgeting | Strict pre-model boundary prevents unintended screen capturing or sensitive window leakage. |
+| `INV-EGR-07` | **Default Mock Egress** | Offline mock backend & local executor default | The default mock loop is offline; configured providers and Cowork’s Codex worker may use external services, and an MCP host can transmit content returned by the server. |
+| `INV-SEC-08` | **API-Key Persistence** | Backend API-key injection | The package does not intentionally persist API keys; captures and action content may contain sensitive data and are not universally redacted. |
+| `INV-SCP-09` | **Profile-Filtered Perception** | Selected-profile filters and visual lenses | Filtered MCP tools apply configured exclusions to returned content; ordinary `capture` is unfiltered and can return the full desktop. |
 | `INV-SLA-10` | **Security Response SLA** | Dedicated security contact & vulnerability process | 48-hour response acknowledgment and 5 business days triage guarantee via `SECURITY.md`. |
 
 ---
@@ -708,7 +710,9 @@ happens locally before model delivery: UIA semantics near the declared focus
 come first, text/value/element counts have hard budgets, visual escalation is a
 bounded lens, and named windows such as a host chat can be blanked where they
 overlap that lens. Unknown profile fields, tools or action types fail closed.
-`do(profile=...)` also rejects actions outside the same allowlist. Example:
+`do(profile=...)` also rejects actions outside the same allowlist. Excluded-window
+rectangles are blanked locally in the returned `capture_filtered` image after
+screen capture; ordinary `capture` does not apply these filters. Example:
 
 ```json
 {
@@ -822,10 +826,12 @@ grace wait below applies; that is unconditional now (see next paragraph).
 <a id="sec-12"></a><a id="mandatory-pre-action-grace-window"></a><a id="verbindliches-pre-action-grace-window"></a>
 ### Mandatory Pre-Action Grace Window
 
-**Pre-action grace window — mandatory, not opt-in.** Every gate-relevant
-call (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) waits out a
-configured grace period before its *first* action in a session, whether or
-not `signal_show` was ever called and independent of `OC_SIGNAL_AUTO`. This
+**MCP pre-action grace window — operator-configured, not model-controlled.** In
+the MCP server, every gate-relevant call (`do` / `click_name` / `invoke` /
+`rec_replay` / `capture`) waits out the configured grace period before its
+*first* action in a session, whether or not `signal_show` was ever called and
+independent of `OC_SIGNAL_AUTO`. Direct CLI commands and SDK `AgentLoop` runs
+do not use this MCP grace path. This
 closes a real bypass (Ticket T-20260825-540085216): previously, a caller
 that simply never called `signal_show` skipped the whole window with no
 config change at all — an explicit `signal_show` call armed it, but nothing
@@ -1138,10 +1144,10 @@ installs pytest. Current full-suite state: **829 passed, 2 skipped** (100% green
 <a id="sec-17"></a><a id="third-party-licenses--transparency"></a><a id="drittanbieter-lizenzen--transparenz"></a>
 ## Third-Party Licenses & Transparency
 
-`open-compute` commits to complete software supply-chain transparency and zero copyleft contamination:
+`open-compute` publishes a current third-party license inventory; this is not a blanket guarantee about future or transitive dependencies:
 - **Core Runtime:** Pure Python standard library (zero third-party code required on import).
-- **Optional Adapters:** All optional dependencies (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) are distributed under strictly permissive licenses (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
-- **Zero-Egress Assurances:** The offline mock engine never emits network traffic. No tracking, analytics, or telemetry libraries are bundled.
+- **Optional Adapters:** The current dependency inventory records license identifiers for `anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, and `mcp`; this is not a blanket guarantee about future or transitive dependencies.
+- **Default/mock egress:** The offline mock engine never emits network traffic. Configured provider backends and Cowork’s Codex worker may use external services; an MCP server returns capture content to its caller. No tracking, analytics, or telemetry libraries are bundled.
 
 For detailed license attributions, copyright notices, and dependency scopes, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
 

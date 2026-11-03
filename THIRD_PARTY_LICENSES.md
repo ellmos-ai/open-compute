@@ -4,7 +4,7 @@
 > **Audited:** 2026-10-03 (Prior audits: 2026-10-01, 2026-09-28, 2026-09-23, 2026-09-20, 2026-09-14, 2026-09-12, 2026-09-10)<br>
 > **Repository License:** [MIT License](LICENSE)<br>
 > **Attribution & SBOM Companion:** [NOTICE](NOTICE) | [Level 1 SBOM (Text)](THIRD_PARTY_LICENSES.txt) | [Contributing](CONTRIBUTING.md)<br>
-> **Architecture & Privacy:** 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (`RunAsInvoker`), Fail-Closed
+> **Architecture & Privacy:** Default mock loop offline (Zero-Egress scope); configured provider/host paths may transmit observations; user-mode execution and safety policies
 
 ---
 
@@ -12,13 +12,13 @@
 
 `open-compute` is designed with an uncompromising architectural principle: **the core agent loop has zero mandatory runtime dependencies** and runs entirely within the Python standard library. Optional extras (such as cloud vendor API clients, local screen grabbers, accessibility tree walkers, and browser automation drivers) are dynamically and lazily loaded only when explicitly configured by the operator. Canonical copyright and ecosystem attributions are formally preserved in the root [`NOTICE`](NOTICE) file.
 
-All direct, optional, and development dependencies used in `open-compute` are licensed under strictly **permissive open-source licenses** (MIT, Apache 2.0, BSD-3-Clause, PSFL, HPND). There are **zero copyleft or AGPL-style viral dependencies**, ensuring maximum freedom for enterprise integration, commercial deployments, academic research, and proprietary extensions.
+This inventory records the license identifiers listed for the project’s current dependencies. It is not a blanket guarantee about future or transitive dependencies; consult the applicable package license files.
 
-Furthermore, `open-compute` adheres to a strict **Zero-Egress Privacy Boundary & Unprivileged Execution (`RunAsInvoker`)**:
-1. When using the default `mock` backend or local-first rule sets, **no network requests or telemetry data are transmitted**.
-2. API keys for cloud backends (`anthropic`, `openai`) are ingested strictly from memory or environment variables and are **never serialized to disk, state caches, or logs**.
+The following runtime boundaries apply alongside the license inventory:
+1. The default `MockBackend` plus `MockExecutor` loop is offline. Configured provider backends and Cowork’s Codex worker may use external services; an MCP host receives observations and may pass them onward.
+2. Provider clients accept explicit API keys or SDK environment configuration. The package does not intentionally persist those keys; screenshots and action content may contain sensitive data and are not universally redacted.
 3. All local execution operates strictly in unprivileged user mode (`RunAsInvoker`) without requiring administrative elevation or root permissions.
-4. Supply chain and runtime isolation guarantee: 100% permissive runtime dependencies, 0% copyleft contamination.
+4. License scope is limited to the recorded inventory; it does not certify the complete future or transitive dependency closure.
 
 ---
 
@@ -81,32 +81,32 @@ The following matrix maps the 10 core governance runtime invariants (`INV-MOD-01
 
 | Invariant ID | Scope & Guarantee | Implementation File / Component | Applicable License | Compliance Assurance & Verification |
 |:---:|---|---|---|---|
-| **INV-MOD-01** | Model-Agnostic Core Loop | `open_compute.base.ComputerBackend`, `actions.py` | PSFL-2.0 / MIT | Unified action schema & provider-neutral backend protocol |
+| **INV-MOD-01** | Model-Agnostic Core Loop | `open_compute.backends.base.ComputerBackend`, `actions.py` | PSFL-2.0 / MIT | Unified action schema & provider-neutral backend protocol |
 | **INV-DEP-02** | Zero Mandatory Runtime Dependencies | `open_compute.__init__` / Standard Library | PSFL-2.0 | Pure Python standard library on import; vendor SDKs lazy optional |
 | **INV-CRD-03** | Normalized Coordinates (0..1) | `open_compute.coordinates` | PSFL-2.0 / MIT | Invariant float coordinates `[0.0, 1.0]` with central DPI rescaling |
-| **INV-GRC-04** | Mandatory Pre-Action Grace Window | `open_compute.mcp_server`, `overlay.py` | PSFL-2.0 / MIT | Unconditional 4s countdown & 120s cooldown emergency-stop window |
+| **INV-GRC-04** | MCP Pre-Action Grace Window | `open_compute.mcp_server`, `indicator.py` | PSFL-2.0 / MIT | Configured MCP wait: 4s default, 120s activity cooldown; operator can set 0; no CLI/SDK wait |
 | **INV-SAF-05** | Fail-Closed Central Safety Gate | `open_compute.safety.SafetyPolicy` | PSFL-2.0 / MIT | 3-tier interception (`confirm`, `allow_all`, `read_only`) before dispatch |
 | **INV-USR-06** | Unprivileged Non-Elevation (RunAsInvoker) | `open_compute.cli`, `mcp_bootstrap.py` | PSFL-2.0 / MIT | Strictly non-elevated user mode; zero Administrator elevation |
-| **INV-EGR-07** | Local-First & Zero Egress by Default | `MockBackend`, `MockExecutor` | PSFL-2.0 / MIT | 100% offline test harness; zero telemetry sockets emitted |
-| **INV-SEC-08** | Zero Secret Persistence | `open_compute.backends.claude`, `openai` | MIT / Apache-2.0 | Ephemeral in-memory API keys; never persisted to disk or logs |
-| **INV-SCP-09** | Profile-Filtered Perception & Window Scoping | `open_compute.perception_filter` | PSFL-2.0 / MIT | Token-budgeted UIA focus lens & background-window blanking |
+| **INV-EGR-07** | Default Mock-Mode Egress | `MockBackend`, `MockExecutor` | PSFL-2.0 / MIT | Default mock loop offline; configured provider/Cowork/MCP-host paths have separate egress boundaries |
+| **INV-SEC-08** | API-Key and Artifact Handling | `open_compute.backends.claude`, `openai` | MIT / Apache-2.0 | Keys not intentionally persisted by package; captures/actions may contain sensitive data |
+| **INV-SCP-09** | Selected-Profile MCP Filtering | `open_compute.perception_filter` | PSFL-2.0 / MIT | Configured exclusions blanked locally after capture in filtered output; ordinary capture unfiltered |
 | **INV-SLA-10** | Contractual Security Response & Triage SLA | `SECURITY.md` (`security@open-bricks.org`) | MIT | Binding 48h initial acknowledgment and 5-day triage commitment |
 
 ---
 
 ## Runtime & Governance Invariants Confirmation
 
-In addition to copyright and license compliance, `open-compute` guarantees adherence to 10 core architectural and runtime invariants verified continuously by automated contract testing:
+The following list describes implementation scopes, not universal guarantees established by metadata contract tests:
 
 1. `INV-MOD-01` (Model-Agnostic Core): One unified loop orchestration interface supporting Claude, OpenAI CUA, and deterministic offline mock execution without provider lock-in.
 2. `INV-DEP-02` (Zero Mandatory Runtime Dependencies): The core agent loop, canonical actions, and coordinates require solely the standard Python library; all vendor SDKs are optional lazy extras.
 3. `INV-CRD-03` (Normalized Coordinates 0..1): All model coordinate perceptions and actions operate within the invariant float range `[0.0, 1.0]`, with centralized DPI and multi-monitor rescaling.
-4. `INV-GRC-04` (Mandatory Pre-Action Grace Window): Unconditional 4-second delay before the first mutating GUI action, providing operators with emergency-abort oversight.
+4. `INV-GRC-04` (MCP Grace): Covered MCP calls use the operator-configured wait, 4 seconds by default with a 120-second activity cooldown; 0 is allowed. Direct CLI/SDK execution does not use this MCP wait.
 5. `INV-SAF-05` (Fail-Closed Safety Gate): Three-tier policy gate (`confirm`, `allow_all`, `read_only`) intercepting every GUI action before OS dispatch.
 6. `INV-USR-06` (Unprivileged User Mode): Full functionality guaranteed in non-elevated user context (`RunAsInvoker`) without administrative rights.
-7. `INV-EGR-07` (Local-First & Zero Egress): Absolute zero telemetry, external network requests, or analytics when operating in offline/mock mode.
-8. `INV-SEC-08` (Zero Secret Persistence): API keys are maintained strictly in volatile runtime memory and never saved to disk, logs, or state caches.
-9. `INV-SCP-09` (Profile-Filtered Perception): Strict token-budgeted GUI scoping and background-window blanking prevents model context overflow and uncaptured exposure.
+7. `INV-EGR-07` (Default Mock Egress): The default mock loop is offline; configured provider/Cowork/MCP-host flows are outside that boundary.
+8. `INV-SEC-08` (API-Key Handling): The package does not intentionally persist provider keys, but screenshots and action content may contain sensitive data and are not universally redacted.
+9. `INV-SCP-09` (Profile Filtering): Explicit filtered MCP calls apply selected profile budgets and exclusions; ordinary capture can return the full desktop.
 10. `INV-SLA-10` (Contractual Security SLA): 48-hour response time and 5-business-day triage commitment for all reported security vulnerabilities.
 
 ---

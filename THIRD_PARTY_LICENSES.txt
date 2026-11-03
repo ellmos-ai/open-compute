@@ -5,26 +5,24 @@ Repository Version: 0.9.1 (Version Freeze per T-20260920-167562623)
 Repository License: MIT License (see LICENSE)
 Repository Attribution Notice: NOTICE (see NOTICE)
 Contributing Guidelines: CONTRIBUTING.md (see CONTRIBUTING.md)
-Architecture & Privacy: 100% Local-First, Zero-Egress by default, Unprivileged User-Mode (RunAsInvoker), Fail-Closed
+Architecture & Privacy: Default mock loop offline (Zero-Egress scope); configured provider/host paths may transmit observations; user-mode execution and safety policies
 
 ================================================================================
 1. EXECUTIVE SUMMARY & COMPLIANCE ASSURANCE
 ================================================================================
 
-open-compute is engineered under strict architectural and governance
-invariants: 100% Local-First, Zero-Egress by default, unprivileged user-mode
-execution (RunAsInvoker), and fail-closed safety gate interception. The core
+open-compute uses an offline default mock loop, user-mode execution
+(RunAsInvoker), and safety policies. Configured provider backends and Cowork
+may use external services; MCP hosts receive observation content. The core
 agent loop has zero mandatory external runtime dependencies and executes
 entirely within the Python standard library. Optional extras (anthropic, openai,
 playwright, mss, Pillow, uiautomation, windows-capture, watchdog, clirec, mcp)
 are dynamically and lazily imported only when explicitly selected by the
 operator.
 
-All direct, optional, and development dependencies utilized across open-compute
-are distributed under strictly permissive and free open-source licenses (MIT,
-Apache-2.0, PSFL-2.0, HPND). There are zero copyleft, GPL, or AGPL-style viral
-dependencies, guaranteeing complete operational safety for enterprise
-integration, autonomous agent fleets, and security-critical deployments.
+This inventory records license identifiers listed for the current dependencies.
+It is not a blanket guarantee for future or transitive dependencies, or a
+certification of operational safety. Consult the applicable package license files.
 Canonical copyright and ecosystem attributions are formally preserved in the
 root NOTICE file.
 
@@ -34,26 +32,25 @@ root NOTICE file.
 
 Invariant ID  | Operational Scope & Guarantee      | Technical Enforcement                  | License Scope
 --------------+------------------------------------+----------------------------------------+-------------------
-INV-MOD-01    | Model-Agnostic Core Loop           | open_compute.base.ComputerBackend      | PSFL-2.0 / MIT
+INV-MOD-01    | Model-Agnostic Core Loop           | open_compute.backends.base.ComputerBackend      | PSFL-2.0 / MIT
 INV-DEP-02    | Zero Mandatory Runtime Dependencies| open_compute.__init__ / Standard Lib   | PSFL-2.0
 INV-CRD-03    | Normalized Coordinates (0..1)      | open_compute.coordinates               | PSFL-2.0 / MIT
-INV-GRC-04    | Mandatory Pre-Action Grace Window  | open_compute.mcp_server, overlay.py    | PSFL-2.0 / MIT
+INV-GRC-04    | Configured MCP grace (4s default) | mcp_server, indicator.py; operator 0 allowed | PSFL-2.0 / MIT
 INV-SAF-05    | Fail-Closed Central Safety Gate    | open_compute.safety.SafetyPolicy       | PSFL-2.0 / MIT
 INV-USR-06    | Unprivileged User-Mode Non-Elevate | open_compute.cli, mcp_bootstrap.py     | PSFL-2.0 / MIT
-INV-EGR-07    | Local-First & Zero Egress          | MockBackend, MockExecutor (offline)    | PSFL-2.0 / MIT
-INV-SEC-08    | Zero Secret Persistence           | open_compute.backends.claude, openai   | MIT / Apache-2.0
-INV-SCP-09    | Profile-Filtered Perception Scoping| open_compute.perception_filter         | PSFL-2.0 / MIT
+INV-EGR-07    | Default mock loop offline        | MockBackend + MockExecutor              | PSFL-2.0 / MIT
+INV-SEC-08    | API-key and artifact handling    | Provider clients; captures not universally redacted | MIT / Apache-2.0
+INV-SCP-09    | Selected-profile MCP filtering   | perception_filter; ordinary capture unfiltered | PSFL-2.0 / MIT
 INV-SLA-10    | Dual Security Response & Triage SLA| SECURITY.md (security@open-bricks.org) | MIT
 
 ================================================================================
-3. ZERO-COPYLEFT ISOLATION GUARANTEE & RUNASINVOKER CERTIFICATION
+3. LICENSE INVENTORY, USER-MODE EXECUTION & NETWORK BOUNDARIES
 ================================================================================
 
-1. Zero-Copyleft Isolation Guarantee:
-   All core runtime dependencies operate strictly under permissive open-source
-   licenses (PSFL-2.0, MIT, Apache-2.0, HPND). The codebase, build definitions,
-   and runtime interfaces are completely free of GPL, AGPL, LGPL, SSPL, or
-   reciprocal copyleft obligations.
+1. Zero-Copyleft Inventory Scope:
+   The recorded license identifiers describe the listed current dependencies.
+   They do not establish a blanket guarantee for future or transitive packages;
+   consult each applicable license file.
 
 2. Unprivileged Execution (RunAsInvoker):
    open-compute enforces unprivileged user-mode execution under INV-USR-06.
@@ -61,10 +58,14 @@ INV-SLA-10    | Dual Security Response & Triage SLA| SECURITY.md (security@open-
    strictly within non-elevated user context without requiring administrative
    or root privileges.
 
-3. Zero-Egress Perimeter:
-   Under INV-EGR-07, default and mock operations initiate zero network
-   connections, transmit no telemetry, and execute entirely on local system
-   resources. Volatile API secrets (INV-SEC-08) are never persisted to disk.
+3. Zero-Egress Scope:
+   Under INV-EGR-07, the default mock loop is offline. Configured providers,
+   Cowork workers and MCP hosts have separate transmission boundaries. The
+   package does not intentionally persist provider keys; captures/actions may
+   contain sensitive data and can be saved or returned to a host/provider.
+   Profile filtering applies only to explicit filtered MCP calls. The
+   configured MCP grace wait defaults to 4s with a 120s activity cooldown;
+   operators can set 0. Direct CLI/SDK execution does not use that MCP wait.
 
 ================================================================================
 4. RUNTIME & OPTIONAL DEPENDENCY MATRIX
