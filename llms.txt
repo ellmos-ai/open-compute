@@ -24,7 +24,7 @@ uses.
 
 - Enterprise AI Agent Engineers & Platform Architects: Model-swappable desktop agents without vendor lock-in.
 - Open-Source Agent Developers & Researchers: Benchmarking vision vs. UIA/DOM with zero-cost deterministic mocks.
-- Security & Compliance Officers: Enforcing mandatory 4s pre-action grace windows, zero telemetry egress, and user-mode execution (`RunAsInvoker`).
+- Security & Compliance Officers: Configured MCP grace windows, offline default mocks, user-mode execution and explicit observation/artifact boundaries.
 - Desktop Automation & RPA Specialists: Upgrading brittle pixel scripts to normalized-coordinate (0..1) LLM workflows.
 - Full persona matrix & SEO keywords: see [Target Personas & Discoverability](README.md#target-personas--discoverability) and `MARKETING-LOG.txt`.
 - Technical benchmarks vs. alternatives: see [Comparative Matrix vs. Alternatives](README.md#comparative-matrix-vs-alternatives).
@@ -122,9 +122,10 @@ Every action passes a central policy gate before execution. Default mode is
 real backends in an isolated VM/container, keep a human in the loop, and treat
 on-screen content as untrusted (prompt-injection risk).
 
-Profile-filtered MCP perception is a local pre-model boundary, not a model
-instruction. Profiles are strict, may forbid fullscreen, bound semantic and
-visual payloads, remove excluded GUI names/windows, and restrict tools/actions.
+Profile-filtered MCP calls apply selected profiles locally before returning results.
+Raw pixels are captured before configured window intersections are blanked;
+ordinary capture is unfiltered. Captures can be saved or returned to an MCP host,
+and configured provider backends can send observations to external services.
 Current full-suite state: 819 passed, 2 skipped (100% green, 2026-09-23).
 
 ## Governance & Runtime Invariants
@@ -132,20 +133,20 @@ Current full-suite state: 819 passed, 2 skipped (100% green, 2026-09-23).
 1. `INV-MOD-01`: Model-Agnostic Core -- swap Claude, OpenAI, Mock without loop rewrite.
 2. `INV-DEP-02`: Zero Runtime Dependencies -- pure stdlib core on import.
 3. `INV-CRD-03`: Normalized Coordinates (0..1) -- DPI/resolution invariance.
-4. `INV-GRC-04`: Mandatory Pre-Action Grace Window -- 4s delay for emergency stop.
+4. `INV-GRC-04`: MCP grace -- configured wait, 4s default with 120s activity cooldown, operator-disableable; not used by direct CLI or SDK AgentLoop.
 5. `INV-SAF-05`: Fail-Closed Safety Gate -- confirm before state modifications.
 6. `INV-USR-06`: Unprivileged User Mode -- runs safely under `RunAsInvoker`.
-7. `INV-EGR-07`: Local-First & Zero Egress -- no telemetry or external traffic by default.
-8. `INV-SEC-08`: Zero Secret Persistence -- API keys kept strictly ephemeral.
-9. `INV-SCP-09`: Profile-Filtered Perception -- focus lenses and window scoping.
+7. `INV-EGR-07`: Default mock loop offline; configured providers/Cowork may use external services and MCP hosts receive observations.
+8. `INV-SEC-08`: Provider API keys are not intentionally persisted by the package; captures/action content can contain sensitive data, with no universal redaction.
+9. `INV-SCP-09`: Selected profiles bound filtered MCP results and configured exclusions; ordinary capture is unfiltered.
 10. `INV-SLA-10`: Security SLA -- 48h response and 5 business days triage guarantee.
 
 ## Third-Party Licenses & Transparency
 
-All direct, optional, and dev dependencies are strictly permissive (MIT, Apache-2.0,
-BSD-3-Clause, PSFL-2.0, HPND). Zero copyleft dependencies. Full audit and Level 1
-SBOM Invariant Matrix documented in `THIRD_PARTY_LICENSES.md`. Formal attribution
-in `NOTICE`.
+Recorded dependency license identifiers are listed in `THIRD_PARTY_LICENSES.md`
+and its Level 1 SBOM companion. This inventory is not a blanket guarantee for
+future or transitive dependencies; consult the applicable package license files.
+Formal attribution is in `NOTICE`.
 
 ## Statutory Notice (§ 521 BGB) & Liability Disclaimer
 

@@ -12,11 +12,11 @@
 [![Mitwirken: Willkommen](https://img.shields.io/badge/Mitwirken-Willkommen-blue.svg)](CONTRIBUTING.md)
 [![Attribution: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Plattformen](https://img.shields.io/badge/plattformen-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
-[![Architecture: Lokal-Zentriert](https://img.shields.io/badge/architektur-100%25%20lokal--zentriert%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Architektur: Standard-Mock offline](https://img.shields.io/badge/architektur-Standard%20Mock%20offline-blueviolet)](SECURITY.md)
 [![Sicherheits-SLA: 48h](https://img.shields.io/badge/sicherheit-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
 [![Code-Stil: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
-[![Drittanbieter: Auditiert](https://img.shields.io/badge/drittanbieter-auditiert%20%7C%20permissiv-blue)](THIRD_PARTY_LICENSES.md)
+[![Lizenzinventar für Drittanbieter](https://img.shields.io/badge/drittanbieter-lizenzinventar-informational)](THIRD_PARTY_LICENSES.md)
 [![Level 1 SBOM: Plain Text](https://img.shields.io/badge/Level%201%20SBOM-Plain--Text%20auditiert-informational)](THIRD_PARTY_LICENSES.txt)
 [![Ökosystem: ellmos-ai](https://img.shields.io/badge/%C3%96kosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Dachverband: open-bricks](https://img.shields.io/badge/dachverband-open--bricks-blue)](https://github.com/open-bricks)
@@ -80,10 +80,10 @@ vollständig offline.
 
 - 🎯 **Echte Modell-Agnostik**: Claude (Messages API), OpenAI CUA oder Offline-Mocks nahtlos ausführen, ohne Orchestrierungslogik oder Prompts anpassen zu müssen.
 - 📐 **Einheitliche normierte Koordinaten (0..1)**: Modelle erzeugen koordinatenunabhängige Fließkommazahlen `[0.0, 1.0]`. Unterschiedliche Bildschirmauflösungen, Multi-Monitor-Setups und Betriebssystem-DPI-Skalierungen werden zentral in `coordinates.py` umgerechnet.
-- 🛡️ **Verbindliches Pre-Action Grace Window**: Ein bedingungsloses 4-Sekunden-Karenzzeitfenster vor der ersten Aktion jeder Sitzung erlaubt es dem Bediener, jederzeit einzugreifen oder einen Not-Aus-Befehl abzusetzen.
+- 🛡️ **MCP-Vorlauf vor Aktionen**: Gate-relevante MCP-Aufrufe verwenden die vom Betreiber konfigurierte Karenzzeit (standardmäßig 4 Sekunden, mit 120 Sekunden Aktivitäts-Cooldown); der Betreiber kann sie auf 0 setzen. Direkte CLI- und SDK-`AgentLoop`-Pfade nutzen diese MCP-Wartezeit nicht.
 - 🚦 **Zentrales Safety Gate**: Konfigurierbare Sicherheitsmodi (`confirm`, `allow_all`, `read_only`) fangen jeden Mausklick, Tastenanschlag, Drag-Vorgang und Prozessstart ab, bevor er an das Betriebssystem übertragen wird.
 - 🔌 **Null Laufzeit-Abhängigkeiten**: Der Basiskern und der Mock-Treiber benötigen ausschließlich die Python-Standardbibliothek. Externe SDKs (`anthropic`, `openai`, `mss`, `playwright`) werden erst bei Bedarf dynamisch geladen.
-- 🪟 **Profilgefilterte Fensterwahrnehmung**: Token-begrenzte GUI-Fensterfilter verhindern Kontextüberläufe und garantieren, dass nicht fokussierte Hintergrundfenster niemals erfasst werden.
+- 🪟 **Profilgefilterte Wahrnehmung**: Die gefilterten MCP-Werkzeuge wenden das ausgewählte Profil auf die zurückgegebenen Inhalte an. Das normale `capture` bleibt ungefiltert und kann den gesamten virtuellen Desktop liefern.
 
 ---
 
@@ -117,7 +117,7 @@ bleibt:
 |---|---|---|---|
 | `[PERSONA-01]` | **Enterprise AI Agent Engineers & Plattform-Architekten** | Modell-austauschbarer Desktop-Agenten-Kern ohne Anbieter-Lock-in oder fragmentierte Koordinaten. | Einheitliches `ComputerBackend`-Protokoll, kanonisches Aktionsschema (`actions.py`), normierte `[0.0, 1.0]`-Koordinaten (`coordinates.py`) und Offline-`MockBackend`. |
 | `[PERSONA-02]` | **Open-Source-Agenten-Entwickler & KI-Forscher** | Transparenter, leichtgewichtiger Kern zum Benchmarking von Wahrnehmungs-Aktions-Schleifen ohne riesige Docker-Images oder Cloud-Kosten. | Null zwingende Laufzeit-Abhängigkeiten (reine Python-Standardbibliothek im Kern), deterministische Offline-Testumgebung und modular ansteckbare Wahrnehmungs-Feeds. |
-| `[PERSONA-03]` | **Sicherheits-, Compliance- & Governance-Beauftragte** | Durchsetzung menschlicher Kontrolle, Not-Aus-Mechanismen und strikter Zero-Telemetrie-Grenzen bei der GUI-Ausführung. | Verbindliches 4-Sekunden `Pre-Action Grace Window` (`INV-GRC-04`), 3-stufiges Fail-Closed-Sicherheits-Gate (`INV-SAF-05`), Ausführung mit minimalen Benutzerrechten (`INV-USR-06`) und standardmäßig 100% offline ohne Netzwerkabfluss (`INV-EGR-07`). |
+| `[PERSONA-03]` | **Sicherheits-, Compliance- & Governance-Beauftragte** | Durchsetzung menschlicher Kontrolle, Not-Aus-Mechanismen und strikter Zero-Telemetrie-Grenzen bei der GUI-Ausführung. | Vom Betreiber konfiguriertes MCP-Grace-Window (standardmäßig 4 Sekunden; 0 ist möglich) (`INV-GRC-04`), 3-stufiges Fail-Closed-Sicherheits-Gate (`INV-SAF-05`) und Ausführung mit minimalen Benutzerrechten (`INV-USR-06`). Der standardmäßige Mock-Loop bleibt offline; konfigurierte Provider und der Codex-Worker von Cowork können externe Dienste nutzen (`INV-EGR-07`). |
 | `[PERSONA-04]` | **Desktop- & GUI-Automatisierungs-Spezialisten (RPA-Modernisierer)** | Modernisierung anfälliger, pixelbasierter RPA-Skripte (PyAutoGUI, AutoHotkey) zu robusten, semantisch gesteuerten LLM-Aktionen. | DPI-invariante Koordinatenskalierung, token-budgetierte UIA-Fensterfokussierung (`perception_filter.py`) und native CLI-Werkzeuge (`oc do`, `oc capture`, `oc click-name`). |
 
 ### High-Intent-Suchbegriffe & Auffindbarkeit
@@ -128,7 +128,7 @@ Zur gezielten Auffindbarkeit in Open-Source-Katalogen, Paketregistern und Entwic
 - `modellunabhaengige gui agenten steuerung` — Universeller Agenten-Loop für Claude, OpenAI und lokale LLM-Steuerung.
 - `sichere desktop ki automatisierung fail closed` — Fail-Closed Sicherheitsarchitektur mit 4-Sekunden Grace Window und Not-Aus.
 - `normierte koordinaten bildschirmsteuerung python` — DPI- und auflösungsunabhängige Koordinatennormierung für Vision-Agenten.
-- `offline ki agenten loop zero egress` — 100% lokales Agenten-Framework ohne externe Telemetrie oder Cloud-Zwang.
+- `offline ki agenten loop` — Framework mit offline laufendem Standard-Mock-Loop; konfigurierte Provider, Cowork und MCP-Hosts können Daten übertragen.
 - `set of marks gui agent python` — Hybride Wahrnehmung aus Screenshot-Vision, Set-of-Marks und Windows-UIAutomation-Struktur.
 
 ---
@@ -143,12 +143,12 @@ Die folgende Matrix bewertet `open-compute` gegenüber alternativen Ansätzen en
 | **Modell-Agnostik** | `INV-MOD-01` | **Vollständig (Claude, OpenAI CUA, Mock, Modus A)** | Nur Claude Messages API | Wrapper-basierte Multi-Modelle | Keine (Kein LLM-Reasoning) | Keine (Hardcodierte Logik) |
 | **Laufzeit-Abhängigkeiten** | `INV-DEP-02` | **0 (Reiner Python-Stdlib-Kern)** | Schweres Docker + Node + Python | Massives Docker-Image (>20 GB) | Schwere native C-Erweiterungen & Treiber | Systemabhängige Binärdateien |
 | **Koordinaten-Normierung** | `INV-CRD-03` | **Einheitlich normiert 0..1 + zentrale DPI-Skalierung** | Feste Pixelkoordinaten (1024x768 etc.) | Pixel-basiert mit Skalierungsdrift | Feste Pixel (bricht bei DPI-Änderung) | Hardcodierte Pixelkoordinaten |
-| **Pre-Action Grace Window** | `INV-GRC-04` | **Verbindlich 4s Countdown + 120s Cooldown + Not-Aus** | Keine (Sofortige Ausführung) | Keine (Benchmark-Ablauf) | Keine (Sofortige Ausführung) | Keine |
+| **Pre-Action Grace Window** | `INV-GRC-04` | **4s Standard; 120s Cooldown; Betreiber kann 0 setzen** | Keine (Sofortige Ausführung) | Keine (Benchmark-Ablauf) | Keine (Sofortige Ausführung) | Keine |
 | **Fail-Closed Safety Gate** | `INV-SAF-05` | **3-Stufen-Gate (`confirm`, `allow_all`, `read_only`)** | Nur unverbindliche Prompt-Warnungen | Keine (Ungeschützt in VM) | Keine (Blindes Ausführen) | Keine |
 | **Unprivilegierte Ausführung** | `INV-USR-06` | **Strikter RunAsInvoker (Einfache Benutzerrechte)** | Root im Docker-Container | Root / Sudo in virtueller Maschine | Fordert oft Admin-Rechte | Gefahr unkontrollierter Rechteausweitung |
-| **Lokal-Zentriert & Zero Egress** | `INV-EGR-07` | **100% Offline standardmäßig (0 Sockets im Mock/Lokal)** | Zwingende Cloud-Verbindung | Netzwerkfähige VM mit Telemetrie | Lokale Ausführung, aber keine Datenschutzgarantie | Skriptabhängig |
-| **Zero Secret Persistence** | `INV-SEC-08` | **Flüchtige In-Memory API-Keys; nie auf Disk/Logs** | Umgebungsvariablen im Container | Konfigurationsdateien mit Token | Klartext-Zugangsdaten im Code | Klartext in Umgebungsvariablen |
-| **Semantische Fensterfokussierung** | `INV-SCP-09` | **Token-budgetierter UIA-Filter & Hintergrund-Ausblendung** | Nur vollständiger Bildschirm | Vollständige Desktop-Screenshots | Fenstersuche oder Vollbild | Naive Fensterfokussierung |
+| **Egress im Mock-Standard** | `INV-EGR-07` | **Der Standard-Mock-Loop ist offline; konfigurierte Provider, Cowork und MCP-Hosts können Daten übertragen** | Zwingende Cloud-Verbindung | Netzwerkfähige VM mit Telemetrie | Lokale Ausführung, aber keine Datenschutzgarantie | Skriptabhängig |
+| **API-Key-Speicherung** | `INV-SEC-08` | **API-Schlüssel werden nicht absichtlich gespeichert; Aufnahmen und Aktionsdaten können sensible Daten enthalten; keine allgemeine automatische Schwärzung** | Umgebungsvariablen im Container | Konfigurationsdateien mit Token | Klartext-Zugangsdaten im Code | Klartext in Umgebungsvariablen |
+| **Semantische Fensterfokussierung** | `INV-SCP-09` | **Filter des gewählten Profils; normales `capture` ungefiltert** | Nur vollständiger Bildschirm | Vollständige Desktop-Screenshots | Fenstersuche oder Vollbild | Naive Fensterfokussierung |
 | **Sicherheits- & SLA-Garantie** | `INV-SLA-10` | **Vertraglich 48h Reaktions- & 5 Tage Triage-SLA** | Unverbindliche Entwickler-Preview | Akademisches Repository (Issue-Rückstau) | Community-Forum / Enterprise-Tarife | Keine Sicherheits- oder Wartungs-SLA |
 
 ---
@@ -185,7 +185,7 @@ flowchart TD
     subgraph SafetyLayer ["Zentrale Sicherheit & Governance"]
         BACK --> ACT[Kanonisches Aktionsschema<br/>click, type, key, scroll, drag, wait]
         ACT --> SG[Safety-Policy-Gate<br/>confirm / allow_all / read_only]
-        SG --> GW[Verbindliches Pre-Action Grace Window<br/>4s Countdown + 120s Cooldown]
+        SG --> GW[MCP-Grace-Window<br/>4s Standard; Betreiber kann 0 setzen]
         GW --> ABORT{Not-Aus /<br/>Bediener-Unterbrechung?}
         ABORT -- Ja --> STOP[Sitzungsabbruch & Bereinigung]
         ABORT -- Nein --> EXEC[Treiber-Dispatcher]
@@ -228,24 +228,24 @@ flowchart TD
 |  * Kanonisches Aktionsschema (actions.py) -- click, type, key, scroll, drag, wait modellübergreifend normiert      |
 |  * Einheitliche Koordinaten-Normalisierung (coordinates.py) [INV-CRD-03] -- Normiert [0.0, 1.0] auf Auflösung/DPI |
 |  * Zentrales Safety-Policy-Gate (safety.py) [INV-SAF-05] -- 3-Stufen-Gate (confirm / allow_all / read_only)       |
-|  * Verbindliches Pre-Action Grace Window (overlay.py, mcp_server.py) [INV-GRC-04] -- 4s Countdown, 120s Cooldown |
+|  * MCP-Grace: 4s Standard, Betreiber kann 0 setzen (mcp_server.py) [INV-GRC-04] -- 120s Aktivitäts-Cooldown |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
 +-------------------------------------------------------------------------------------------------------------------+
 | [SICHT 3: LAUFZEIT-PERSISTENZ, EVIDENZEN & BEWEISREGISTER]                                                        |
-|  * Profilgefilterte Wahrnehmung & Fensterscoping (perception_filter.py) [INV-SCP-09] -- Token-budgetierter UIA-Baum|
+|  * Profilfilter (perception_filter.py) [INV-SCP-09] -- Ausschlüsse lokal nach Aufnahme aus gefilterter Ausgabe ausgeblendet |
 |  * Visuelle Evidenzen & Composites (compose / Pillow) -- Vorher/Nachher-Screenshots, Set-of-Marks, Overlays       |
 |  * Offline Deterministisches Mock-Substrat (MockExecutor, MockBackend) [INV-DEP-02] -- 0 Pflicht-Abhängigkeiten   |
-|  * Flüchtige Zugangsdaten-Sicherheit [INV-SEC-08] -- Nur In-Memory API-Keys, 0 Festplatten- oder Log-Persistenz   |
+|  * API-Key-Handhabung [INV-SEC-08] -- keine absichtliche Schlüssel-Persistenz; Aufnahmen können sensible Daten enthalten |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
 +-------------------------------------------------------------------------------------------------------------------+
-| [SICHT 4: AIR-GAP SCHUTZPERIMETER, ZERO-EGRESS & GOVERNANCE-GRENZE]                                               |
-|  * 100% Local-First Ausführung [INV-EGR-07] -- 0 externe Netzwerk-Telemetrie-Sockets im Standard-/Mock-Modus     |
+| [SICHT 4: EGRESS IM MOCK-STANDARD, KONFIGURIERTE NETZWERKPFADE & GOVERNANCE-GRENZE]                               |
+|  * Standard-Mock-Loop offline; Provider/Cowork/MCP-Hosts können Daten übertragen [INV-EGR-07]                |
 |  * Reiner Python-Standardbibliothek-Kern -- Keine Pflicht-Drittpakete (cpython) [INV-DEP-02]                      |
-|  * Zero-Copyleft Isolations-Garantie -- 100% permissiver Open-Source-Stack (PSFL-2.0, MIT, Apache-2.0, HPND)     |
+|  * Abhängigkeits-Lizenzinventur -- aufgeführte Pakete siehe Tabelle; künftige/transitive Lizenzen offen        |
 |  * Multi-Host Cloud-Sync & Lock-Verteidigung -- Gehärtete .gitignore, Konfliktschutz, kanonische Lock-Guards     |
 |  * Verbindliche Sicherheits-Reaktions-SLA [INV-SLA-10] -- 48h Erstbestätigungs- und 5-Werktage-Triage-Garantie    |
 +===================================================================================================================+
@@ -254,15 +254,17 @@ flowchart TD
 <a id="sec-05"></a><a id="agent-loop--safety-lifecycle"></a><a id="agenten-loop--sicherheits-lebenszyklus"></a>
 ### Agenten-Loop & Sicherheits-Lebenszyklus
 
+Dieses konzeptionelle Ablaufbild zeigt einen host-orchestrierten MCP-Workflow, nicht den Aufrufpfad des SDK-`AgentLoop`: Das Reasoning läuft im Host, nicht im MCP-Server. 4 Sekunden sind der Standardwert; der Betreiber kann 0 setzen. Direkte CLI-/SDK-Aufrufe verwenden diese MCP-Karenz nicht; auch MCP-`capture`-Aufrufe werden geprüft.
+
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Bediener / Mensch
-    participant L as Agenten-Loop (Orchestrator)
+    participant L as Host-Orchestrator (MCP-Client)
     participant Perc as Wahrnehmung & Filter
     participant Coord as Koordinaten-Normalisierer
-    participant Model as Reasoning-Backend (Claude / CUA / Mock)
-    participant Gate as Safety-Policy-Gate
+    participant Model as Host-Reasoning-Backend (Claude / CUA / Mock)
+    participant Gate as MCP-Server-Safety-Policy-Gate
     participant Overlay as Grace-Window & Not-Aus-Overlay
     participant Driver as Lokaler / Browser-Treiber
 
@@ -343,12 +345,12 @@ Die Architektur erzwingt strikte Betriebsinvarianten, um Sicherheit, Wiederholba
 | `INV-MOD-01` | **Modellagnostischer Kern** | `ComputerBackend`-Protokollabstraktion | Nahtloser Wechsel zwischen Claude, OpenAI CUA oder Offline-Mock ohne Änderung des Agenten-Loops. |
 | `INV-DEP-02` | **Null Laufzeit-Abhängigkeiten** | Lazy-Imports für Anbieter-SDKs und Plattform-Treiber | Reines Python-Standardbibliotheks-Verhalten beim Import; Vendor-SDKs (`anthropic`, `openai`) sind rein optional. |
 | `INV-CRD-03` | **Normierte Koordinaten (0..1)** | Zentrale Skalierung in `coordinates.py` | DPI- und Auflösungsunabhängigkeit zentral garantiert; Modelle operieren stets im normierten (0..1)-Raum. |
-| `INV-GRC-04` | **Verbindliches Grace Window** | Bedingungsloser Session-Timer (`pre_action_grace_seconds`) | 4 Sekunden Vorlaufzeit vor der ersten zustandsverändernden Aktion für zuverlässigen Not-Aus-Eingriff. |
+| `INV-GRC-04` | **MCP-Grace-Window** | 4 Sekunden Standard; Betreiber kann 0 setzen | Gilt für gate-relevante MCP-Aufrufe, nicht für direkte CLI-/SDK-`AgentLoop`-Pfade. |
 | `INV-SAF-05` | **Fail-Closed Safety Gate** | Zentraler `SafetyPolicy`-Evaluator (`confirm`, `allow_all`, `read_only`) | Potenzielle zerstörerische Aktionen sind standardmäßig blockiert bis zur menschlichen Bestätigung. |
 | `INV-USR-06` | **Nicht-privilegierter User-Modus** | Standard-Betriebssystem-Berechtigungen | Keine administrativen Rechte erforderlich (`RunAsInvoker`); Ausführung erfolgt im normalen Benutzerkontext. |
-| `INV-EGR-07` | **Lokal-Zentriert & Zero Egress** | Offline-Mock-Backend & lokaler Executor als Standard | Der Kern kontaktiert keine externen Dienste, sofern nicht explizit ein Remote-LLM gewählt wird. |
-| `INV-SEC-08` | **Null Geheimnis-Persistierung** | Umgebungsvariablen-Injektion | API-Schlüssel werden niemals in Logdateien, Sitzungs-Dumps oder Screenshots gespeichert. |
-| `INV-SCP-09` | **Profilgefilterte Wahrnehmung** | Scope-Filter, visuelle Linsen und Token-Budgets | Strikte Filtergrenzen vor der Modellübertragung verhindern das Auslesen fremder Hintergrundfenster. |
+| `INV-EGR-07` | **Egress im Mock-Standard** | Offline-Mock-Backend und lokaler Executor als Standard | Der Standard-Mock-Loop ist offline; konfigurierte Provider und der Codex-Worker von Cowork können externe Dienste nutzen, und ein MCP-Host kann vom Server zurückgegebene Inhalte übertragen. |
+| `INV-SEC-08` | **API-Key-Speicherung** | Umgebungsvariablen-Injektion | Das Paket speichert API-Schlüssel nicht absichtlich. Aufnahmen und Aktionsdaten können sensible Daten enthalten; es gibt keine allgemeine automatische Schwärzung. |
+| `INV-SCP-09` | **Profilgefilterte Wahrnehmung** | Scope-Filter, visuelle Linsen und Token-Budgets | Die MCP-Filterwerkzeuge blenden konfigurierte Fenster lokal in der zurückgegebenen gefilterten Ausgabe nach der Bildschirmaufnahme aus; normales `capture` bleibt ungefiltert und kann den gesamten Desktop liefern. |
 | `INV-SLA-10` | **Sicherheits-Reaktions-SLA** | Dedizierte Sicherheitskontakte & Meldeprozess | 48-Stunden-Reaktionszeit und 5-Werktage-Triage-Zusage gemäß `SECURITY.md`. |
 
 ---
@@ -769,8 +771,7 @@ kann ein Fenster damit exakt benennen, statt einen Titel zu raten.
 Filterung läuft lokal vor der Modellzustellung: UIA-Semantik nahe dem erklärten
 Fokus kommt zuerst, Text/Werte/Elemente haben harte Budgets, visuelle Eskalation
 bleibt eine begrenzte Linse und benannte Fenster wie ein Host-Chat werden in der
-Linse ausgeblendet. Unbekannte Profilfelder, Tools oder Aktionstypen scheitern
-geschlossen. Auch `do(profile=...)` weist Aktionen außerhalb derselben
+zurückgegebenen gefilterten Ansicht lokal nach der Bildschirmaufnahme ausgeblendet. Das normale `capture` filtert nicht und kann den gesamten virtuellen Desktop liefern. Unbekannte Profilfelder, Tools oder Aktionstypen scheitern geschlossen. Auch `do(profile=...)` weist Aktionen außerhalb derselben
 Allowlist zurück. Beispiel:
 
 ```json
@@ -893,8 +894,8 @@ unten gilt; die ist jetzt bedingungslos (siehe nächster Absatz).
 <a id="sec-12"></a><a id="mandatory-pre-action-grace-window"></a><a id="verbindliches-pre-action-grace-window"></a>
 ### Verbindliches Pre-Action Grace Window
 
-**Vorlauf-Fenster — pflichtig, nicht optional.** Jeder gate-relevante Aufruf
-(`do` / `click_name` / `invoke` / `rec_replay` / `capture`) wartet vor seiner
+**MCP-Vorlaufzeit — durch Betreiberkonfiguration, nicht vom Modell steuerbar.** Im MCP-Server wartet jeder gate-relevante Aufruf
+(`do` / `click_name` / `invoke` / `rec_replay` / `capture`) vor seiner
 *ersten* Aktion einer Sitzung eine konfigurierte Karenzzeit ab — unabhängig
 davon, ob `signal_show` je aufgerufen wurde, und unabhängig von
 `OC_SIGNAL_AUTO`. Das schließt einen realen Umgehungsweg (Ticket
@@ -904,7 +905,7 @@ aufrief — ein ausdrückliches `signal_show` bewaffnete die Karenzzeit zwar,
 aber nichts erzwang, dass dieser Aufruf zuerst geschieht. Der Zweck dieses
 Fensters ist Nutzerschutz/Transparenz, keine Modell-Hürde, die es freiwillig
 umgehen kann — die Wartezeit selbst hängt daher nicht mehr von der
-Mitwirkung des Modells ab.
+Mitwirkung des Modells ab. Direkte CLI-Befehle und SDK-`AgentLoop`-Läufe nutzen diesen MCP-Wartepfad nicht.
 - **Standard 4 Sekunden** (vorher 20s — vom User als zu lang empfunden).
 - **Aktivitäts-Cooldown, Standard 120 Sekunden** (`grace_cooldown_seconds`,
   `OC_SIGNAL_GRACE_COOLDOWN_SECONDS`): Ist eine Karenzzeit einmal abgewartet,
@@ -1221,10 +1222,10 @@ einem Klon installiert pytest. Aktueller Stand der vollständigen Suite:
 <a id="sec-17"></a><a id="third-party-licenses--transparency"></a><a id="drittanbieter-lizenzen--transparenz"></a>
 ## Drittanbieter-Lizenzen & Transparenz
 
-`open-compute` verpflichtet sich zu lückenloser Software-Lieferkettentransparenz und dem vollständigen Verzicht auf Copyleft-Lizenzen:
+Dieser Abschnitt führt die für die aktuellen Abhängigkeiten erfassten Lizenzangaben auf. Er ist keine pauschale Garantie zu künftigen oder transitiven Abhängigkeiten:
 - **Laufzeit-Kern:** Reine Python-Standardbibliothek (keine externen Abhängigkeiten beim Import erforderlich).
-- **Optionale Adapter:** Alle optionalen Komponenten (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) stehen unter streng permissiven Lizenzen (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
-- **Zero-Egress-Garantie:** Die Offline-Mock-Engine erzeugt keinerlei Netzwerkverkehr. Es sind keinerlei Tracking-, Analyse- oder Telemetriebibliotheken enthalten.
+- **Optionale Adapter:** Die Lizenzkennungen der aufgeführten optionalen Komponenten (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) sind in der aktuellen Abhängigkeitsinventur dokumentiert; daraus folgt keine pauschale Aussage zu künftigen oder transitiven Abhängigkeiten.
+- **Egress im Mock-Standard:** Die Offline-Mock-Engine erzeugt keinen Netzwerkverkehr. Konfigurierte Provider und der Codex-Worker von Cowork können externe Dienste nutzen; ein MCP-Server gibt Aufnahmen an seinen Aufrufer zurück. Tracking-, Analyse- oder Telemetriebibliotheken sind nicht enthalten.
 
 Detaillierte Lizenztexte, Urheberrechtshinweise und Paketgrenzen sind in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) und [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) dokumentiert.
 

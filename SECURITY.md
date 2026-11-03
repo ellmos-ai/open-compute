@@ -43,10 +43,10 @@ If you discover a security vulnerability in `open-compute`, please report it res
 
 - **Run Real Backends in Isolation:** Always run untrusted agent loops within dedicated virtual machines (VMs), sandbox containers, or disposable test environments.
 - **Keep a Human in the Loop:** The default `SafetyPolicy` mode is `confirm`, requiring explicit operator confirmation before executing potentially destructive actions (clicks, typing, key sequences, process launching). Never run in `allow_all` on production desktops.
-- **Mandatory Pre-Action Grace Window:** Every gate-relevant tool call (`do`, `click_name`, `invoke`, `rec_replay`, `capture`) unconditionally enforces a mandatory grace period (default 4 seconds, 120-second cooldown) before executing actions in a session. This cannot be bypassed by model-side instructions or custom tool arguments.
+- **MCP Pre-Action Grace Window:** Covered MCP calls use a configured wait (4 seconds and a 120-second activity cooldown by default), independently of visual overlay display. The operator can set the canonical duration to 0 or use `OC_SIGNAL_GRACE_SECONDS=0`; per-call model arguments cannot lower that floor. Direct CLI commands and SDK `AgentLoop` runs do not use this MCP mechanism.
 - **Untrusted Visual & DOM Input:** On-screen contents, web pages, and application UIs are treated as untrusted input prone to prompt-injection attacks. Central safety gating and human confirmation callbacks remain the primary defense.
-- **Zero Secret Persistence:** Vendor API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are read strictly from environment variables or secure keychains. Session artifacts, screenshots, and action logs never store or serialize credentials.
-- **Profile-Filtered Perception:** MCP perception filters enforce strict token budgets, visual lens boundaries, and window allowlists, preventing accidental capture of sensitive background windows.
+- **Credentials and Artifacts:** Provider clients accept explicit API keys or SDK environment configuration; the package does not intentionally write those keys to its own state. Captures and action content are not universally redacted. They may contain sensitive data; screenshots can be saved locally, returned to an MCP host, or sent to a configured provider.
+- **Profile-Filtered Perception:** Explicit filtered MCP calls apply the selected profile’s budgets and exclusions to returned content. Capture occurs locally before configured window intersections are blanked. Ordinary `capture` does not apply these filters and may return the full virtual desktop.
 
 ---
 
@@ -87,7 +87,7 @@ Falls Sie eine Sicherheitslücke in `open-compute` entdecken, melden Sie diese b
 
 - **Isolierte Ausführungsumgebung:** Führen Sie autonome Agenten-Loops stets in dedizierten VMs, Sandboxes oder Test-Containern aus.
 - **Menschliche Freigabe (Human-in-the-Loop):** Die standardmäßige `SafetyPolicy` arbeitet im Modus `confirm` und verlangt vor zustandsverändernden Aktionen die explizite Bestätigung durch den Bediener.
-- **Verbindliches Pre-Action Grace Window:** Vor der ersten Aktion erzwingt das System ein unumgehbares Karenzfenster (Standard: 4 Sekunden, 120s Cooldown), um Not-Aus-Eingaben jederzeit zu ermöglichen.
+- **MCP-Karenzfenster:** Abgedeckte MCP-Aufrufe verwenden eine konfigurierte Wartezeit (standardmäßig 4 Sekunden mit 120 Sekunden Aktivitäts-Cooldown), unabhängig von einer sichtbaren Einblendung. Der Betreiber kann den kanonischen Wert oder `OC_SIGNAL_GRACE_SECONDS` auf 0 setzen; Modellargumente einzelner Aufrufe können diesen Mindestwert nicht absenken. Direkte CLI-Befehle und SDK-`AgentLoop`-Läufe nutzen diesen MCP-Mechanismus nicht.
 - **Schutz vor Prompt-Injections:** Visuelle Bildschirminhalte und fremde UIs gelten als nicht vertrauenswürdige Eingaben.
-- **Null Geheimnis-Persistierung:** API-Schlüssel werden ausschließlich aus Umgebungsvariablen geladen und niemals in Screenshots, Logs oder Sessions gespeichert.
-- **Gefilterte Wahrnehmung:** Profile-Filter beschränken die visuelle und semantische Erfassung strikt auf definierte Zielfenster.
+- **Zugangsdaten und Artefakte:** Provider-Clients akzeptieren explizite API-Schlüssel oder die SDK-Umgebungskonfiguration; das Paket schreibt diese Schlüssel nicht absichtlich in seinen eigenen Zustand. Aufnahmen und Aktionsinhalte werden nicht allgemein automatisch geschwärzt und können sensible Daten enthalten. Screenshots können lokal gespeichert, an einen MCP-Host zurückgegeben oder an einen konfigurierten Provider gesendet werden.
+- **Gefilterte Wahrnehmung:** Explizite gefilterte MCP-Aufrufe wenden Budgets und Ausschlüsse des gewählten Profils auf zurückgegebene Inhalte an. Die lokale Aufnahme erfolgt vor dem Ausblenden konfigurierter Fensterüberschneidungen. Normales `capture` verwendet diese Filter nicht und kann den vollständigen virtuellen Desktop liefern.

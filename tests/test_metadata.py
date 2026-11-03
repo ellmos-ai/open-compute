@@ -152,12 +152,12 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         # Invariants keywords
         self.assertIn("Model-Agnostic Core", readme_en)
         self.assertIn("Normalized Coordinates (0..1)", readme_en)
-        self.assertIn("Mandatory Pre-Action Grace Window", readme_en)
+        self.assertIn("MCP Pre-Action Grace Window", readme_en)
         self.assertIn("Fail-Closed Safety Gate", readme_en)
 
         self.assertIn("Modellagnostischer Kern", readme_de)
         self.assertIn("Normierte Koordinaten (0..1)", readme_de)
-        self.assertIn("Verbindliches Grace Window", readme_de)
+        self.assertIn("MCP-Grace-Window", readme_de)
         self.assertIn("Fail-Closed Safety Gate", readme_de)
 
     def test_sibling_ecosystem_matrix(self):
@@ -349,8 +349,8 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
         self.assertIn("NOTICE", readme_de)
 
         # Both must have third-party badge
-        self.assertIn("third--party-audited", readme_en)
-        self.assertIn("drittanbieter-auditiert", readme_de)
+        self.assertIn("third--party-license%20inventory", readme_en)
+        self.assertIn("drittanbieter-lizenzinventar", readme_de)
 
         # Both must have 48h SLA and 5d triage badge
         self.assertIn("48h%20SLA%20%7C%205d%20triage", readme_en)
@@ -623,7 +623,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "[VIEW 1: CALLER RUNTIMES & AGENT CLIENTS]",
             "[VIEW 2: SOVEREIGN ENGINE & ORCHESTRATION PIPELINE]",
             "[VIEW 3: RUNTIME PERSISTENCE, RUN RECEIPTS & EVIDENCE LEDGER]",
-            "[VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]",
+            "[VIEW 4: DEFAULT-MOCK EGRESS, CONFIGURED NETWORK PATHS & GOVERNANCE BOUNDARY]",
         ]
         for view in expected_views_en:
             self.assertIn(view, readme_en, f"English topology must contain {view}")
@@ -632,7 +632,7 @@ class MetadataAndDiscoverabilityContractTests(unittest.TestCase):
             "[SICHT 1: AUFRUFER-LAUFZEITEN & AGENTEN-CLIENTS]",
             "[SICHT 2: SOUVERÄNE ENGINE & ORCHESTRIERUNGS-PIPELINE]",
             "[SICHT 3: LAUFZEIT-PERSISTENZ, EVIDENZEN & BEWEISREGISTER]",
-            "[SICHT 4: AIR-GAP SCHUTZPERIMETER, ZERO-EGRESS & GOVERNANCE-GRENZE]",
+            "[SICHT 4: EGRESS IM MOCK-STANDARD, KONFIGURIERTE NETZWERKPFADE & GOVERNANCE-GRENZE]",
         ]
         for view in expected_views_de:
             self.assertIn(view, readme_de, f"German topology must contain {view}")

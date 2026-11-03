@@ -12,11 +12,11 @@
 [![Contribuciones: bienvenidas](https://img.shields.io/badge/Contributing-Welcome-blue.svg)](CONTRIBUTING.md)
 [![Atribución: NOTICE](https://img.shields.io/badge/attribution-NOTICE-informational)](NOTICE)
 [![Plataformas](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)](pyproject.toml)
-[![Arquitectura: prioridad local](https://img.shields.io/badge/architecture-100%25%20local--first%20%7C%20zero--egress-blueviolet)](SECURITY.md)
+[![Arquitectura: mock predeterminado sin conexión](https://img.shields.io/badge/architecture-mock%20predeterminado%20sin%20conexi%C3%B3n-blueviolet)](SECURITY.md)
 [![SLA de seguridad: 48 h](https://img.shields.io/badge/security-48h%20SLA%20%7C%205d%20triage-green)](SECURITY.md)
 [![Estilo de código: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Preparado para LLM](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
-[![Dependencias de terceros: auditadas](https://img.shields.io/badge/third--party-audited%20%7C%20permissive-blue)](THIRD_PARTY_LICENSES.md)
+[![Inventario de licencias de terceros](https://img.shields.io/badge/third--party-license%20inventory-informational)](THIRD_PARTY_LICENSES.md)
 [![SBOM nivel 1: texto sin formato](https://img.shields.io/badge/Level%201%20SBOM-plain%20text%20audited-informational)](THIRD_PARTY_LICENSES.txt)
 [![Ecosistema: ellmos-ai](https://img.shields.io/badge/ecosystem-ellmos--ai-purple)](https://github.com/ellmos-ai)
 [![Paraguas: open-bricks](https://img.shields.io/badge/umbrella-open--bricks-blue)](https://github.com/open-bricks)
@@ -72,10 +72,10 @@ estén instalados, y la configuración predeterminada con mock funciona completa
 
 - 🎯 **Independencia real del modelo**: ejecuta Claude (Messages API), OpenAI CUA o simulaciones deterministas sin conexión, sin reescribir la orquestación ni la lógica de prompts.
 - 📐 **Coordenadas normalizadas unificadas (0..1)**: los modelos producen valores decimales invariantes `[0.0, 1.0]`. Las diferencias de resolución, los desplazamientos de monitores dobles y el escalado DPI del sistema operativo se resuelven de forma centralizada en `coordinates.py`.
-- 🛡️ **Ventana de gracia obligatoria antes de la acción**: ventana de seguridad incondicional de 4 segundos antes de la primera acción de cada sesión, que permite al operador interrumpir o abortar de emergencia antes de que cambie el estado de la GUI.
+- 🛡️ **Espera de gracia de MCP antes de actuar**: las llamadas MCP relevantes para el control usan el tiempo configurado por el operador (4 segundos de forma predeterminada, con un enfriamiento por actividad de 120 segundos); el operador puede fijarlo en 0. Las rutas directas de CLI y SDK `AgentLoop` no usan esta espera MCP.
 - 🚦 **Control de seguridad centralizado**: los modos de política configurables (`confirm`, `allow_all`, `read_only`) interceptan cada clic, pulsación de tecla, arrastre y ejecución de proceso antes de que llegue al sistema operativo.
 - 🔌 **Cero dependencias de ejecución**: el ciclo central del agente y el ejecutor simulado solo requieren la biblioteca estándar de Python. Los SDK de proveedores (`anthropic`, `openai`, `mss`, `playwright`) son extras que se cargan bajo demanda.
-- 🪟 **Percepción semántica filtrada por perfil**: la delimitación estricta de ventanas de GUI con presupuesto de tokens evita inflar el contexto del modelo y garantiza que no se capturen ventanas en segundo plano.
+- 🪟 **Percepción filtrada por perfil**: las herramientas MCP filtradas aplican el perfil elegido al contenido que devuelven. La herramienta normal `capture` no aplica esos filtros y puede devolver todo el escritorio virtual.
 
 ---
 
@@ -107,7 +107,7 @@ interfaz `ComputerBackend`:
 |---|---|---|---|
 | `[PERSONA-01]` | **Ingenieros de agentes de IA empresariales y arquitectos de plataforma** | Núcleo de agente de escritorio con modelo intercambiable, sin dependencia propietaria de proveedores ni fragmentación de coordenadas. | Protocolo único `ComputerBackend`, esquema canónico unificado `Action` (`actions.py`), coordenadas normalizadas `[0.0, 1.0]` (`coordinates.py`) y `MockBackend` sin conexión. |
 | `[PERSONA-02]` | **Desarrolladores de agentes de código abierto e investigadores de IA** | Núcleo transparente y ligero para evaluar ciclos de percepción y acción sin imágenes Docker enormes ni costes de nube. | Cero dependencias de ejecución obligatorias (núcleo basado en la biblioteca estándar de Python), banco de pruebas determinista sin conexión y fuentes de percepción híbridas conectables. |
-| `[PERSONA-03]` | **Responsables de cumplimiento de seguridad, protección y gobernanza** | Aplicar supervisión humana, abortos de emergencia y límites estrictos de telemetría cero al ejecutar la GUI. | `Pre-Action Grace Window` obligatoria de 4 segundos (`INV-GRC-04`), control de seguridad cerrado ante fallos con 3 niveles (`INV-SAF-05`), modo de usuario sin privilegios (`INV-USR-06`) y funcionamiento predeterminado 100 % sin conexión ni tráfico saliente (`INV-EGR-07`). |
+| `[PERSONA-03]` | **Responsables de cumplimiento de seguridad, protección y gobernanza** | Aplicar supervisión humana, abortos de emergencia y límites estrictos de telemetría cero al ejecutar la GUI. | Espera MCP configurada por el operador (4 segundos de forma predeterminada; se puede fijar en 0) (`INV-GRC-04`), control de seguridad cerrado ante fallos con 3 niveles (`INV-SAF-05`) y modo de usuario sin privilegios (`INV-USR-06`). El bucle mock predeterminado permanece sin conexión; los proveedores configurados y el trabajador Codex de Cowork pueden usar servicios externos (`INV-EGR-07`). |
 | `[PERSONA-04]` | **Especialistas en automatización de escritorio y GUI (modernización de RPA)** | Modernizar scripts RPA frágiles basados en píxeles (PyAutoGUI, AutoHotkey) para convertirlos en acciones semánticas robustas impulsadas por LLM. | Reescalado de coordenadas independiente del DPI, delimitación de ventanas UIA con presupuesto de tokens (`perception_filter.py`) y utilidades CLI nativas (`oc do`, `oc capture`, `oc click-name`). |
 
 ### Búsquedas de alta intención y facilidad de descubrimiento
@@ -133,12 +133,12 @@ La siguiente matriz compara `open-compute` con arquitecturas alternativas habitu
 | **Independencia del modelo** | `INV-MOD-01` | **Completa (Claude, OpenAI CUA, Mock, modo A)** | Solo Claude Messages API | Varios modelos mediante envoltorios | Ninguna (sin razonamiento LLM) | Ninguna (lógica codificada) |
 | **Dependencias de ejecución** | `INV-DEP-02` | **0 (núcleo con biblioteca estándar de Python)** | Docker + Node + Python pesados | Imagen Docker enorme (>20 GB) | Extensiones C nativas y controladores pesados | Binarios dependientes del sistema |
 | **Normalización de coordenadas** | `INV-CRD-03` | **Normalizadas de 0..1 y reescalado DPI centralizado** | Coordenadas de píxeles fijas (1024x768, etc.) | Basadas en píxeles, con desviación de escala | Píxeles de pantalla fijos (fallan al cambiar DPI) | Coordenadas de píxeles codificadas |
-| **Ventana de gracia previa a la acción** | `INV-GRC-04` | **Cuenta atrás obligatoria de 4 s + enfriamiento de 120 s + bloqueo de aborto** | Ninguna (ejecución inmediata) | Ninguna (ejecución de evaluación) | Ninguna (ejecución instantánea) | Ninguna |
+| **Ventana de gracia previa a la acción** | `INV-GRC-04` | **4 s predeterminados + enfriamiento de 120 s; el operador puede fijar 0** | Ninguna (ejecución inmediata) | Ninguna (ejecución de evaluación) | Ninguna (ejecución instantánea) | Ninguna |
 | **Control de seguridad cerrado ante fallos** | `INV-SAF-05` | **Control de política de 3 niveles (`confirm`, `allow_all`, `read_only`)** | Solo advertencias orientativas en prompts | Ninguno (sin restricciones en la VM) | Ninguno (ejecución ciega) | Ninguno |
 | **Ejecución sin privilegios** | `INV-USR-06` | **RunAsInvoker estricto (modo de usuario sin elevación)** | Root dentro del contenedor Docker | Root / Sudo dentro de la máquina virtual | Suele pedir elevación de administrador | Riesgo de elevación sin control |
-| **Prioridad local y tráfico saliente cero** | `INV-EGR-07` | **100 % sin conexión de forma predeterminada (0 sockets en modo mock/local)** | Conexión obligatoria a la nube | VM con red y telemetría | Ejecución local, pero sin política de privacidad | Depende del script |
-| **Persistencia cero de secretos** | `INV-SEC-08` | **Claves de API efímeras en memoria; nunca se guardan en disco ni en registros** | Variables de entorno en el contenedor | Archivos de configuración con tokens incrustados | Credenciales de texto sin formato codificadas | Variables de entorno o scripts en texto sin formato |
-| **Delimitación semántica de ventanas** | `INV-SCP-09` | **Filtro UIA con presupuesto de tokens y ocultación de ventanas en segundo plano** | Solo captura de pantalla completa | Capturas de todo el escritorio | Búsqueda de identificador de ventana o escritorio completo | Enfoque ingenuo en ventanas |
+| **Egress del mock predeterminado** | `INV-EGR-07` | **El bucle mock predeterminado está sin conexión; los proveedores configurados, Cowork y los hosts MCP pueden transmitir datos** | Conexión obligatoria a la nube | VM con red y telemetría | Ejecución local, pero sin política de privacidad | Depende del script |
+| **Persistencia de claves API** | `INV-SEC-08` | **Las capturas y acciones pueden contener datos sensibles; no se ocultan automáticamente todos esos datos** | Variables de entorno en el contenedor | Archivos de configuración con tokens incrustados | Credenciales de texto sin formato codificadas | Variables de entorno o scripts en texto sin formato |
+| **Delimitación semántica de ventanas** | `INV-SCP-09` | **Filtros del perfil elegido; `capture` normal no está filtrado** | Solo captura de pantalla completa | Capturas de todo el escritorio | Búsqueda de identificador de ventana o escritorio completo | Enfoque ingenuo en ventanas |
 | **Compromiso de seguridad y SLA** | `INV-SLA-10` | **SLA contractual: respuesta en 48 h y triaje en 5 días** | Vista previa para desarrolladores con soporte de mejor esfuerzo | Repositorio académico (lista de incidencias pendientes) | Foro comunitario / planes comerciales | Sin SLA de seguridad ni mantenimiento |
 
 ---
@@ -175,7 +175,7 @@ flowchart TD
     subgraph SafetyLayer ["Central Safety & Governance"]
         BACK --> ACT[Canonical Action Schema<br/>click, type, key, scroll, drag, wait]
         ACT --> SG[Safety Policy Gate<br/>confirm / allow_all / read_only]
-        SG --> GW[Mandatory Pre-Action Grace Window<br/>4s countdown + 120s cooldown]
+        SG --> GW[MCP grace window<br/>4s default; operator can set 0]
         GW --> ABORT{Emergency Stop /<br/>Operator Interruption?}
         ABORT -- Yes --> STOP[Abort Session & Teardown]
         ABORT -- No --> EXEC[Executor Dispatcher]
@@ -218,7 +218,7 @@ flowchart TD
 |  * Canonical Action Schema (actions.py) -- click, type, key, scroll, drag, wait normalized across models           |
 |  * Unified Coordinate Normalizer (coordinates.py) [INV-CRD-03] -- Normalized [0.0, 1.0] to native resolution/DPI   |
 |  * Central Safety Policy Gate (safety.py) [INV-SAF-05] -- 3-tier policy interception (confirm / allow_all / read)  |
-|  * Mandatory Pre-Action Grace Window (overlay.py, mcp_server.py) [INV-GRC-04] -- 4s countdown, 120s cooldown, abort|
+|  * MCP grace: 4s default, operator can set 0 (mcp_server.py) [INV-GRC-04] -- 120s activity cooldown         |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
@@ -227,15 +227,15 @@ flowchart TD
 |  * Profile-Filtered Perception & Window Scoping (perception_filter.py) [INV-SCP-09] -- Token-budgeted UIA filter   |
 |  * Visual Evidence & Composites (compose / Pillow) -- Before/after screenshots, Set-of-Marks, observation overlays |
 |  * Offline Deterministic Mock Substrate (MockExecutor, MockBackend) [INV-DEP-02] -- 0 mandatory runtime deps      |
-|  * Ephemeral Credential Security [INV-SEC-08] -- In-memory API keys only, zero disk serialization or log leaking  |
+|  * API-key handling [INV-SEC-08] -- no intentional package persistence; captures may contain sensitive data    |
 +-------------------------------------------------------------------------------------------------------------------+
                                                           |
                                                           v
 +-------------------------------------------------------------------------------------------------------------------+
-| [VIEW 4: AIR-GAP DEFENSE PERIMETER, ZERO-EGRESS & GOVERNANCE BOUNDARY]                                            |
-|  * 100% Local-First Execution [INV-EGR-07] -- Zero external network telemetry sockets in default/mock mode        |
+| [VIEW 4: DEFAULT-MOCK EGRESS, CONFIGURED NETWORK PATHS & GOVERNANCE BOUNDARY]                                      |
+|  * Default mock loop offline; configured providers/Cowork/MCP hosts may transmit data [INV-EGR-07]             |
 |  * Pure Python Standard Library Core Runtime -- Zero external dependencies (cpython) [INV-DEP-02]                  |
-|  * Zero-Copyleft Isolation Guarantee -- 100% permissive open-source stack (PSFL-2.0, MIT, Apache-2.0, HPND)       |
+|  * Dependency license inventory -- listed packages only; future/transitive terms not guaranteed                  |
 |  * Multi-Host Cloud-Sync & Lock Defense -- Hardened .gitignore, conflict-copy resistance, canonical lock guards   |
 |  * Binding Security Response Commitment [INV-SLA-10] -- 48h initial response SLA & 5-day triage SLA              |
 +===================================================================================================================+
@@ -248,11 +248,11 @@ flowchart TD
 sequenceDiagram
     autonumber
     actor User as Operator / Human
-    participant L as Agent Loop (Orchestrator)
+    participant L as Host Orchestrator (MCP Client)
     participant Perc as Perception & Filters
     participant Coord as Coordinate Normalizer
-    participant Model as Reasoning Backend (Claude / CUA / Mock)
-    participant Gate as Safety Policy Gate
+    participant Model as Host Reasoning Backend (Claude / CUA / Mock)
+    participant Gate as MCP Server Safety Policy Gate
     participant Overlay as Grace Window & Abort Overlay
     participant Driver as Local / Browser Executor
 
@@ -281,6 +281,8 @@ sequenceDiagram
     Driver-->>L: ExecutionResult (width, height, status)
     L->>User: Emit Observation Note / Composite Image
 ```
+
+Este es un flujo conceptual de MCP orquestado por el host, no el grafo de llamadas del SDK `AgentLoop`: el razonamiento del modelo ocurre en el host, no en el servidor MCP. Los 4 segundos del diagrama son el valor predeterminado; el operador puede fijar 0. Las rutas directas de CLI/SDK no usan esta espera MCP, y las llamadas MCP a `capture` también pasan por la comprobación.
 
 ### Disposición de componentes
 
@@ -332,12 +334,12 @@ La arquitectura aplica invariantes operativos estrictos para garantizar la segur
 | `INV-MOD-01` | **Núcleo independiente del modelo** | Abstracción del protocolo `ComputerBackend` | Cambia Claude, OpenAI CUA o Mock sin conexión sin reescribir el ciclo del agente. |
 | `INV-DEP-02` | **Cero dependencias de ejecución** | Importaciones opcionales bajo demanda para SDK y controladores de plataforma | Al importar, solo se usa la biblioteca estándar de Python; los SDK de proveedores (`anthropic`, `openai`) son estrictamente opcionales. |
 | `INV-CRD-03` | **Coordenadas normalizadas (0..1)** | Reescalado centralizado de resolución y DPI en `coordinates.py` | La resolución de pantalla y el escalado DPI se resuelven de forma centralizada; los modelos siempre operan en el espacio invariable (0..1). |
-| `INV-GRC-04` | **Ventana de gracia obligatoria antes de la acción** | Temporizador incondicional de sesión (`pre_action_grace_seconds`) | La espera de 4 segundos antes de la primera acción que cambia el estado permite la interrupción inmediata de una persona o la parada de emergencia. |
+| `INV-GRC-04` | **Espera de gracia MCP antes de actuar** | 4 segundos predeterminados; el operador puede fijar 0 | Se aplica a las llamadas MCP relevantes para el control, no a las rutas directas de CLI/SDK `AgentLoop`. |
 | `INV-SAF-05` | **Control de seguridad cerrado ante fallos** | Evaluador central `SafetyPolicy` (`confirm`, `allow_all`, `read_only`) | Las acciones potencialmente destructivas se bloquean de forma predeterminada hasta que una función de confirmación humana las apruebe. |
 | `INV-USR-06` | **Modo de usuario sin privilegios** | Permisos de usuario estándar de las API Win32/sistema operativo | Sin elevación administrativa (`RunAsInvoker`); se ejecuta de forma segura dentro del contexto de seguridad de un usuario estándar. |
-| `INV-EGR-07` | **Prioridad local y tráfico saliente cero** | Backend mock sin conexión y ejecutor local predeterminado | El ciclo central nunca contacta servicios de red externos, salvo que se configure un backend LLM externo. |
-| `INV-SEC-08` | **Persistencia cero de secretos** | Inyección de claves API mediante variables de entorno | Las claves API y los secretos de sesión nunca se guardan en registros, archivos de estado ni capturas de pantalla. |
-| `INV-SCP-09` | **Percepción filtrada por perfil** | Filtros de alcance, lentes visuales y presupuesto de tokens | Un límite estricto antes del modelo impide capturas de pantalla no previstas o la exposición de ventanas sensibles. |
+| `INV-EGR-07` | **Egress del mock predeterminado** | Backend mock sin conexión y ejecutor local predeterminado | El bucle mock predeterminado está sin conexión; los proveedores configurados y el worker de Codex de Cowork pueden usar servicios externos, y un host MCP puede transmitir el contenido que devuelve el servidor. |
+| `INV-SEC-08` | **Persistencia de claves API** | Claves del backend en memoria/entorno | El paquete no persiste claves API de forma intencionada; las capturas y acciones pueden contener datos sensibles y no se ocultan automáticamente todos esos datos. |
+| `INV-SCP-09` | **Percepción filtrada por perfil** | Filtros y lentes del perfil elegido | Las herramientas MCP filtradas aplican las exclusiones configuradas al resultado; `capture` normal no está filtrado y puede devolver todo el escritorio. |
 | `INV-SLA-10` | **SLA de respuesta de seguridad** | Contacto de seguridad y proceso de vulnerabilidades específicos | `SECURITY.md` garantiza acuse de recibo en 48 horas y triaje en 5 días laborables. |
 
 ---
@@ -655,7 +657,7 @@ cliente pueda indicar una ventana exacta en vez de adivinar una subcadena del t�
 perfil de caso de uso estricto a `observe_filtered` y `capture_filtered`. El filtrado
 se realiza localmente antes de enviar datos al modelo: primero se usan los elementos semánticos UIA cercanos al foco declarado,
 los recuentos de texto, valores y elementos tienen límites estrictos, el aumento de detalle visual usa una lente acotada
-y se pueden ocultar ventanas con nombre, como el chat del anfitrión, cuando se superponen a esa lente.
+y las exclusiones de ventana configuradas se ocultan localmente en la imagen filtrada después de la captura. La herramienta normal `capture` no aplica estos filtros y puede devolver todo el escritorio virtual.
 Los campos de perfil, herramientas o tipos de acción desconocidos provocan un cierre seguro.
 `do(profile=...)` también rechaza acciones fuera de la misma lista permitida. Ejemplo:
 
@@ -771,7 +773,7 @@ espera obligatoria de gracia descrita a continuación, que ahora se aplica siemp
 <a id="sec-12"></a><a id="mandatory-pre-action-grace-window"></a><a id="verbindliches-pre-action-grace-window"></a>
 ### Ventana de gracia obligatoria antes de la acción
 
-**Ventana de gracia previa a la acción: obligatoria, no opcional.** Cada
+**Espera de gracia de MCP: configurable por el operador, no por el modelo.** Cada
 llamada relevante para el control (`do` / `click_name` / `invoke` / `rec_replay` / `capture`) espera el
 periodo de gracia configurado antes de su *primera* acción en una sesión, tanto si
 se ha llamado a `signal_show` como si no, e independientemente de `OC_SIGNAL_AUTO`. Esto
@@ -780,7 +782,7 @@ podía saltarse toda la ventana sin cambiar la configuración simplemente al no 
 una llamada explícita a `signal_show` la activaba, pero nada
 obligaba a realizar esa llamada primero. El objetivo de esta ventana es proteger e informar a la persona usuaria;
 no es un obstáculo para el modelo del que este pueda excluirse voluntariamente.
-Por eso, la espera ya no depende de la cooperación del propio modelo.
+Por eso, la espera ya no depende de la cooperación del propio modelo. Solo se aplica a estas llamadas MCP; las rutas directas de CLI y SDK `AgentLoop` no usan esta espera MCP.
 - **4 segundos de forma predeterminada** (antes de este ticket eran 20 s, un tiempo considerado excesivo).
 - **Enfriamiento por actividad: 120 segundos de forma predeterminada** (`grace_cooldown_seconds`,
   `OC_SIGNAL_GRACE_COOLDOWN_SECONDS`): una vez transcurrida una ventana de gracia,
@@ -1088,10 +1090,10 @@ instala pytest. Estado actual de la suite completa: **829 aprobadas, 2 omitidas*
 <a id="sec-17"></a><a id="third-party-licenses--transparency"></a><a id="drittanbieter-lizenzen--transparenz"></a>
 ## Licencias de terceros y transparencia
 
-`open-compute` se compromete a ofrecer transparencia completa sobre la cadena de suministro de software y a evitar toda contaminación por copyleft:
+Esta sección enumera las licencias registradas para las dependencias actuales. No constituye una garantía general sobre dependencias futuras o transitivas:
 - **Entorno de ejecución principal:** biblioteca estándar de Python pura (no requiere código de terceros al importar).
-- **Adaptadores opcionales:** todas las dependencias opcionales (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`) se distribuyen con licencias estrictamente permisivas (MIT, Apache-2.0, BSD-3-Clause, HPND, PSFL-2.0).
-- **Garantías de tráfico saliente cero:** el motor mock sin conexión nunca genera tráfico de red. No se incluyen bibliotecas de seguimiento, análisis ni telemetría.
+- **Adaptadores opcionales:** el inventario actual registra los identificadores de licencia de las dependencias opcionales (`anthropic`, `openai`, `playwright`, `mss`, `Pillow`, `uiautomation`, `windows-capture`, `watchdog`, `clirec`, `mcp`); no es una garantía general sobre dependencias futuras o transitivas.
+- **Egress del modo mock predeterminado:** el motor mock sin conexión no genera tráfico de red. Los proveedores configurados y el trabajador Codex de Cowork pueden usar servicios externos; el servidor MCP devuelve las capturas a quien lo llama. No se incluyen bibliotecas de seguimiento, análisis ni telemetría.
 
 Consulta [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) y [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) para ver atribuciones de licencias, avisos de copyright y ámbitos de dependencias.
 
