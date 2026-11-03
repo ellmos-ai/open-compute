@@ -15,6 +15,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Complete Simplified Chinese README with reciprocal five-language navigation and llms.txt discovery (2026-11-03).
+
 - Complete French README synchronized with the corrected MCP/CLI/SDK safety and data-flow scope, reciprocal four-language navigation and llms.txt discovery (2026-11-03).
 
 - **Native conversational MCP chat bridge** (Ticket `T-20261027-247663934`): `chat` opens a Tk desktop window in a dedicated child process with role-labeled history, four response modes, clickable model suggestions, editable collaboration prompts, explicit screenshot consent, and cancel/close controls. The host model supplies real replies over the same `chat_id`; stable `assistant_turn_id` values make retries idempotent, and `poll=true` resumes after a bounded wait. Optional microphone input uses the existing Windows MCI capture and `ellmos-voice-io` 0.2.1 with Vosk 0.3.45 for local German transcription; the user reviews an editable draft before sending, and the temporary WAV is deleted. The German model is explicitly installed in the user cache; the feature never downloads models. Continuous screen observation remains unsupported. Automated round-trip, prompt, audio-cleanup, and native child-process tests pass; native visual acceptance and personal microphone-device acceptance remain pending.
