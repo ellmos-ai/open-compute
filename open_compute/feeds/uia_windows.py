@@ -54,12 +54,12 @@ Invoke fallback order
 from __future__ import annotations
 
 import os
-import re
 import sys
 import time
 from typing import Any
 
 from ..interaction import InteractionContractError, select_target
+from ..window_control import normalize_window_title
 from .base import FeedObservation, Target
 
 # ---------------------------------------------------------------------------
@@ -422,9 +422,10 @@ def _normalize_window_name(s: str) -> str:
     Windows application titles often contain multiple consecutive spaces, e.g.
     ``"Schnitzeljagd  -  Kompatibilitätsmodus - Word"`` (Doppel-Leerzeichen).
     Normalizing both the query and the candidate title makes substring matches
-    robust against such cosmetic differences.
+    robust against such cosmetic differences. Invisible format characters
+    (zero-width space etc., as in Edge's window title) are dropped too.
     """
-    return re.sub(r"\s+", " ", s).strip()
+    return normalize_window_title(s)
 
 
 # ---------------------------------------------------------------------------

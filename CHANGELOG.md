@@ -13,7 +13,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 - Clarify documentation scopes for MCP grace, profile-filtered capture, sensitive artifacts, default-mock egress and dependency-license inventories before adding further translations. Runtime behavior and version remain unchanged (2026-11-03).
 
+### Fixed
+
+- `--coordinate-frame` now also rebases `mouse_move`, `scroll` and `mouse_up` (via `execute_with_preclick`, so `oc do` and the MCP/cowork paths alike). Only the window-guarded clicks, drags and `mouse_down` were rebased from a window capture before; these three silently used the whole desktop, so x=0.5 of a right-docked window hit the screen centre. They still need no `expected_window`; a point outside the desktop is refused, and without a frame nothing changes. Ticket `T-20261031-479065591`.
+
+- `--window` title matching (`capture`, `click-name`, `tree`, `window`, `--ensure-foreground`) now ignores zero-width characters (U+200B, U+200C, U+200D, U+FEFF) on both the query and the title, so Edge's "Microsoft<U+200B> Edge" matches the plain text. One shared `normalize_window_title()`; the pre-click identity check is unchanged (hwnd and pid must still match). Ticket `T-20261031-479065591`.
+
 ### Added
+
+- `oc signal off [--timeout SECS]`: stops a running `oc signal on` from another process and is idempotent (nothing showing: `{"visible": false, "was_visible": false}`, exit 0). `signal on` now polls a stop flag and keeps a heartbeat marker (`_session/signal-active.json`); no process is ever killed by PID. Ticket `T-20261031-479065591`.
 
 - Complete French README synchronized with the corrected MCP/CLI/SDK safety and data-flow scope, reciprocal four-language navigation and llms.txt discovery (2026-11-03).
 

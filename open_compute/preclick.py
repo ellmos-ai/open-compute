@@ -195,15 +195,21 @@ def execute_with_preclick(
     physical frame from which their normalized coordinates were derived.  The
     latter removes the dangerous window-capture/virtual-desktop frame mix-up.
     """
+    action_frame = action.meta.get("coordinate_frame") if action.meta else None
+    if action_frame is None:
+        action_frame = coordinate_frame
     if action.type not in WINDOW_GUARDED_ACTIONS:
+        if action_frame is not None and action.x is not None and action.y is not None:
+            # mouse_move / scroll / mouse_up carry a point as well: rebase it from the capture
+            # frame like a click, but without a window identity check (they never had one).
+            action, _ = _transform_action(
+                action, _validated_frame(action_frame), coordinate_frame_from_executor(executor)
+            )
         return executor.execute(action)
 
     action_expected = action.meta.get("expected_window") if action.meta else None
-    action_frame = action.meta.get("coordinate_frame") if action.meta else None
     if action_expected is None:
         action_expected = expected_window
-    if action_frame is None:
-        action_frame = coordinate_frame
     if action_expected is None:
         raise PreClickVerificationError(
             "expected_window_required",
