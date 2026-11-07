@@ -111,7 +111,7 @@ from .preclick import (
     expected_identity_for_window,
     window_identity_from_hwnd,
 )
-from .window_control import Win32WindowAdapter
+from .window_control import Win32WindowAdapter, normalize_window_title
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +382,9 @@ def _save_fullres_shot(
 def _find_window_hwnd(substr: str) -> int | None:
     """Find the HWND of a top-level window matching *substr* (case-insensitive).
 
-    Uses the same whitespace-normalized substring convention as UiaWindowsFeed:
-    both the query and the candidate title are collapsed to single spaces
-    before comparison.
+    Uses the same normalized substring convention as UiaWindowsFeed: both the
+    query and the candidate title lose invisible format characters (zero-width
+    space in Edge's title) and are collapsed to single spaces before comparison.
 
     Args:
         substr: Case-insensitive title substring to search for.
@@ -395,10 +395,9 @@ def _find_window_hwnd(substr: str) -> int | None:
     if sys.platform != "win32":
         return None
     import ctypes
-    import re as _re
 
     user32 = ctypes.windll.user32
-    q_norm = _re.sub(r"\s+", " ", substr).strip().lower()
+    q_norm = normalize_window_title(substr).lower()
     found: list[int] = []
 
     _EnumCB = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
@@ -409,7 +408,7 @@ def _find_window_hwnd(substr: str) -> int | None:
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
-        title_norm = _re.sub(r"\s+", " ", buf.value).strip().lower()
+        title_norm = normalize_window_title(buf.value).lower()
         if q_norm in title_norm:
             found.append(hwnd)
         return True
@@ -496,7 +495,7 @@ def _should_activate(current_title: str, target: str, always: bool) -> bool:
     """
     if always:
         return True
-    return target.lower() not in current_title.lower()
+    return normalize_window_title(target).lower() not in normalize_window_title(current_title).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1880,12 +1879,50 @@ def _signal_config_path() -> pathlib.Path:
     return _session_dir().parent / "_state" / "signal-config.json"
 
 
+_SIGNAL_POLL_S = 0.25
+_SIGNAL_STALE_S = 3.0  # `signal on` touches its marker every poll; older = the process is gone
+
+
+def _signal_marker_paths() -> tuple[pathlib.Path, pathlib.Path]:
+    """(active marker written by `signal on`, stop request written by `signal off`)."""
+    d = _session_dir()
+    return d / "signal-active.json", d / "signal-stop.flag"
+
+
+def _signal_off(timeout_s: float) -> None:
+    """Ask a running `oc signal on` (separate process) to stop; idempotent, never kills a PID."""
+    active, stop = _signal_marker_paths()
+    try:
+        fresh = _time.time() - active.stat().st_mtime < _SIGNAL_STALE_S
+    except OSError:
+        fresh = False
+    if not fresh:  # nothing showing, or a marker left behind by a dead process
+        for leftover in (active, stop):
+            leftover.unlink(missing_ok=True)
+        print(json.dumps({"visible": False, "was_visible": False}), flush=True)
+        return
+    stop.write_text("stop", encoding="utf-8")
+    deadline = _time.monotonic() + max(0.0, timeout_s)
+    while active.exists() and _time.monotonic() < deadline:
+        _time.sleep(0.05)
+    stopped = not active.exists()
+    if stopped:
+        stop.unlink(missing_ok=True)
+    print(json.dumps({"visible": not stopped, "was_visible": True, "stopped": stopped}), flush=True)
+    if not stopped:
+        sys.exit(1)
+
+
 def cmd_signal(args: list[str]) -> None:
     """oc signal on --mode MODE [--agent A] [--scope S] [--for SECS]
                  [--no-cursor] [--no-border] [--abort-hotkey [COMBO]]
                  [--config PATH]
+       oc signal off [--timeout SECS]
        oc signal abort [--channel console|tk|none] [--context TEXT]
        oc signal config --init [--path PATH] | --show [--path PATH]
+
+    ``off`` beendet ein laufendes ``on`` (anderer Prozess) und ist idempotent:
+    laeuft keins, meldet es ``was_visible: false`` mit Exit 0.
 
     Zeigt die aktive Bildschirmnutzung an: leuchtender Rahmen + Neon-Cursor-
     Ring in der Modus-Farbe (rot=control, blau=observe, ...). Farben, Labels
@@ -1926,6 +1963,9 @@ def cmd_signal(args: list[str]) -> None:
                         "for the abort reason; the message is printed as "
                         "JSON for the calling agent (ans Modell)."
                     ))
+    off = sub.add_parser("off", help="Stop a running `signal on` (idempotent).")
+    off.add_argument("--timeout", type=float, default=5.0, metavar="SECS",
+                     help="How long to wait for the overlay process to exit.")
     ab = sub.add_parser("abort", help="Capture an abort message for the model.")
     ab.add_argument("--channel", default="console",
                     choices=["console", "tk", "none"])
@@ -1999,17 +2039,44 @@ def cmd_signal(args: list[str]) -> None:
             "label": indicator.last_label,
             "color": list(color),
         }, ensure_ascii=False), flush=True)
+        # `oc signal off` (another process) finds us via the marker and asks us to stop via the flag.
+        active, stop = _signal_marker_paths()
+        stop.unlink(missing_ok=True)  # a stale stop request must not end this overlay at once
+        marker = json.dumps({"pid": os.getpid()})
+
+        def _heartbeat() -> None:
+            # Touch the marker; re-create it if `signal off` swept it as stale while we were stalled.
+            try:
+                os.utime(active)
+            except OSError:
+                try:
+                    active.write_text(marker, encoding="utf-8")
+                except OSError:
+                    pass  # best effort: without the marker `signal off` reports "not visible"
+
+        _heartbeat()
+        deadline = None if ns.duration is None else _time_mod.monotonic() + ns.duration
         try:
-            if ns.duration is not None:
-                _time_mod.sleep(ns.duration)
-            else:
-                while True:
-                    _time_mod.sleep(0.5)
+            while not stop.exists() and (deadline is None or _time_mod.monotonic() < deadline):
+                _heartbeat()
+                left = _SIGNAL_POLL_S if deadline is None else deadline - _time_mod.monotonic()
+                _time_mod.sleep(max(0.0, min(_SIGNAL_POLL_S, left)))
         except KeyboardInterrupt:
             pass
         finally:
             indicator.clear()
+            try:  # a marker that now belongs to a second overlay process is not ours to delete
+                mine = json.loads(active.read_text(encoding="utf-8")).get("pid") == os.getpid()
+            except (OSError, ValueError, AttributeError):
+                mine = True
+            if mine:
+                active.unlink(missing_ok=True)
+                stop.unlink(missing_ok=True)
             print(json.dumps({"visible": False}, ensure_ascii=False))
+        return
+
+    if ns.action == "off":
+        _signal_off(ns.timeout)
         return
 
     # abort: Kurznachricht des Menschen einsammeln -> ans Modell weiterreichen
@@ -2177,6 +2244,7 @@ def main() -> None:
               oc window <operation> (--hwnd N|--pid N|--title T) [--rect L,T,W,H] [--yes]
               oc signal on --mode MODE [--agent A] [--scope S] [--for SECS] [--no-cursor]
                             [--abort-hotkey [COMBO]]
+              oc signal off [--timeout SECS]
               oc signal abort [--channel console|tk|none] [--context TEXT]
               oc chat [--channel console|tk|none] [--context TEXT] [--shot]
               oc talk --key F9 [--out PATH] [--max-seconds N] [--wait-timeout N]

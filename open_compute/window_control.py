@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Protocol
+
+# Zero-width space/non-joiner/joiner and BOM: Edge puts a U+200B into "Microsoft\u200b Edge".
+_INVISIBLE_TITLE_CHARS = re.compile("[\u200b\u200c\u200d\ufeff]")
+
+
+def normalize_window_title(title: str) -> str:
+    """Drop invisible format characters, collapse whitespace runs, strip.
+
+    Shared by every ``--window`` substring match so a title that carries a
+    zero-width character still matches the plain text the operator types.
+    """
+    return re.sub(r"\s+", " ", _INVISIBLE_TITLE_CHARS.sub("", title or "")).strip()
 
 
 class WindowNotFoundError(LookupError):
@@ -42,13 +55,13 @@ def resolve_window(
     elif pid is not None:
         matches = [item for item in items if int(item.get("pid", -1)) == pid]
     else:
-        query = (title or "").strip().casefold()
+        query = normalize_window_title(title or "").casefold()
         if not query:
             raise ValueError("title must not be empty")
         matches = [
             item
             for item in items
-            if query in str(item.get("title", "")).casefold()
+            if query in normalize_window_title(str(item.get("title", ""))).casefold()
         ]
     if not matches:
         raise WindowNotFoundError("No window matches the supplied selector")

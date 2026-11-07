@@ -155,6 +155,53 @@ def test_window_local_capture_coordinates_are_rebased_to_virtual_desktop() -> No
     assert transformed.y == pytest.approx(450 / 1079)
 
 
+WINDOW_FRAME = {"left": 100, "top": 200, "width": 800, "height": 500}
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        Action(ActionType.MOUSE_MOVE, x=0.5, y=0.5),
+        Action(ActionType.SCROLL, x=0.5, y=0.5, scroll_direction="down", scroll_amount=3),
+        Action(ActionType.MOUSE_UP, x=0.5, y=0.5),
+    ],
+    ids=lambda a: a.type.value,
+)
+def test_unguarded_point_actions_are_rebased_from_the_window_frame_too(action: Action) -> None:
+    """mouse_move/scroll/mouse_up carry a point but need no window identity: they used to ignore the frame."""
+    executor = _Executor(width=3840, height=1080)
+    probe = _Probe(None)
+
+    execute_with_preclick(executor, action, coordinate_frame=WINDOW_FRAME, probe=probe)
+
+    sent = executor.executed[0]
+    assert sent.x == pytest.approx((500 - (-1920)) / 3839)
+    assert sent.y == pytest.approx(450 / 1079)
+    assert sent.type is action.type and sent.scroll_direction == action.scroll_direction
+    assert probe.points == []  # no WindowFromPoint check for these, as before
+
+
+def test_unguarded_point_actions_keep_desktop_coordinates_without_a_frame() -> None:
+    executor = _Executor()
+
+    execute_with_preclick(executor, Action(ActionType.MOUSE_MOVE, x=0.5, y=0.5))
+    execute_with_preclick(executor, Action(ActionType.MOUSE_UP))  # no point at all
+
+    assert (executor.executed[0].x, executor.executed[0].y) == (0.5, 0.5)
+    assert executor.executed[1].x is None
+
+
+def test_unguarded_point_outside_the_desktop_is_refused_before_the_backend() -> None:
+    executor = _Executor()
+    far_away = {"left": 5000, "top": 0, "width": 800, "height": 500}
+
+    with pytest.raises(PreClickVerificationError) as caught:
+        execute_with_preclick(executor, Action(ActionType.MOUSE_MOVE, x=0.5, y=0.5), coordinate_frame=far_away)
+
+    assert caught.value.code == "coordinate_outside_executor_frame"
+    assert executor.executed == []
+
+
 def test_drag_endpoint_mismatch_is_fail_closed_before_backend() -> None:
     executor = _Executor()
     foreign = {"hwnd": 99, "pid": 7002, "title": "Foreign - Browser"}
