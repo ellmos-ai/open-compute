@@ -99,7 +99,7 @@ import sys
 import tempfile
 import textwrap
 import time as _time
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from .safety import SafetyPolicy
@@ -111,7 +111,7 @@ from .preclick import (
     expected_identity_for_window,
     window_identity_from_hwnd,
 )
-from .window_control import Win32WindowAdapter, normalize_window_title
+from .window_control import Win32WindowAdapter, WindowAmbiguousError, normalize_window_title
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +390,10 @@ def _find_window_hwnd(substr: str) -> int | None:
         substr: Case-insensitive title substring to search for.
 
     Returns:
-        HWND (int) of the first match, or ``None`` if nothing was found.
+        HWND (int) of the matching window, or ``None`` if nothing was found.
+
+    Raises:
+        WindowAmbiguousError: If multiple windows match the query.
     """
     if sys.platform != "win32":
         return None
@@ -398,7 +401,7 @@ def _find_window_hwnd(substr: str) -> int | None:
 
     user32 = ctypes.windll.user32
     q_norm = normalize_window_title(substr).lower()
-    found: list[int] = []
+    found: list[dict[str, Any]] = []
 
     _EnumCB = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
 
@@ -408,14 +411,22 @@ def _find_window_hwnd(substr: str) -> int | None:
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
-        title_norm = normalize_window_title(buf.value).lower()
+        title_raw = buf.value
+        title_norm = normalize_window_title(title_raw).lower()
         if q_norm in title_norm:
-            found.append(hwnd)
+            found.append({"hwnd": hwnd, "title": title_raw})
         return True
 
     _cb = _EnumCB(_enum_impl)
     user32.EnumWindows(_cb, 0)
-    return found[0] if found else None
+    if not found:
+        return None
+    if len(found) > 1:
+        raise WindowAmbiguousError(
+            f"Window selector is ambiguous ({len(found)} candidates matching {substr!r})",
+            candidates=found,
+        )
+    return found[0]["hwnd"]
 
 
 def _window_title(hwnd: int) -> str:
@@ -849,7 +860,10 @@ def cmd_capture(args: list[str]) -> None:
             _set_dpi_awareness()
         except Exception:
             pass
-        hwnd = _find_window_hwnd(ns.window)
+        try:
+            hwnd = _find_window_hwnd(ns.window)
+        except WindowAmbiguousError as exc:
+            _die(str(exc))
         if hwnd is None:
             _die(
                 f"No window found matching {ns.window!r}. "
@@ -1880,7 +1894,45 @@ def _signal_config_path() -> pathlib.Path:
 
 
 _SIGNAL_POLL_S = 0.25
-_SIGNAL_STALE_S = 3.0  # `signal on` touches its marker every poll; older = the process is gone
+_SIGNAL_STALE_S = 10.0  # overlay touches its marker every poll; older may indicate a crashed or stalled process
+_SIGNAL_MAX_STALE_S = 60.0  # even if PID is alive, a marker untouched for > 60s is considered abandoned
+
+
+def _is_pid_alive(pid: int | None) -> bool | None:
+    """Return True if pid is currently running, False if terminated, None if undetermined."""
+    if pid is None or not isinstance(pid, int) or pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        h = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, wintypes.DWORD(pid)
+        )
+        if not h:
+            err = kernel32.GetLastError()
+            # ERROR_ACCESS_DENIED (5) means the process exists but is elevated or owned by another user
+            if err == 5:
+                return True
+            return False
+        try:
+            code = wintypes.DWORD()
+            if kernel32.GetExitCodeProcess(h, ctypes.byref(code)):
+                return code.value == STILL_ACTIVE
+            return True
+        finally:
+            kernel32.CloseHandle(h)
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except PermissionError:
+            return True
+        except OSError:
+            return False
 
 
 def _signal_marker_paths() -> tuple[pathlib.Path, pathlib.Path]:
@@ -1889,25 +1941,68 @@ def _signal_marker_paths() -> tuple[pathlib.Path, pathlib.Path]:
     return d / "signal-active.json", d / "signal-stop.flag"
 
 
-def _signal_off(timeout_s: float) -> None:
-    """Ask a running `oc signal on` (separate process) to stop; idempotent, never kills a PID."""
-    active, stop = _signal_marker_paths()
+def _is_marker_fresh(marker_path: pathlib.Path) -> bool:
+    """Return whether the marker belongs to an active, running signal overlay."""
     try:
-        fresh = _time.time() - active.stat().st_mtime < _SIGNAL_STALE_S
+        age = _time.time() - marker_path.stat().st_mtime
     except OSError:
-        fresh = False
-    if not fresh:  # nothing showing, or a marker left behind by a dead process
-        for leftover in (active, stop):
+        return False
+    if age >= _SIGNAL_MAX_STALE_S:
+        return False
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+        pid = data.get("pid")
+    except Exception:
+        pid = None
+
+    alive = _is_pid_alive(pid)
+    if age < _SIGNAL_STALE_S:
+        # If the recorded PID is confirmed terminated, the overlay process is dead
+        if alive is False:
+            return False
+        return True
+    # If age >= _SIGNAL_STALE_S, tolerate stalled CPU if the process is confirmed alive
+    return alive is True
+
+
+def _signal_off(timeout_s: float) -> None:
+    """Ask running `oc signal on` overlays (separate process) to stop; idempotent, never kills a PID."""
+    d = _session_dir()
+    active, stop = _signal_marker_paths()
+    all_markers = set(d.glob("signal-active*.json"))
+    if active.exists():
+        all_markers.add(active)
+
+    live_markers: list[pathlib.Path] = []
+    stale_markers: list[pathlib.Path] = []
+
+    for m in all_markers:
+        if _is_marker_fresh(m):
+            live_markers.append(m)
+        else:
+            stale_markers.append(m)
+
+    if not live_markers:  # nothing showing, or markers left behind by dead processes
+        for leftover in stale_markers:
             leftover.unlink(missing_ok=True)
+        stop.unlink(missing_ok=True)
+        for s in d.glob("signal-stop*.flag"):
+            s.unlink(missing_ok=True)
         print(json.dumps({"visible": False, "was_visible": False}), flush=True)
         return
+
     stop.write_text("stop", encoding="utf-8")
     deadline = _time.monotonic() + max(0.0, timeout_s)
-    while active.exists() and _time.monotonic() < deadline:
+    while any(m.exists() for m in live_markers) and _time.monotonic() < deadline:
         _time.sleep(0.05)
-    stopped = not active.exists()
+
+    stopped = not any(m.exists() for m in live_markers)
     if stopped:
         stop.unlink(missing_ok=True)
+        for s in d.glob("signal-stop*.flag"):
+            s.unlink(missing_ok=True)
+        for leftover in stale_markers:
+            leftover.unlink(missing_ok=True)
     print(json.dumps({"visible": not stopped, "was_visible": True, "stopped": stopped}), flush=True)
     if not stopped:
         sys.exit(1)
@@ -2039,20 +2134,25 @@ def cmd_signal(args: list[str]) -> None:
             "label": indicator.last_label,
             "color": list(color),
         }, ensure_ascii=False), flush=True)
-        # `oc signal off` (another process) finds us via the marker and asks us to stop via the flag.
+        # `oc signal off` (another process) finds us via markers and asks us to stop via the flag.
         active, stop = _signal_marker_paths()
         stop.unlink(missing_ok=True)  # a stale stop request must not end this overlay at once
-        marker = json.dumps({"pid": os.getpid()})
+        d = _session_dir()
+        instance_id = f"{os.getpid()}_{id(indicator)}"
+        active_inst = d / f"signal-active-{instance_id}.json"
+        marker = json.dumps({"pid": os.getpid(), "instance_id": instance_id})
 
         def _heartbeat() -> None:
-            # Touch the marker; re-create it if `signal off` swept it as stale while we were stalled.
-            try:
-                os.utime(active)
-            except OSError:
+            # Touch the markers; re-create them if `signal off` swept them as stale while we were stalled.
+            now = _time_mod.time()
+            for p in (active_inst, active):
                 try:
-                    active.write_text(marker, encoding="utf-8")
+                    os.utime(p, (now, now))
                 except OSError:
-                    pass  # best effort: without the marker `signal off` reports "not visible"
+                    try:
+                        p.write_text(marker, encoding="utf-8")
+                    except OSError:
+                        pass  # best effort: without the marker `signal off` reports "not visible"
 
         _heartbeat()
         deadline = None if ns.duration is None else _time_mod.monotonic() + ns.duration
@@ -2065,12 +2165,19 @@ def cmd_signal(args: list[str]) -> None:
             pass
         finally:
             indicator.clear()
-            try:  # a marker that now belongs to a second overlay process is not ours to delete
-                mine = json.loads(active.read_text(encoding="utf-8")).get("pid") == os.getpid()
-            except (OSError, ValueError, AttributeError):
-                mine = True
-            if mine:
-                active.unlink(missing_ok=True)
+            active_inst.unlink(missing_ok=True)
+            other_alive = False
+            for p in d.glob("signal-active-*.json"):
+                if p != active_inst and _is_marker_fresh(p):
+                    other_alive = True
+                    break
+            if not other_alive:
+                try:  # a marker that now belongs to a second overlay process is not ours to delete
+                    mine = json.loads(active.read_text(encoding="utf-8")).get("pid") == os.getpid()
+                except (OSError, ValueError, AttributeError):
+                    mine = True
+                if mine:
+                    active.unlink(missing_ok=True)
                 stop.unlink(missing_ok=True)
             print(json.dumps({"visible": False}, ensure_ascii=False))
         return

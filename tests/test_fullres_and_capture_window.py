@@ -483,6 +483,16 @@ class TestCaptureWindow:
                 cmd_capture(["--window", "NoSuchWindow", "--out", str(tmp_path / "out.png")])
             assert exc_info.value.code == 2
 
+    def test_window_ambiguous_exits(self, tmp_path: pathlib.Path) -> None:
+        """When multiple windows match --window, oc capture exits with code 2."""
+        from open_compute.window_control import WindowAmbiguousError
+        with patch("open_compute.cli._find_window_hwnd", side_effect=WindowAmbiguousError("Ambiguous", [{"hwnd": 1}, {"hwnd": 2}])), \
+             patch("sys.platform", "win32"):
+            from open_compute.cli import cmd_capture
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_capture(["--window", "AmbiguousApp", "--out", str(tmp_path / "out.png")])
+            assert exc_info.value.code == 2
+
     def test_window_not_supported_on_nonwindows(self, tmp_path: pathlib.Path) -> None:
         """--window on non-Windows exits with code 2."""
         with patch.object(sys, "platform", "linux"):

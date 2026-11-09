@@ -6,15 +6,20 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Protocol
 
-# Zero-width space/non-joiner/joiner and BOM: Edge puts a U+200B into "Microsoft\u200b Edge".
-_INVISIBLE_TITLE_CHARS = re.compile("[\u200b\u200c\u200d\ufeff]")
+# Invisible format characters in window titles:
+# - Zero-width space, non-joiner, joiner, word joiner, BOM: U+200B..U+200D, U+2060, U+FEFF
+# - Soft hyphen: U+00AD
+# - Bidi control characters: U+200E, U+200F, U+202A..U+202E, U+2066..U+2069
+_INVISIBLE_TITLE_CHARS = re.compile(
+    r"[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]"
+)
 
 
 def normalize_window_title(title: str) -> str:
     """Drop invisible format characters, collapse whitespace runs, strip.
 
     Shared by every ``--window`` substring match so a title that carries a
-    zero-width character still matches the plain text the operator types.
+    zero-width character or bidi marker still matches the plain text the operator types.
     """
     return re.sub(r"\s+", " ", _INVISIBLE_TITLE_CHARS.sub("", title or "")).strip()
 
