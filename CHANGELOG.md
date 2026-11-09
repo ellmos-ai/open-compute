@@ -15,6 +15,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Follow-up to PR #12 review (Ticket `T-20261107-500400520`):
+  - `_find_window_hwnd`: aligned with `resolve_window` semantics by raising `WindowAmbiguousError` on multiple matching candidates instead of silently taking the first match; `cmd_capture` fails cleanly with code 2 on ambiguous window titles.
+  - Zero-width & invisible character window-title normalizer: expanded to strip Word Joiner (U+2060), Soft Hyphen (U+00AD), and bidirectional format controls (U+200E, U+200F, U+202A..U+202E, U+2066..U+2069).
+  - `oc signal off`: increased stale threshold (`_SIGNAL_STALE_S = 10.0s`) and added live PID checks so stalled CPU does not falsely report `was_visible: false`.
+  - Concurrent `oc signal on` instances: each overlay tracks its own instance-bound active marker (`signal-active-<instance_id>.json`); early exit of one overlay does not sweep or clear the stop state/markers of other running overlays.
+
 - `--coordinate-frame` now also rebases `mouse_move`, `scroll` and `mouse_up` (via `execute_with_preclick`, so `oc do` and the MCP/cowork paths alike). Only the window-guarded clicks, drags and `mouse_down` were rebased from a window capture before; these three silently used the whole desktop, so x=0.5 of a right-docked window hit the screen centre. They still need no `expected_window`; a point outside the desktop is refused, and without a frame nothing changes. Ticket `T-20261031-479065591`.
 
 - `--window` title matching (`capture`, `click-name`, `tree`, `window`, `--ensure-foreground`) now ignores zero-width characters (U+200B, U+200C, U+200D, U+FEFF) on both the query and the title, so Edge's "Microsoft<U+200B> Edge" matches the plain text. One shared `normalize_window_title()`; the pre-click identity check is unchanged (hwnd and pid must still match). Ticket `T-20261031-479065591`.
