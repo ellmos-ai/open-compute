@@ -1053,19 +1053,14 @@ Consulta [SECURITY.md](SECURITY.md) para obtener instrucciones de notificación,
 
 ## Paquetes y colaboradores
 
-Proyección de descubrimiento generada para `module:open-compute` a partir de `catalog:v4-bundles` (`546290dafbaafd810df1d59ef5a3d7183738472b48cd5a8a81f1e8f2b64d852e`).
+Proyección de descubrimiento generada para `module:open-compute` a partir de `catalog:v4-bundles` (`9ab64b71e0c9ac29442f688cdc32ee05b08e2576544841014b23074d8c27f870`).
 Visibilidad del repositorio de destino: `public`. Los manifiestos de paquetes siguen siendo la autoridad sobre sus componentes; esta sección no instala ni activa componentes.
 Aprobación del descubrimiento: registro `public` del módulo y lista explícita de paquetes permitidos con denegación predeterminada.
 
-### `ellmos-media-production-bundle`
-
-- Visibilidad de la receta del paquete: `private`; función: `declared-component`; requisito: `recommended`.
-- módulos asociados: `module:ai-media-editor`, `module:report-forge`, `module:web-scraper`.
-- habilidades asociadas: `skill:textproduction`, `skill:video-transcriber`.
-
 ### `ellmos-software-resource-tools-bundle`
 
-- Visibilidad de la receta del paquete: `private`; función: `declared-component`; requisito: `recommended`.
+- Visibilidad de la receta del paquete: `private`; función: `gui-software-perception-and-action-adapter`; requisito: `recommended`.
+- Función en este paquete: Adapta el software de interfaz gráfica de escritorio a una interfaz unificada de percepción y acción para que los modelos de razonamiento puedan inspeccionar y operar herramientas locales.
 - módulos asociados: `module:ApiProber`, `module:clirec`, `module:connectors`, `module:software-endpoint-registry`.
 - habilidad asociada: `skill:ai-portable-setup`.
 

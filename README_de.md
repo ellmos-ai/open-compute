@@ -1178,24 +1178,17 @@ Für detaillierte Reporting-Anweisungen, GitHub Security Advisories und das voll
 
 Geprüfte Discovery-Projektion für `module:open-compute` aus
 `catalog:v4-bundles`
-(`546290dafbaafd810df1d59ef5a3d7183738472b48cd5a8a81f1e8f2b64d852e`).
+(`9ab64b71e0c9ac29442f688cdc32ee05b08e2576544841014b23074d8c27f870`).
 Das Ziel-Repository ist `public`. Die Bundle-Manifeste bleiben die Autorität
 für Mitgliedschaften; dieser Abschnitt installiert oder aktiviert keine
 Komponenten. Die Freigabe beruht auf einem öffentlichen Modul-Registry-Eintrag
 und einer ausdrücklichen Default-deny-Allowlist für Bundles.
 
-### `ellmos-media-production-bundle`
-
-- Sichtbarkeit des Bundle-Rezepts: `private`; Rolle: `declared-component`;
-  Anforderung: `recommended`.
-- Modulpartner: `module:ai-media-editor`, `module:report-forge`,
-  `module:web-scraper`.
-- Skill-Partner: `skill:textproduction`, `skill:video-transcriber`.
-
 ### `ellmos-software-resource-tools-bundle`
 
-- Sichtbarkeit des Bundle-Rezepts: `private`; Rolle: `declared-component`;
+- Sichtbarkeit des Bundle-Rezepts: `private`; Rolle: `gui-software-perception-and-action-adapter`;
   Anforderung: `recommended`.
+- Funktion in diesem Bundle: Passt Desktop-GUI-Software in eine einheitliche Wahrnehmungs- und Aktionsschnittstelle ein, damit Reasoning-Modelle lokale Werkzeuge inspizieren und bedienen können.
 - Modulpartner: `module:ApiProber`, `module:clirec`, `module:connectors`,
   `module:software-endpoint-registry`.
 - Skill-Partner: `skill:ai-portable-setup`.
