@@ -1107,19 +1107,14 @@ For reporting instructions, draft advisories, and the full threat model, see [SE
 
 ## Bundles and partners
 
-Generated discovery projection for `module:open-compute` from `catalog:v4-bundles` (`546290dafbaafd810df1d59ef5a3d7183738472b48cd5a8a81f1e8f2b64d852e`).
+Generated discovery projection for `module:open-compute` from `catalog:v4-bundles` (`9ab64b71e0c9ac29442f688cdc32ee05b08e2576544841014b23074d8c27f870`).
 Target repository visibility: `public`. Bundle manifests remain the membership authority; this section does not install or activate components.
 Discovery approval: `public` module-registry record, explicit default-deny bundle allowlist.
 
-### `ellmos-media-production-bundle`
-
-- Bundle recipe visibility: `private`; role: `declared-component`; requirement: `recommended`.
-- module partners: `module:ai-media-editor`, `module:report-forge`, `module:web-scraper`.
-- skill partners: `skill:textproduction`, `skill:video-transcriber`.
-
 ### `ellmos-software-resource-tools-bundle`
 
-- Bundle recipe visibility: `private`; role: `declared-component`; requirement: `recommended`.
+- Bundle recipe visibility: `private`; role: `gui-software-perception-and-action-adapter`; requirement: `recommended`.
+- Function in this bundle: Adapts desktop GUI software into a unified perception-and-action interface so reasoning models can inspect and operate local tools.
 - module partners: `module:ApiProber`, `module:clirec`, `module:connectors`, `module:software-endpoint-registry`.
 - skill partners: `skill:ai-portable-setup`.
 
